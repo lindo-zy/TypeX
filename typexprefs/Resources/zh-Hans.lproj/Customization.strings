@@ -1,0 +1,9 @@
+//translated by udevs
+
+"ENABLED" = "启用";
+"DISABLED" = "停用";
+"CUSTOMIZATION" = "自定义";
+"SHORTCUTS_TINT" = "快捷方式颜色";
+"SHORTCUTS_BACKGROUND_TINT" = "快捷方式背景颜色";
+"TOAST_TINT" = "提示颜色";
+"TOAST_BACKGROUND_TINT" = "提示背景颜色";

@@ -1,0 +1,337 @@
+//translated by udevs
+
+//=====================Short Text for Shortcuts=====================
+//5 letters word is optimal
+//6 letters is still acceptable, but not recommended
+"SHORT_SELECT_ALL" = "全选";
+"SHORT_COPY" = "复制";
+"SHORT_PASTE" = "粘贴";
+"SHORT_CUT" = "剪切";
+"SHORT_UNDO" = "撤销";
+"SHORT_REDO" = "重做";
+"SHORT_SELECT" = "选择";
+"SHORT_BEGINNING" = "开头";
+"SHORT_ENDING" = "结尾";
+"SHORT_CAPITALIZE" = "大写锁定";
+"SHORT_LOWERCASE" = "小写";
+"SHORT_UPPERCASE" = "大写";
+"SHORT_DELETE" = "删除";
+"SHORT_BOLD" = "粗体";
+"SHORT_ITALIC" = "斜体";
+"SHORT_UNDERLINE" = "下划线";
+"SHORT_DISMISS_KEYBOARD" = "收起";
+"SHORT_MOVE_CURSOR_LEFT" = "左";
+"SHORT_MOVE_CURSOR_RIGHT" = "右";
+"SHORT_AUTO_CORRECTION" = "自动更正";
+"SHORT_AUTO_CAPITALIZATION" = "自动大写";
+"SHORT_KEYBOARD_TYPE" = "输入法";
+"SHORT_MOVE_CURSOR_UP" = "上";
+"SHORT_MOVE_CURSOR_DOWN" = "下";
+"SHORT_DEFINE" = "查词";
+"SHORT_RUN_COMMAND" = "命令";
+"SHORT_INSERT_TEXT" = "插入";
+"SHORT_MOVE_CURSOR_PREVIOUS_WORD" = "前词";
+"SHORT_MOVE_CURSOR_NEXT_WORD" = "后词";
+"SHORT_MOVE_CURSOR_START_OF_LINE" = "行首";
+"SHORT_MOVE_CURSOR_END_OF_LINE" = "行尾";
+"SHORT_MOVE_CURSOR_START_OF_PARAGRAPH" = "段首";
+"SHORT_MOVE_CURSOR_END_OF_PARAGRAPH" = "段末";
+"SHORT_MOVE_CURSOR_START_OF_SENTENCE" = "句首";
+"SHORT_MOVE_CURSOR_END_OF_SENTENCE" = "句尾";
+"SHORT_SELECT_LINE" = "选择行";
+"SHORT_SELECT_PARAGRAPH" = "选择段落";
+"SHORT_SELECT_SENTENCE" = "选择句子";
+"SHORT_GLOBE" = "地球键";
+"SHORT_DICTATION" = "听写";
+"SHORT_DELETE_FORWARD" = "向后删除";
+"SHORT_COPY_LOG" = "复制记录";
+"SHORT_SPONGEBOB" = "sPoNge";
+
+//=====================Long Text for Shortcuts=====================
+//Used for showing shortcuts name in "Manage Shortcuts" etc.
+"LONG_SELECT_ALL" = "全选";
+"LONG_COPY" = "复制";
+"LONG_PASTE" = "粘贴";
+"LONG_CUT" = "剪切";
+"LONG_UNDO" = "撤销";
+"LONG_REDO" = "重做";
+"LONG_SELECT" = "选择";
+"LONG_BEGINNING" = "移动到文档开头";
+"LONG_ENDING" = "移动到文档末尾";
+"LONG_CAPITALIZE" = "将最后一个词设为大写";
+"LONG_LOWERCASE" = "转换为小写";
+"LONG_UPPERCASE" = "转换为大写";
+"LONG_DELETE" = "删除";
+"LONG_BOLD" = "加粗";
+"LONG_ITALIC" = "斜体";
+"LONG_UNDERLINE" = "下划线";
+"LONG_DISMISS_KEYBOARD" = "收起键盘";
+"LONG_MOVE_CURSOR_LEFT" = "光标向左";
+"LONG_MOVE_CURSOR_RIGHT" = "光标向右";
+"LONG_AUTO_CORRECTION" = "自动更正";
+"LONG_AUTO_CAPITALIZATION" = "自动大写";
+"LONG_KEYBOARD_TYPE" = "输入法";
+"LONG_MOVE_CURSOR_UP" = "光标向上";
+"LONG_MOVE_CURSOR_DOWN" = "光标向下";
+"LONG_DEFINE" = "查词";
+"LONG_RUN_COMMAND" = "命令行";
+"LONG_INSERT_TEXT" = "插入文本";
+"LONG_MOVE_CURSOR_PREVIOUS_WORD" = "上一个词";
+"LONG_MOVE_CURSOR_NEXT_WORD" = "下一个词";
+"LONG_MOVE_CURSOR_START_OF_LINE" = "移动光标到行首";
+"LONG_MOVE_CURSOR_END_OF_LINE" = "移动光标到行尾";
+"LONG_MOVE_CURSOR_START_OF_PARAGRAPH" = "移动光标到段首";
+"LONG_MOVE_CURSOR_END_OF_PARAGRAPH" = "移动光标到段尾";
+"LONG_MOVE_CURSOR_START_OF_SENTENCE" = "移动光标到句首";
+"LONG_MOVE_CURSOR_END_OF_SENTENCE" = "移动光标到句尾";
+"LONG_SELECT_LINE" = "选择整行";
+"LONG_SELECT_PARAGRAPH" = "选择整段";
+"LONG_SELECT_SENTENCE" = "选择整句";
+"LONG_GLOBE" = "地球键";
+"LONG_DICTATION" = "听写";
+"LONG_DELETE_FORWARD" = "向后删除";
+"LONG_COPY_LOG" = "复制记录";
+"LONG_SPONGEBOB" = "sPonGeBob teXt";
+
+//=====================Toast=====================
+"TOAST_SELECT_ALL" = "全选";
+"TOAST_COPY" = "复制";
+"TOAST_PASTE" = "粘贴";
+"TOAST_CUT" = "剪切";
+"TOAST_UNDO" = "撤销操作";
+"TOAST_REDO" = "重做操作";
+"TOAST_SELECT" = "选择";
+"TOAST_BEGINNING" = "移动到文档开头";
+"TOAST_ENDING" = "移动到文档末尾";
+"TOAST_CAPITALIZE" = "切换大写锁定";
+"TOAST_LOWERCASE" = "转换为小写";
+"TOAST_UPPERCASE" = "转换为大写";
+"TOAST_DELETE" = "删除";
+"TOAST_BOLD" = "切换粗体";
+"TOAST_ITALIC" = "切换斜体";
+"TOAST_UNDERLINE" = "切换下划线";
+"TOAST_DISMISS_KEYBOARD" = "收起键盘";
+"TOAST_MOVE_CURSOR_LEFT" = "光标向左";
+"TOAST_MOVE_CURSOR_RIGHT" = "光标向右";
+"TOAST_AUTO_CORRECTION" = "自动更正";
+"TOAST_AUTO_CAPITALIZATION" = "自动大写";
+"TOAST_KEYBOARD_TYPE" = "输入法";
+"TOAST_MOVE_CURSOR_UP" = "光标向上";
+"TOAST_MOVE_CURSOR_DOWN" = "光标向下";
+"TOAST_DEFINE" = "查词";
+"TOAST_RUN_COMMAND" = "命令";
+"TOAST_INSERT_TEXT" = "插入";
+"TOAST_MOVE_CURSOR_PREVIOUS_WORD" = "上一个词";
+"TOAST_MOVE_CURSOR_NEXT_WORD" = "下一个词";
+"TOAST_MOVE_CURSOR_START_OF_LINE" = "移动到行首";
+"TOAST_MOVE_CURSOR_END_OF_LINE" = "移动到行尾";
+"TOAST_MOVE_CURSOR_START_OF_PARAGRAPH" = "移动到段首";
+"TOAST_MOVE_CURSOR_END_OF_PARAGRAPH" = "移动到段末";
+"TOAST_MOVE_CURSOR_START_OF_SENTENCE" = "移动到句首";
+"TOAST_MOVE_CURSOR_END_OF_SENTENCE" = "移动到句末";
+"TOAST_SELECT_LINE" = "选择整行";
+"TOAST_SELECT_PARAGRAPH" = "选择整段";
+"TOAST_SELECT_SENTENCE" = "选择整句";
+"TOAST_GLOBE" = "切换输入法";
+"TOAST_DICTATION" = "听写";
+"TOAST_DELETE_FORWARD" = "向后删除";
+"TOAST_COPY_LOG" = "复制记录";
+"TOAST_SPONGEBOB" = "sPoNge";
+"TOAST_ON" = "开启";
+"TOAST_OFF" = "关闭";
+"TOAST_KEYBOARD_TYPE_GENERIC" = "通用";
+"TOAST_KEYBOARD_TYPE_DEFAULT" = "默认";
+"TOAST_KEYBOARD_TYPE_ORIGINAL" = "原始";
+"TOAST_KEYBOARD_TYPE_DECIMAL_PAD" = "十进制数字键盘";
+"TOAST_KEYBOARD_TYPE_NUMBER_PAD" = "数字键盘";
+"TOAST_KEYBOARD_TYPE_URL" = "网址键盘";
+"TOAST_KEYBOARD_TYPE_EMAIL" = "电子邮件键盘";
+"TOAST_KEYBOARD_TYPE_ASCII" = "ASCII 键盘";
+"TOAST_KEYBOARD_TYPE_NUMBERS_AND_PUNC" = "数字与符号键盘";
+"TOAST_KEYBOARD_TYPE_PHONE_PAD" = "电话键盘";
+"TOAST_KEYBOARD_TYPE_NAME_AND_PHONE_PAD" = "姓名和电话键盘";
+"TOAST_KEYBOARD_TYPE_TWITTER" = "Twitter 键盘";
+"TOAST_KEYBOARD_TYPE_WEB_SEARCH" = "网络搜索键盘";
+"TOAST_KEYBOARD_TYPE_NUMBER_PAD_ASCII" = "ASCII 数字键盘";
+"TOAST_KEYBOARD_TYPE_ALPHABET" = "字母";
+
+//=====================Manage Shortcuts=====================
+//Extras
+"EXTRAS_KEYBOARD_INPUT_BEHAVIOUR" = "键盘输入行为";
+"EXTRAS_SHELL_COMMANDS" = "命令行";
+"EXTRAS_INSERT_TEXT_CONTENT" = "插入文本内容";
+"EXTRAS_PREVIOUS_WORD_BEHAVIOUR" = "上一个词行为";
+"EXTRAS_NEXT_WORD_BEHAVIOUR" = "下一个词行为";
+"EXTRAS_LINE_START_BEHAVIOUR" = "行首行为";
+"EXTRAS_LINE_END_BEHAVIOUR" = "行尾行为";
+"EXTRAS_START_OF_PARAGRAPH_BEHAVIOUR" = "段首行为";
+"EXTRAS_END_OF_PARAGRAPH_BEHAVIOUR" = "段尾行为";
+"EXTRAS_START_OF_SENTENCE_BEHAVIOUR" = "句首行为";
+"EXTRAS_END_OF_SENTENCE_BEHAVIOUR" = "句尾行为";
+"EXTRAS_DELETE_BEHAVIOUR" = "删除行为";
+"EXTRAS_DELETE_FORWARD_BEHAVIOUR" = "向后删除行为";
+"EXTRAS_GLOBE_BEHAVIOUR" = "地球键行为";
+"EXTRAS_PASTE_BEHAVIOUR" = "粘贴行为";
+
+//Title
+"ENABLED_SHORTCUTS" = "已启用的快捷方式";
+"DISABLED_SHORTCUTS" = "已禁用的快捷方式";
+"EXTRAS" = "附加功能";
+"SHORTCUTS" = "快捷方式";
+
+//Error
+"INCOMPATIBLE_RESET" = "不兼容，请重置";
+
+//Reset
+"RESET" = "重置";
+"RESET_MESSAGE" = "将所有快捷方式（包括自定义的长按和双击操作）恢复为默认设置？";
+"RESET_YES" = "是";
+"RESET_NO" = "否";
+
+//Footer
+"FOOTER_TEXT_FOR_ENABLED_SHORTCUTS" = "您可以添加任意数量的快捷方式！点击任意快捷方式即可自定义其手势操作。
+
+注意：如果遇到问题或快捷方式显示不正确，请尝试重置。";
+
+"FOOTER_TEXT_FOR_EXTRAS" = "点击项目进行自定义。";
+
+"FOOTER_TEXT_FOR_DEFAULT_LONG_PRESS_GESTURES" = "默认长按手势：
+选择 - 全选
+全选 - 选择最后一个词
+复制 - 全选并复制
+粘贴 - 全选并粘贴
+剪切 - 删除最后一个词
+撤销 - 移动到文档开头
+重做 - 移动到文档末尾
+移动到文档开头 - 撤销
+移动到文档末尾 - 重做
+将最后一个词设为大写 - 最后一个词改为大写
+小写 - 最后一个词改为小写
+大写 - 最后一个词改为大写
+删除 - 全选并删除
+向后删除 - 全选并删除
+粗体 - 选择最后一个词并切换粗体
+斜体 - 选择最后一个词并切换斜体
+下划线 - 选择最后一个词并切换下划线
+光标向左 - 加速向左移动光标
+光标向右 - 加速向右移动光标
+光标向上 - 加速向上移动光标
+光标向下 - 加速向下移动光标
+输入法 - 恢复原始输入法
+上一个词和下一个词 - 选择词语
+行首和行尾 - 选择整行
+段首和段尾 - 选择整段
+句首和句尾 - 选择整句
+地球键 - 启用听写
+sPonGeBob 文本 - 全选并生成海绵宝宝文本";
+
+
+//=====================CUSTOM ACTIONS PAGE=====================
+"FIRST_ACTION" = "第一个动作";
+"SECOND_ACTION" = "第二个动作";
+"FOOTER_FIRST_ACTION" = "此动作会在下方第二个动作之前执行。可以留空。如需使用默认动作，请将所有字段留空。";
+
+//=====================ADVANCED SETTINGS PAGE=====================
+//Shortcuts
+"FOOTER_SPACING" = "快捷方式之间的间距";
+"FOOTER_HEIGHT" = "高度";
+"FOOTER_RADIUS" = "半径";
+//Offsets
+"OFFSETS" = "偏移";
+"FOOTER_OFFSETS_LEADING" = "左侧偏移";
+"FOOTER_OFFSETS_TRAILING" = "右侧偏移";
+"FOOTER_OFFSETS_BOTTOM" = "垂直偏移";
+"FOOTER_OFFSETS_NOTICE" = "注意：在单手键盘模式下，自定义偏移量可能无法正常工作。";
+//Insets
+"INSETS" = "内边距";
+"FOOTER_INSETS_TOP" = "上边距";
+"FOOTER_INSETS_BOTTOM" = "下边距";
+"FOOTER_INSETS_LEFT" = "左边距";
+"FOOTER_INSETS_RIGHT" = "右边距";
+
+//=====================KEYBOARD INPUT BEHAVIOR=====================
+"DISABLED_INPUT_TYPE" = "已禁用的输入法";
+"ENABLED_INPUT_TYPE" = "已启用的输入法";
+"FOOTER_ENABLED" = "启用后，点击快捷方式即可循环切换输入法。如果“默认”与“原始”相同，将跳过“默认”。请至少选择两个项目，并包含“原始”。\n\n注意：某些输入法不支持切换输入类型，TypeX 会将当前图标显示为空心、灰色或带删除线，以表示该状态。";
+"RESET_TO_DEFAULT_MESSAGE" = "恢复为默认设置？";
+"KEYBOARD_INPUT_TYPE_TITLE" = "输入法切换";
+
+//=====================CURSOR BEHAVIOR=====================
+"CURSOR_BEHAVIOR_WHOLE_PARA" = "整段";
+"CURSOR_BEHAVIOR_FROM_CURRENT_POS" = "从当前位置";
+"CURSOR_BEHAVIOR_WHOLE_LINE" = "整行";
+"CURSOR_BEHAVIOR_WHOLE_SENTENCE" = "整句";
+"CURSOR_BEHAVIOR_SINGLE_WORD" = "仅当前词";
+"CURSOR_BEHAVIOR_CONTINUOUSLY" = "连续";
+"CURSOR_BEHAVIOR_NODE_TITLE" = "默认长按行为";
+"FOOTER_CURSOR_BEHAVIOR" = "选择默认长按手势的选择行为。";
+
+//=====================GESTURES PAGE=====================
+"GESTURES" = "手势";
+"LONG_PRESS" = "长按";
+"DOUBLE_TAP" = "双击";
+
+//=====================INSERT TEXT BEHAVIOR=====================
+"SINGLE_TAP" = "单击";
+"FOOTER_SINGLE_TAP" = "设置单击快捷方式时要插入的文本。";
+"FOOTER_LONG_PRESS" = "设置长按快捷方式时要插入的文本。\n\n注意：如果在上方设置了自定义长按手势，此项将被忽略。";
+"TEXT" = "文本";
+"ABBREV_SHORT_DATE" = "简短日期";
+"ABBREV_MEDIUM_DATE" = "中等日期";
+"ABBREV_SHORT_TIME" = "简短时间";
+"ABBREV_MEDIUM_TIME" = "中等时间";
+"ABBREV_FULL_DATE" = "完整日期和时间";
+
+//=====================SHELL COMMAND BEHAVIOR=====================
+"SHELL_TITLE" = "命令标题";
+"SHELL_COMMAND" = "命令";
+"FOOTER_SHELL_SINGLE_TAP" = "单击快捷方式时执行设置的命令。";
+"FOOTER_SHELL_LONG_PRESS" = "长按快捷方式时执行设置的命令。\n\n注意：如果在上方设置了自定义长按手势，此项将被忽略。";
+
+//=====================DELETE BEHAVIOR=====================
+"SMART_DELETE" = "智能删除";
+"FOOTER_DELETE" = "智能删除会在删除后插入一个空格。\n\n注意：如果未选择任何词语，将选择最近的词语或标点符号进行删除。";
+
+//=====================GLOBE BEHAVIOR=====================
+"EMOJI_KEYBOARD" = "Emoji 键盘";
+"SKIP_EMOJI" = "跳过 Emoji";
+
+//=====================PASTE BEHAVIOR=====================
+"SAFARI" = "Safari";
+"FOOTER_SAFARI" = "选择在 Safari 地址栏中使用“粘贴并前往”的内容类型。";
+"PASTE_AND_GO_DISABLED" = "已停用";
+"PASTE_AND_GO_URL_ONLY" = "仅网址";
+"PASTE_AND_GO_EVERYTHING" = "所有文本";
+
+//=====================MISC=====================
+"SEARCHBAR_PLACEHOLDER" = "搜索设置";
+"RESPRING" = "重新加载界面";
+"RESPRING_MESSAGE" = "重新加载界面不是必须的，但建议执行以便立即应用更改。现在重新加载吗？";
+"DEFAULT" = "默认";
+"ANSWER_YES" = "是";
+"ANSWER_NO" = "否";
+"EXTRAS_SPONGEBOB_BEHAVIOUR" = "海绵宝宝文本行为";
+"FOOTER_SPONGEBOB_ENTROPY" = "选择生成文本的随机程度。";
+"SPONGEBOB_ENTROPY" = "海绵宝宝文本随机程度";
+"SPONGEBOB_RANDOM" = "随机";
+"SPONGEBOB_ALTERNATE" = "交替";
+"SPONGEBOB_VOWEL" = "元音";
+"SPONGEBOB_CONSONENT" = "辅音";
+"SPACING" = "间距";
+"HEIGHT" = "高度";
+"RADIUS" = "圆角半径";
+"LEADING" = "左侧偏移";
+"TRAILING" = "右侧偏移";
+"LEFT_OFFSET" = "左侧偏移";
+"BOTTOM_OFFSET" = "底部偏移";
+"TOP_INSET" = "顶部内缩";
+"BOTTOM_INSET" = "底部内缩";
+"LEFT_INSET" = "左侧内缩";
+"RIGHT_INSET" = "右侧内缩";
+"PASTE_AND_GO" = "粘贴并前往";
+"INSERT_TYPE" = "插入类型";
+"SELECTION_TYPE" = "选择方式";
+"DESCRIPTION" = "描述";
+"ICON_TYPE" = "图标类型";
+"ICON_PATH" = "图标路径";
+"EMOJI" = "表情符号";

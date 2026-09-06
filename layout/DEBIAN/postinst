@@ -1,0 +1,12 @@
+#!/bin/bash
+
+if [[ x$JB_ROOT_PATH != x"" ]]; then
+    JBROOT="/var/jb"
+else
+    JBROOT=""
+fi
+mkdir -p "$JBROOT/var/mobile/Library/Caches/com.lindo.typex" || true
+chown mobile:mobile "$JBROOT/var/mobile/Library/Caches/com.lindo.typex"
+chmod 0755 "$JBROOT/var/mobile/Library/Caches/com.lindo.typex"
+
+exit 0
