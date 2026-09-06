@@ -6,6 +6,10 @@ static NSBundle *tweakBundle;
 
 @implementation DXPCursorMoveAndSelectEntryController
 
+- (NSString *)settingsKey {
+    return DXScopedPreferenceKey(@"cursormoevandselect", self.configuration);
+}
+
 - (NSArray *)specifiers {
     if (!_specifiers) {
         NSMutableArray *snippetEntrySpecifiers = [[NSMutableArray alloc] init];
@@ -55,11 +59,12 @@ static NSBundle *tweakBundle;
     //[settings addEntriesFromDictionary:[NSDictionary dictionaryWithContentsOfFile:path]];
     
     
-    NSArray *arrayWithEntryID = [settings[@"cursormoevandselect"] valueForKey:@"entryID"];
+    NSString *settingsKey = [self settingsKey];
+    NSArray *arrayWithEntryID = [settings[settingsKey] valueForKey:@"entryID"];
     HBLogDebug(@"array ID: %@", arrayWithEntryID);
     NSUInteger index = [arrayWithEntryID indexOfObject:self.entryID];
     HBLogDebug(@"index: %lu", (unsigned long)index);
-    NSMutableDictionary *settingsSnippet = index != NSNotFound ? settings[@"cursormoevandselect"][index] : nil;
+    NSMutableDictionary *settingsSnippet = index != NSNotFound ? settings[settingsKey][index] : nil;
     
     id value = (settingsSnippet[specifier.properties[@"key"]]) ?: specifier.properties[@"default"];
     
@@ -109,9 +114,10 @@ static NSBundle *tweakBundle;
     NSMutableArray *snippets;
     NSMutableDictionary *snippet;
     //[settings addEntriesFromDictionary:[NSDictionary dictionaryWithContentsOfFile:path]];
-    if (settings[@"cursormoevandselect"] && [settings[@"cursormoevandselect"] firstObject] != nil){
-        snippets = [settings[@"cursormoevandselect"] mutableCopy];
-        NSArray *arrayWithEntryID = [settings[@"cursormoevandselect"] valueForKey:@"entryID"];
+    NSString *settingsKey = [self settingsKey];
+    if (settings[settingsKey] && [settings[settingsKey] firstObject] != nil){
+        snippets = [settings[settingsKey] mutableCopy];
+        NSArray *arrayWithEntryID = [settings[settingsKey] valueForKey:@"entryID"];
         NSUInteger index = [arrayWithEntryID indexOfObject:self.entryID];
         HBLogDebug(@"index: %lu", (unsigned long)index);
         snippet = index != NSNotFound ? [[snippets objectAtIndex:index] mutableCopy] : [[NSMutableDictionary alloc] init];
@@ -137,9 +143,9 @@ static NSBundle *tweakBundle;
         
     }
     
-    settings[@"cursormoevandselect"] = snippets;
+    settings[settingsKey] = snippets;
     HBLogDebug(@"settings: %@", settings);
-    HBLogDebug(@"snippets: %@", settings[@"cursormoevandselect"]);
+    HBLogDebug(@"snippets: %@", settings[settingsKey]);
     //[settings setObject:value atIndex:index];
     //[settings writeToFile:path atomically:YES];
     [[DXPrefsManager sharedInstance] writePrefs:settings];

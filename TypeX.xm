@@ -729,6 +729,7 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
 %end
 
 %hook UIKeyboardLayoutStar
+%property (retain, nonatomic) DXCollectionView *typexTop;
 
 -(BOOL)isHandwritingPlane{
     BOOL isHWR = %orig;
@@ -748,6 +749,23 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
 
 -(id)initWithFrame:(CGRect)arg1{
     self = %orig;
+
+    if (preferencesBool(kEnabledkey,YES) && self) {
+        self.clipsToBounds = NO;
+        self.typexTop = [[DXCollectionView alloc] init];
+        self.typexTop.configuration = @"top";
+        [self.typexTop reloadShortcutConfiguration];
+        self.typexTop.translatesAutoresizingMaskIntoConstraints = NO;
+        self.typexTop.clipsToBounds = NO;
+        [self addSubview:self.typexTop];
+        [NSLayoutConstraint activateConstraints:@[
+            [self.typexTop.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
+            [self.typexTop.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
+            [self.typexTop.bottomAnchor constraintEqualToAnchor:self.topAnchor constant:-2.0],
+            [self.typexTop.heightAnchor constraintEqualToConstant:MAX(44.0, buttonHeight + topInset + bottomInset + 4.0)]
+        ]];
+        self.typexTop.hidden = (self.typexTop.shortcuts.count == 0 || ((NSArray *)self.typexTop.shortcuts[kbuttonsImages12]).count == 0);
+    }
     
     if (preferencesBool(kEnabledkey,YES) && preferencesBool(kSpaceBarScrollingBOOL,YES)){
         UISwipeGestureRecognizer *leftRecognizer = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(leftSwipeHandle:)];
@@ -770,6 +788,15 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
         
     }
     return self;
+}
+
+-(void)layoutSubviews {
+    %orig;
+    if (self.typexTop) {
+        BOOL shouldHide = !preferencesBool(kEnabledkey, YES) || !toggledOn || isLandscape || isDictating;
+        if (((NSArray *)self.typexTop.shortcuts[kbuttonsImages12]).count == 0) shouldHide = YES;
+        self.typexTop.hidden = shouldHide;
+    }
 }
 
 %new
@@ -1062,6 +1089,17 @@ static void reloadPrefs(void) {
         }
         [dockView.typex.collectionViewLayout invalidateLayout];
         [dockView.typex reloadData];
+    }
+    UIKeyboardLayoutStar *keyboardLayout = nil;
+    if (dockView && [dockView respondsToSelector:@selector(_keyboardLayoutView)]) {
+        keyboardLayout = (UIKeyboardLayoutStar *)[dockView _keyboardLayoutView];
+    }
+    if (keyboardLayout.typexTop) {
+        [keyboardLayout.typexTop reloadShortcutConfiguration];
+        BOOL topHasShortcuts = [keyboardLayout.typexTop.shortcuts[kbuttonsImages12] count] > 0;
+        keyboardLayout.typexTop.hidden = !enabled || !toggledOn || isLandscape || isDictating || !topHasShortcuts;
+        [keyboardLayout.typexTop.collectionViewLayout invalidateLayout];
+        [keyboardLayout.typexTop reloadData];
     }
     /*
      if (dockView){

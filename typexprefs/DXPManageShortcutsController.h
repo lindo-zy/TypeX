@@ -9,4 +9,6 @@
 @property (nonatomic, strong) NSArray *fullOrder;
 @property (nonatomic, strong) NSArray *firstOrder;
 @property(nonatomic, retain) UIBarButtonItem *resetBtn;
+@property(nonatomic, copy) NSString *shortcutsPreferenceKey;
+@property(nonatomic, assign, getter=isTopConfiguration) BOOL topConfiguration;
 @end

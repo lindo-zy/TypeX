@@ -1,9 +1,0 @@
-//translated by udevs
-
-"ENABLED" = "Enabled";
-"DISABLED" = "Disabled";
-"CUSTOMIZATION" = "Customization";
-"SHORTCUTS_TINT" = "Shortcuts Tint";
-"SHORTCUTS_BACKGROUND_TINT" = "Shortcuts Background Tint";
-"TOAST_TINT" = "Toast Tint";
-"TOAST_BACKGROUND_TINT" = "Toast Background Tint";

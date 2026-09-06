@@ -189,7 +189,8 @@ jobs:
   # 可选：添加一个 job 来创建预发布版本
   prerelease:
     name: Create Prerelease for main branch
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    #if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: false  # 跳过此 job
     needs: build
     runs-on: ubuntu-latest
     permissions:

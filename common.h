@@ -33,6 +33,7 @@
 #define kToastkey @"toastBOOL"
 #define kToastPy @"toastpy"
 #define kShortcutskey @"shortcuts"
+#define kTopShortcutskey @"topshortcuts"
 #define kToastDurationkey @"toastduration"
 #define kColorEnabledkey @"colorBOOL"
 #define kSpaceBarScrollingBOOL @"enabledSpaceBarScrollingBOOL"
@@ -45,6 +46,7 @@
 #define kGestureTypekey @"gesturetype"
 #define kSwipeSpaceBarTogglekey @"swipetoggle"
 #define kCustomActionskey @"customactions"
+#define kTopCustomActionskey @"topcustomactions"
 #define kPagingkey @"pagingBOOL"
 #define kShortcutsTintEnabled @"shortcutstintBOOL"
 #define kShortcutsBackgroundTintEnabled @"shortcutsbackgroundtintBOOL"
@@ -54,6 +56,8 @@
 #define kPasteAndGoEnabledkey @"pasteandgo"
 #define kCustomActionsDTkey @"customactionsdt"
 #define kCustomActionsSTkey @"customactionsst"
+#define kTopCustomActionsDTkey @"topcustomactionsdt"
+#define kTopCustomActionsSTkey @"topcustomactionsst"
 #define kEnabledDoubleTapkey @"doubletapBOOL"
 #define kTopInsetkey @"topinset"
 #define kBottomInsetkey @"bottominset"
@@ -72,6 +76,7 @@
 #define kCellRadiuskey @"shortcutradius"
 #define kCellSpacingkey @"shortcutspacing"
 #define kCachekey @"cache"
+#define kTopCachekey @"topcache"
 #define kSpongebobEntropyKey @"spongebobEntropy"
 
 #define toastWidth 50
@@ -92,7 +97,7 @@
 
 #define tweakVersion @"1.3.1"
 #define maxdefaultshortcuts 6
-#define maxshortcutpersection 8
+#define maxshortcutpersection 6
 #define maxshortcutpersection_onehanded 5
 #define granularity 3
 
@@ -123,6 +128,13 @@
 #define secondActionDelay 0.05
 
 #define TypeXCachePath DX_ROOT_PATH_NS(@"/var/mobile/Library/Caches/com.lindo.typex")
+
+static inline NSString *DXScopedPreferenceKey(NSString *baseKey, NSString *configuration) {
+    if ([configuration isEqualToString:@"top"]) {
+        return [@"top" stringByAppendingString:baseKey];
+    }
+    return baseKey;
+}
 
 static inline UIColor *DXColorFromHex(NSString *value, NSString *fallback) {
     NSString *hex = [value isKindOfClass:[NSString class]] ? value : fallback;

@@ -17,7 +17,7 @@ static NSBundle *tweakBundle;
         
         PSSpecifier *emojiKeyboardSpec = [PSSpecifier preferenceSpecifierNamed:LOCALIZED(@"SKIP_EMOJI") target:self set:@selector(setPreferenceValue:specifier:) get:@selector(readPreferenceValue:) detail:nil cell:PSSwitchCell edit:nil];
         [emojiKeyboardSpec setProperty:LOCALIZED(@"SKIP_EMOJI") forKey:@"label"];
-        [emojiKeyboardSpec setProperty:kEnabledSkipEmojikey forKey:@"key"];
+        [emojiKeyboardSpec setProperty:DXScopedPreferenceKey(kEnabledSkipEmojikey, self.configuration) forKey:@"key"];
         [emojiKeyboardSpec setProperty:@YES forKey:@"default"];
         [emojiKeyboardSpec setProperty:kIdentifier forKey:@"defaults"];
         [emojiKeyboardSpec setProperty:kPrefsChangedIdentifier forKey:@"PostNotification"];

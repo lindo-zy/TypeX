@@ -36,7 +36,19 @@
 			<key>detail</key>
 			<string>DXPManageShortcutsController</string>
 			<key>label</key>
-			<string>MANAGE_SHORTCUTS</string>
+			<string>顶部设置</string>
+			<key>configuration</key>
+			<string>top</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>detail</key>
+			<string>DXPManageShortcutsController</string>
+			<key>label</key>
+			<string>底部设置</string>
+			<key>configuration</key>
+			<string>bottom</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -113,8 +125,6 @@
 				<string>4</string>
 				<string>5</string>
 				<string>6</string>
-				<string>7</string>
-				<string>8</string>
 			</array>
 			<key>validTitles</key>
 			<array>
@@ -124,8 +134,6 @@
 				<string>4</string>
 				<string>5</string>
 				<string>6</string>
-				<string>7</string>
-				<string>8</string>
 			</array>
 			<key>key</key>
 			<string>shortcutsnum</string>

@@ -6,4 +6,5 @@
 @property (nonatomic, strong) NSMutableArray *currentOrder;
 @property (nonatomic, strong) NSArray *fullOrder;
 @property(nonatomic, retain) UIBarButtonItem *resetBtn;
+@property (nonatomic, copy) NSString *configuration;
 @end

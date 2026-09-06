@@ -21,6 +21,10 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 @implementation DXPManageShortcutsController
 
+- (NSString *)scopedKey:(NSString *)bottomKey topKey:(NSString *)topKey {
+    return self.topConfiguration ? topKey : bottomKey;
+}
+
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
     return 3;
 }
@@ -181,6 +185,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         
         gesturePickerController.fullOrder = @[self.firstOrder, self.fullOrder];
         gesturePickerController.identifier = self.currentOrder[indexPath.section][indexPath.row][@"selector"];
+        gesturePickerController.configuration = self.topConfiguration ? @"top" : @"bottom";
         gesturePickerController.title = [DXHelper localizedStringForActionNamed:self.currentOrder[indexPath.section][indexPath.row][@"selector"] shortName:NO bundle:tweakBundle];
         
         [gesturePickerController setRootController: [self rootController]];
@@ -190,82 +195,96 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }else{
         if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"keyboardType"]){
             DXPKeyboardTypeOptions *kbTypeOptions = [[DXPKeyboardTypeOptions alloc] init];
+            kbTypeOptions.configuration = self.topConfiguration ? @"top" : @"bottom";
             [kbTypeOptions setRootController: [self rootController]];
             [kbTypeOptions setParentController: [self parentController]];
             [self pushController:kbTypeOptions];
         }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"insertText"]){
             DXPInsertTextEntryController *insertTextController = [[DXPInsertTextEntryController alloc] init];
             insertTextController.entryID = @"insertTextAction:";
+            insertTextController.configuration = self.topConfiguration ? @"top" : @"bottom";
             [insertTextController setRootController: [self rootController]];
             [insertTextController setParentController: [self parentController]];
             [self pushController:insertTextController];
         }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"prevWord"]){
             DXPCursorMoveAndSelectEntryController *cursorMoveAndSelectController = [[DXPCursorMoveAndSelectEntryController alloc] init];
             cursorMoveAndSelectController.entryID = @"moveCursorPreviousWordAction:";
+            cursorMoveAndSelectController.configuration = self.topConfiguration ? @"top" : @"bottom";
             [cursorMoveAndSelectController setRootController: [self rootController]];
             [cursorMoveAndSelectController setParentController: [self parentController]];
             [self pushController:cursorMoveAndSelectController];
         }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"nextWord"]){
             DXPCursorMoveAndSelectEntryController *cursorMoveAndSelectController = [[DXPCursorMoveAndSelectEntryController alloc] init];
             cursorMoveAndSelectController.entryID = @"moveCursorNextWordAction:";
+            cursorMoveAndSelectController.configuration = self.topConfiguration ? @"top" : @"bottom";
             [cursorMoveAndSelectController setRootController: [self rootController]];
             [cursorMoveAndSelectController setParentController: [self parentController]];
             [self pushController:cursorMoveAndSelectController];
         }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"lineStart"]){
             DXPCursorMoveAndSelectEntryController *cursorMoveAndSelectController = [[DXPCursorMoveAndSelectEntryController alloc] init];
             cursorMoveAndSelectController.entryID = @"moveCursorStartOfLineAction:";
+            cursorMoveAndSelectController.configuration = self.topConfiguration ? @"top" : @"bottom";
             [cursorMoveAndSelectController setRootController: [self rootController]];
             [cursorMoveAndSelectController setParentController: [self parentController]];
             [self pushController:cursorMoveAndSelectController];
         }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"lineEnd"]){
             DXPCursorMoveAndSelectEntryController *cursorMoveAndSelectController = [[DXPCursorMoveAndSelectEntryController alloc] init];
             cursorMoveAndSelectController.entryID = @"moveCursorEndOfLineAction:";
+            cursorMoveAndSelectController.configuration = self.topConfiguration ? @"top" : @"bottom";
             [cursorMoveAndSelectController setRootController: [self rootController]];
             [cursorMoveAndSelectController setParentController: [self parentController]];
             [self pushController:cursorMoveAndSelectController];
         }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"startOfParagraph"]){
             DXPCursorMoveAndSelectEntryController *cursorMoveAndSelectController = [[DXPCursorMoveAndSelectEntryController alloc] init];
             cursorMoveAndSelectController.entryID = @"moveCursorStartOfParagraphAction:";
+            cursorMoveAndSelectController.configuration = self.topConfiguration ? @"top" : @"bottom";
             [cursorMoveAndSelectController setRootController: [self rootController]];
             [cursorMoveAndSelectController setParentController: [self parentController]];
             [self pushController:cursorMoveAndSelectController];
         }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"endOfParagraph"]){
             DXPCursorMoveAndSelectEntryController *cursorMoveAndSelectController = [[DXPCursorMoveAndSelectEntryController alloc] init];
             cursorMoveAndSelectController.entryID = @"moveCursorEndOfParagraphAction:";
+            cursorMoveAndSelectController.configuration = self.topConfiguration ? @"top" : @"bottom";
             [cursorMoveAndSelectController setRootController: [self rootController]];
             [cursorMoveAndSelectController setParentController: [self parentController]];
             [self pushController:cursorMoveAndSelectController];
         }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"startOfSentence"]){
             DXPCursorMoveAndSelectEntryController *cursorMoveAndSelectController = [[DXPCursorMoveAndSelectEntryController alloc] init];
             cursorMoveAndSelectController.entryID = @"moveCursorStartOfSentenceAction:";
+            cursorMoveAndSelectController.configuration = self.topConfiguration ? @"top" : @"bottom";
             [cursorMoveAndSelectController setRootController: [self rootController]];
             [cursorMoveAndSelectController setParentController: [self parentController]];
             [self pushController:cursorMoveAndSelectController];
         }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"endOfSentence"]){
             DXPCursorMoveAndSelectEntryController *cursorMoveAndSelectController = [[DXPCursorMoveAndSelectEntryController alloc] init];
             cursorMoveAndSelectController.entryID = @"moveCursorEndOfSentenceAction:";
+            cursorMoveAndSelectController.configuration = self.topConfiguration ? @"top" : @"bottom";
             [cursorMoveAndSelectController setRootController: [self rootController]];
             [cursorMoveAndSelectController setParentController: [self parentController]];
             [self pushController:cursorMoveAndSelectController];
         }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"delete"]){
             DXPDeleteOptions *deleteOptions = [[DXPDeleteOptions alloc] init];
             deleteOptions.entryID = @"deleteAction::";
+            deleteOptions.configuration = self.topConfiguration ? @"top" : @"bottom";
             [deleteOptions setRootController: [self rootController]];
             [deleteOptions setParentController: [self parentController]];
             [self pushController:deleteOptions];
         }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"deleteForward"]){
             DXPDeleteOptions *deleteOptions = [[DXPDeleteOptions alloc] init];
             deleteOptions.entryID = @"deleteForwardAction::";
+            deleteOptions.configuration = self.topConfiguration ? @"top" : @"bottom";
             [deleteOptions setRootController: [self rootController]];
             [deleteOptions setParentController: [self parentController]];
             [self pushController:deleteOptions];
         }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"globe"]){
             DXPGlobeOptions *globeOptions = [[DXPGlobeOptions alloc] init];
+            globeOptions.configuration = self.topConfiguration ? @"top" : @"bottom";
             [globeOptions setRootController: [self rootController]];
             [globeOptions setParentController: [self parentController]];
             [self pushController:globeOptions];
         }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"paste"]){
             DXPPasteOptions *pasteOptions = [[DXPPasteOptions alloc] init];
+            pasteOptions.configuration = self.topConfiguration ? @"top" : @"bottom";
             [pasteOptions setRootController: [self rootController]];
             [pasteOptions setParentController: [self parentController]];
             [self pushController:pasteOptions];
@@ -337,6 +356,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
             break;
         case 1: {
             if (editingStyle == UITableViewCellEditingStyleInsert) {
+                if ([self.currentOrder[0] count] >= maxshortcutpersection) {
+                    return;
+                }
                 [tableView beginUpdates];
                 [self.currentOrder[0] addObject:self.currentOrder[1][indexPath.row]];
                 [self.currentOrder[1] removeObjectAtIndex:indexPath.row];
@@ -358,7 +380,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         case 0:
             return [self.currentOrder[0] count] == 1?UITableViewCellEditingStyleNone:UITableViewCellEditingStyleDelete;
         case 1:
-            return [self.currentOrder[0] count] == 1?UITableViewCellEditingStyleInsert:UITableViewCellEditingStyleInsert;
+            return [self.currentOrder[0] count] >= maxshortcutpersection ? UITableViewCellEditingStyleNone : UITableViewCellEditingStyleInsert;
             //return [self.currentOrder[0] count] == maxShortcuts?UITableViewCellEditingStyleNone:UITableViewCellEditingStyleInsert;
         default:
             return UITableViewCellEditingStyleNone;
@@ -371,11 +393,16 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 
 - (void)writeToFile{
-    [[DXPrefsManager sharedInstance] setValue:self.currentOrder forKey:kShortcutskey];
+    [[DXPrefsManager sharedInstance] setValue:self.currentOrder forKey:self.shortcutsPreferenceKey ?: kShortcutskey];
 }
 
 - (void)updateOrder:(BOOL)reset{
     NSMutableDictionary *prefs = [[[DXPrefsManager sharedInstance] readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
+    NSString *shortcutsKey = self.shortcutsPreferenceKey ?: kShortcutskey;
+    NSString *customActionsKey = [self scopedKey:kCustomActionskey topKey:kTopCustomActionskey];
+    NSString *customActionsDTKey = [self scopedKey:kCustomActionsDTkey topKey:kTopCustomActionsDTkey];
+    NSString *customActionsSTKey = [self scopedKey:kCustomActionsSTkey topKey:kTopCustomActionsSTkey];
+    NSString *cacheKey = [self scopedKey:kCachekey topKey:kTopCachekey];
     
     //BOOL newShortcutsAvailable = ([tweakVersion compare:prefs[@"version"] options:NSNumericSearch] == NSOrderedDescending);
     /*
@@ -431,10 +458,10 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     
     //reset custom long press actions
     if (reset){
-        prefs[kCustomActionskey] = @[];
-        prefs[kCustomActionsDTkey] = @[];
-        prefs[kCustomActionsSTkey] = @[];
-        [prefs removeObjectForKey:kCachekey];
+        prefs[customActionsKey] = @[];
+        prefs[customActionsDTKey] = @[];
+        prefs[customActionsSTKey] = @[];
+        [prefs removeObjectForKey:cacheKey];
         //[prefs removeObjectForKey:kCustomActionskey];
         [[DXPrefsManager sharedInstance] writePrefs:prefs];
         
@@ -450,9 +477,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     self.currentOrder = [NSMutableArray array];
     self.currentOrder[0] = [NSMutableArray array];
     self.currentOrder[1] = [NSMutableArray array];
-    if (prefs[@"shortcuts"][0]  && ([prefs[@"shortcuts"][0] firstObject] != nil) && !reset){
-        NSMutableArray *currentOrderDefault = [prefs[@"shortcuts"][0] mutableCopy];
-        for (NSInteger i = 0; i < [currentOrderDefault count]; i++){
+    if (prefs[shortcutsKey][0]  && ([prefs[shortcutsKey][0] firstObject] != nil) && !reset){
+        NSMutableArray *currentOrderDefault = [prefs[shortcutsKey][0] mutableCopy];
+        for (NSInteger i = 0; i < [currentOrderDefault count] && [self.currentOrder[0] count] < maxshortcutpersection; i++){
             if (DXIsHiddenShortcutSelector(currentOrderDefault[i][@"selector"])) continue;
             [self.currentOrder[0] addObject:[currentOrderDefault objectAtIndex:i]];
         }
@@ -473,8 +500,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         }
         self.currentOrder[0] = defaultOrderDict;
     }
-    if (prefs[@"shortcuts"][1]  && ([prefs[@"shortcuts"][1] firstObject] != nil) && !reset){
-        NSMutableArray *currentOrderDefault = [prefs[@"shortcuts"][1] mutableCopy];
+    if (prefs[shortcutsKey][1]  && ([prefs[shortcutsKey][1] firstObject] != nil) && !reset){
+        NSMutableArray *currentOrderDefault = [prefs[shortcutsKey][1] mutableCopy];
         for (NSInteger i = 0; i < [currentOrderDefault count]; i++){
             if (DXIsHiddenShortcutSelector(currentOrderDefault[i][@"selector"])) continue;
             [self.currentOrder[1] addObject:[currentOrderDefault objectAtIndex:i]];
@@ -510,7 +537,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
              }
              */
         }
-    }else if ([prefs[@"shortcuts"][0] count] != defaultOrderLabel.count || reset){
+    }else if ([prefs[shortcutsKey][0] count] != defaultOrderLabel.count || reset){
         self.currentOrder[1] = [NSMutableArray array];
         NSMutableArray *defaultOrderDict = [[NSMutableArray alloc] init];
         
@@ -598,6 +625,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 - (void)viewDidLoad {
+    self.topConfiguration = [[self.specifier propertyForKey:@"configuration"] isEqualToString:@"top"];
+    self.shortcutsPreferenceKey = self.topConfiguration ? kTopShortcutskey : kShortcutskey;
     tweakBundle = [NSBundle bundleWithPath:bundlePath];
     [tweakBundle load];
     [super viewDidLoad];
@@ -610,7 +639,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     [self.tableView setAllowsSelection:NO];
     self.tableView.allowsSelectionDuringEditing=YES;
     
-    ((UIViewController *)self).title = LOCALIZED(@"SHORTCUTS");
+    ((UIViewController *)self).title = self.topConfiguration ? @"顶部设置" : @"底部设置";
     self.view = self.tableView;
     
     self.resetBtn = [[UIBarButtonItem alloc] initWithTitle:LOCALIZED(@"RESET") style:UIBarButtonItemStylePlain target:self action:@selector(reset)];

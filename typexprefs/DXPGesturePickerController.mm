@@ -37,16 +37,17 @@ static NSBundle *tweakBundle;
 
     actionViewController.fullOrder = self.fullOrder;
     actionViewController.identifier = self.identifier;
+    actionViewController.configuration = self.configuration;
     
     switch (indexPath.row) {
         case 0:
-            actionViewController.keyID = kCustomActionskey;
+            actionViewController.keyID = [self.configuration isEqualToString:@"top"] ? kTopCustomActionskey : kCustomActionskey;
             break;
         case 1:
-            actionViewController.keyID = kCustomActionsDTkey;
+            actionViewController.keyID = [self.configuration isEqualToString:@"top"] ? kTopCustomActionsDTkey : kCustomActionsDTkey;
             break;
         default:
-            actionViewController.keyID = kCustomActionskey;
+            actionViewController.keyID = [self.configuration isEqualToString:@"top"] ? kTopCustomActionskey : kCustomActionskey;
             break;
     }
     

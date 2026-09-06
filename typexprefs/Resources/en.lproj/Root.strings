@@ -11,7 +11,8 @@
 "ICON" = "Icon";
 "TEXT" = "Text";
 "FOOTER_SHORTCUT_NUM" = "Set number of shortcuts per page.";
-"MANAGE_SHORTCUTS" = "Manage Shortcuts";
+"TOP_SETTINGS" = "Top Settings";
+"BOTTOM_SETTINGS" = "Bottom Settings";
 "DOUBLE_TAP" = "Double Tap";
 "FOOTER_DISPLAY_STYLE" = "Set shortcuts displaying style.";
 "FOOTER_SWIPE_SPACE_BAR_TOGGLE_BARMOJI" = "Allow swiping up from space bar to toggle between TypeX/Barmoji. Simply swipe up from spacebar to any row of keyboard letters, shortly hold and finally release finger.";

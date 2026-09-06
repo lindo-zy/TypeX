@@ -15,9 +15,9 @@ static NSBundle *tweakBundle;
         [smartDeleteSpecGroup setProperty:LOCALIZED(@"FOOTER_DELETE") forKey:@"footerText"];
         [snippetEntrySpecifiers addObject:smartDeleteSpecGroup];
         
-        NSString *deleteDirectionKey = kEnabledSmartDeletekey;
+        NSString *deleteDirectionKey = DXScopedPreferenceKey(kEnabledSmartDeletekey, self.configuration);
         if ([self.entryID containsString:@"deleteForwardAction:"]){
-            deleteDirectionKey = kEnabledSmartDeleteForwardkey;
+            deleteDirectionKey = DXScopedPreferenceKey(kEnabledSmartDeleteForwardkey, self.configuration);
         }
 
         PSSpecifier *smartDeleteSpec = [PSSpecifier preferenceSpecifierNamed:LOCALIZED(@"SMART_DELETE") target:self set:@selector(setPreferenceValue:specifier:) get:@selector(readPreferenceValue:) detail:nil cell:PSSwitchCell edit:nil];

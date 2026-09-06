@@ -182,6 +182,7 @@ static inline UIResponder *DXKeyboardInputDelegate(UIKeyboardImpl *keyboard) {
 @interface UIKeyboardLayoutStar : UIView{
         BOOL _isContinuousPathUnderway;
 }
+@property (nonatomic, retain) DXCollectionView *typexTop;
 @property (nonatomic,readonly) NSString * localizedInputMode;
 -(MKInfoCardThemeManager *)mk_theme;
 -(UIKBKey *)keyHitTest:(CGPoint)arg1 ;

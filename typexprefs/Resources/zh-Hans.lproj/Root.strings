@@ -11,7 +11,8 @@
 "ICON" = "图标";
 "TEXT" = "文本";
 "FOOTER_SHORTCUT_NUM" = "设置每页显示的快捷方式数量。";
-"MANAGE_SHORTCUTS" = "管理快捷方式";
+"TOP_SETTINGS" = "顶部设置";
+"BOTTOM_SETTINGS" = "底部设置";
 "DOUBLE_TAP" = "双击";
 "FOOTER_DISPLAY_STYLE" = "设置快捷方式的显示样式。";
 "FOOTER_SWIPE_SPACE_BAR_TOGGLE_BARMOJI" = "允许从空格键向上滑动，在 TypeX 与 Barmoji 之间切换。将手指从空格键向上滑到键盘字母区域，短暂停留后松开即可。";

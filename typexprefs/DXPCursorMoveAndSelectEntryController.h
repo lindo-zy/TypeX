@@ -5,6 +5,7 @@
 @property (nonatomic,readwrite) NSString *entryID;
 @property (nonatomic,retain) PSSpecifier *textSpecifier;
 @property (nonatomic,retain) PSSpecifier *textSpecifierLP;
+@property (nonatomic, copy) NSString *configuration;
 @end
 
 @interface PSSpecifier (DXPCursorMoveAndSelectEntryController)

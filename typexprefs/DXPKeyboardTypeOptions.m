@@ -192,11 +192,12 @@ static NSBundle *tweakBundle;
 
 
 - (void)writeToFile {
-    [[DXPrefsManager sharedInstance] setValue:self.currentOrder forKey:kKeyboardTypekey];
+    [[DXPrefsManager sharedInstance] setValue:self.currentOrder forKey:DXScopedPreferenceKey(kKeyboardTypekey, self.configuration)];
 }
 
 - (void)updateOrder:(BOOL)reset{
     NSMutableDictionary *prefs = [[[DXPrefsManager sharedInstance] readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
+    NSString *keyboardTypeKey = DXScopedPreferenceKey(kKeyboardTypekey, self.configuration);
     
     //BOOL newShortcutsAvailable = ([tweakVersion compare:prefs[@"version"] options:NSNumericSearch] == NSOrderedDescending);
     /*
@@ -227,20 +228,20 @@ static NSBundle *tweakBundle;
     //reset custom long press actions
     if (reset){
         //prefs[kKeyboardTypekey] = @[];
-        [prefs removeObjectForKey:kKeyboardTypekey];
+        [prefs removeObjectForKey:keyboardTypeKey];
         [[DXPrefsManager sharedInstance] writePrefs:prefs];
     }
     
     //NSArray *defaultOrder = @[@"Select All", @"Copy", @"Paste", @"Cut", @"Undo", @"Redo"];
     BOOL newShortcutsAvailable = NO;
-    if (prefs[@"keyboardtype"] && ([prefs[@"keyboardtype"] firstObject] != nil)){
-        newShortcutsAvailable = defaultOrderLabel.count > ((NSArray *)prefs[@"keyboardtype"][0]).count + ((NSArray *)prefs[@"keyboardtype"][1]).count;
+    if (prefs[keyboardTypeKey] && ([prefs[keyboardTypeKey] firstObject] != nil)){
+        newShortcutsAvailable = defaultOrderLabel.count > ((NSArray *)prefs[keyboardTypeKey][0]).count + ((NSArray *)prefs[keyboardTypeKey][1]).count;
     }
     self.currentOrder = [NSMutableArray array];
     self.currentOrder[0] = [NSMutableArray array];
     self.currentOrder[1] = [NSMutableArray array];
-    if (prefs[@"keyboardtype"][0]  && ([prefs[@"keyboardtype"][0] firstObject] != nil) && !reset){
-        NSMutableArray *currentOrderDefault = [prefs[@"keyboardtype"][0] mutableCopy];
+    if (prefs[keyboardTypeKey][0]  && ([prefs[keyboardTypeKey][0] firstObject] != nil) && !reset){
+        NSMutableArray *currentOrderDefault = [prefs[keyboardTypeKey][0] mutableCopy];
         for (NSInteger i = 0; i < [currentOrderDefault count]; i++){
             [self.currentOrder[0] addObject:[currentOrderDefault objectAtIndex:i]];
         }
@@ -256,8 +257,8 @@ static NSBundle *tweakBundle;
         }
         self.currentOrder[0] = defaultOrderDict;
     }
-    if (prefs[@"keyboardtype"][1]  && ([prefs[@"keyboardtype"][1] firstObject] != nil) && !reset){
-        NSMutableArray *currentOrderDefault = [prefs[@"keyboardtype"][1] mutableCopy];
+    if (prefs[keyboardTypeKey][1]  && ([prefs[keyboardTypeKey][1] firstObject] != nil) && !reset){
+        NSMutableArray *currentOrderDefault = [prefs[keyboardTypeKey][1] mutableCopy];
         for (NSInteger i = 0; i < [currentOrderDefault count]; i++){
             [self.currentOrder[1] addObject:[currentOrderDefault objectAtIndex:i]];
         }
@@ -287,7 +288,7 @@ static NSBundle *tweakBundle;
              }
              */
         }
-    }else if ([prefs[@"keyboardtype"][0] count] != defaultOrderLabel.count){
+    }else if ([prefs[keyboardTypeKey][0] count] != defaultOrderLabel.count){
         self.currentOrder[1] = [NSMutableArray array];
         NSMutableArray *defaultOrderDict = [[NSMutableArray alloc] init];
         
@@ -369,4 +370,3 @@ static NSBundle *tweakBundle;
 
 
 @end
-

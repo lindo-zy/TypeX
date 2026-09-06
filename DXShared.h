@@ -63,6 +63,7 @@ BOOL preferencesBool(NSString* key, BOOL fallback);
 float preferencesFloat(NSString* key, float fallback);
 int preferencesInt(NSString* key, int fallback);
 NSString *preferencesSelectorForIdentifier(NSString* identifier, int selectorNum, int gestureType, NSString *fallback);
+NSString *preferencesSelectorForIdentifierScoped(NSString* identifier, int selectorNum, int gestureType, NSString *fallback, NSString *configuration);
 
 #ifdef __cplusplus
 }

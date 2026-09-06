@@ -18,7 +18,7 @@ int preferencesInt(NSString* key, int fallback) {
     return value ? [value intValue] : fallback;
 }
 
-NSString *preferencesSelectorForIdentifier(NSString* identifier, int selectorNum, int gestureType, NSString *fallback) {
+NSString *preferencesSelectorForIdentifierScoped(NSString* identifier, int selectorNum, int gestureType, NSString *fallback, NSString *configuration) {
     //HBLogDebug(@"identifier: %@", identifier);
     //0-long press
     //1-double tap
@@ -26,16 +26,16 @@ NSString *preferencesSelectorForIdentifier(NSString* identifier, int selectorNum
     NSString *k;
     switch (gestureType) {
         case 0:
-            k = kCustomActionskey;
+            k = DXScopedPreferenceKey(kCustomActionskey, configuration);
             break;
         case 1:
-            k = kCustomActionsDTkey;
+            k = DXScopedPreferenceKey(kCustomActionsDTkey, configuration);
             break;
         case 2:
-            k = kCustomActionsSTkey;
+            k = DXScopedPreferenceKey(kCustomActionsSTkey, configuration);
             break;
         default:
-            k = kCustomActionskey;
+            k = DXScopedPreferenceKey(kCustomActionskey, configuration);
             break;
     }
     
@@ -66,3 +66,6 @@ NSString *preferencesSelectorForIdentifier(NSString* identifier, int selectorNum
     }
 }
 
+NSString *preferencesSelectorForIdentifier(NSString* identifier, int selectorNum, int gestureType, NSString *fallback) {
+    return preferencesSelectorForIdentifierScoped(identifier, selectorNum, gestureType, fallback, @"bottom");
+}

@@ -6,6 +6,7 @@
 }
 @property (nonatomic,readwrite) NSString *identifier;
 @property (nonatomic, strong) NSArray *fullOrder;
+@property (nonatomic, copy) NSString *configuration;
 @end
 
 @interface PSSpecifier (DXPGesturePickerController)
