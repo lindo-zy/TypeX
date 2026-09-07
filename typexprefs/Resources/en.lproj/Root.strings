@@ -15,7 +15,6 @@
 "BOTTOM_SETTINGS" = "Bottom Settings";
 "DOUBLE_TAP" = "Double Tap";
 "FOOTER_DISPLAY_STYLE" = "Set shortcuts displaying style.";
-"FOOTER_SWIPE_SPACE_BAR_TOGGLE_BARMOJI" = "Allow swiping up from space bar to toggle between TypeX/Barmoji. Simply swipe up from spacebar to any row of keyboard letters, shortly hold and finally release finger.";
 "ANSWER_YES" = "Yes";
 "ANSWER_NO" = "No";
 "FOOTER_DOCK_MODE" = "Set preferred dock mode.";
@@ -23,7 +22,7 @@
 "DICTATION_ONLY" = "Dictation Only";
 "GLOBE_ONLY" = "Globe Only";
 "NONE" = "None";
-"FOOTER_TOGGLE_BUTTON" = "Set the button to be used for toggling TypeX/Barmoji. This setting is disabled if dock mode is \"None\".";
+"FOOTER_TOGGLE_BUTTON" = "Set the button to be used for toggling TypeX. This setting is disabled if dock mode is \"None\".";
 "GLOBE" = "Globe";
 "DICTATION" = "Dictation";
 "BOTH" = "Both";
@@ -37,6 +36,9 @@
 "SHORTCUTS_BACKGROUND_TINT" = "Shortcuts Background Tint";
 "TOAST_TINT" = "Toast Tint";
 "TOAST_BACKGROUND_TINT" = "Toast Background Tint";
+"TOP_TOOLBAR_SETTINGS" = "Top Toolbar Settings";
+"TOP_TOOLBAR" = "Top Toolbar";
+"TOP_TOOLBAR_BACKGROUND_TINT" = "Top Toolbar Background Tint";
 "PAGING" = "Paging";
 "FOOTER_PAGING" = "Disable paging if you experiencing view scrolling back to previous page when shortcut is tapped.";
 "ADVANCED" = "Advanced";

@@ -44,6 +44,14 @@
 			<key>cell</key>
 			<string>PSLinkCell</string>
 			<key>detail</key>
+			<string>DXPTopToolbarSettingsController</string>
+			<key>label</key>
+			<string>顶部工具栏</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>detail</key>
 			<string>DXPManageShortcutsController</string>
 			<key>label</key>
 			<string>底部设置</string>

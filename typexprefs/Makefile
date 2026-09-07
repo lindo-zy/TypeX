@@ -9,10 +9,11 @@ BUNDLE_NAME = TypeXPrefs
 
 TypeXPrefs_FILES = $(wildcard *.m) $(wildcard *.mm) ../DXPrefsManager.m ../DXShortcutsGenerator.m ../DXHelper.m
 TypeXPrefs_INSTALL_PATH = /Library/PreferenceBundles
-TypeXPrefs_FRAMEWORKS = UIKit CoreGraphics
+TypeXPrefs_FRAMEWORKS = UIKit CoreGraphics SwiftUI
 TypeXPrefs_PRIVATE_FRAMEWORKS = Preferences AppSupport
 TypeXPrefs_CFLAGS = -fobjc-arc
-TypeXPrefs_LIBRARIES =
+# sparkcolourpicker is no longer needed — using system UIColorPickerViewController
+# TypeXPrefs_LIBRARIES = sparkcolourpicker
 
 include $(THEOS_MAKE_PATH)/bundle.mk
 

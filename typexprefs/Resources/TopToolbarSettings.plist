@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>items</key>
+    <array>
+        <dict>
+            <key>cell</key>
+            <string>PSGroupCell</string>
+            <key>label</key>
+            <string>顶部工具栏</string>
+            <key>footerText</key>
+            <string>支持网格、光谱和滑块三种取色方式。</string>
+        </dict>
+        <dict>
+            <key>cell</key>
+            <string>PSLinkCell</string>
+            <key>cellClass</key>
+            <string>DXPTopToolbarNativeColorCell</string>
+            <key>label</key>
+            <string>背景颜色</string>
+            <key>key</key>
+            <string>toptoolbarbackgroundtint</string>
+            <key>defaults</key>
+            <string>com.lindo.typex</string>
+            <key>PostNotification</key>
+            <string>com.lindo.typex/prefschanged</string>
+            <key>fallback</key>
+            <string>#5B5B5B</string>
+        </dict>
+    </array>
+    <key>title</key>
+    <string>顶部工具栏</string>
+</dict>
+</plist>

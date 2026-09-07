@@ -3,7 +3,12 @@
 "ENABLED" = "Enabled";
 "DISABLED" = "Disabled";
 "CUSTOMIZATION" = "Customization";
+"TOP_TOOLBAR" = "Top Toolbar";
+"TOP_TOOLBAR_BACKGROUND_TINT" = "Top Toolbar Background Tint";
+"TOP_TOOLBAR_PREVIEW" = "Top Toolbar Preview";
 "SHORTCUTS_TINT" = "Shortcuts Tint";
 "SHORTCUTS_BACKGROUND_TINT" = "Shortcuts Background Tint";
 "TOAST_TINT" = "Toast Tint";
-"TOAST_BACKGROUND_TINT" = "Toast Background Tint";
+"TOAST_BACKGROUND_TINT" = "Toast Background Tint";
+"TEST_INPUT_HINT" = "Test Input Field (tap to show keyboard)";
+"TEST_INPUT_PLACEHOLDER" = "Tap here to show keyboard…";

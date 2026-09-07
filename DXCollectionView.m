@@ -33,6 +33,12 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     return DXScopedPreferenceKey(key, self.configuration ?: @"bottom");
 }
 
+- (int)shortcutsPerSection {
+    NSString *key = [self scopedPreferenceKey:kShortcutsPerSection];
+    int configured = preferencesInt(key, preferencesInt(kShortcutsPerSection, maxshortcutpersection));
+    return MAX(1, MIN(configured, maxshortcutpersection));
+}
+
 - (instancetype)init{
     
     UICollectionViewFlowLayout *flowLayout = [[UICollectionViewFlowLayout alloc] init];
@@ -179,7 +185,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
         self.dataSource = self;
         self.showsVerticalScrollIndicator = NO;
         self.showsHorizontalScrollIndicator = NO;
-        self.pagingEnabled = preferencesBool(kPagingkey, YES);
+        self.pagingEnabled = preferencesBool([self scopedPreferenceKey:kPagingkey], preferencesBool(kPagingkey, YES));
         [self registerClass:NSClassFromString(@"DXCell") forCellWithReuseIdentifier:@"kTypeXCellID"];
         dispatch_async(dispatch_get_main_queue(), ^{
             [self keyboardRotated:nil];
@@ -265,7 +271,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     //NSInteger centerIndex = ceil((float)self.visibleCells.count/2.0f);
     NSMutableArray *universalIndexArray = [[NSMutableArray alloc] init];
     for (NSIndexPath *ip in indexPaths){
-        [universalIndexArray addObject:[NSNumber numberWithLong:preferencesInt(kShortcutsPerSection, maxshortcutpersection)*ip.section + ip.row]];
+        [universalIndexArray addObject:[NSNumber numberWithLong:[self shortcutsPerSection]*ip.section + ip.row]];
     }
     
     
@@ -302,7 +308,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     int y = firstCellIndexPath.row;
     int G = preferencesInt(kGranularity, granularity) -1;
     //int ymax = [self numberOfItemsInSection:firstCellIndexPath.section] -1;
-    int allowedMaxY = preferencesInt(kShortcutsPerSection, maxdefaultshortcuts);
+    int allowedMaxY = [self shortcutsPerSection];
     //HBLogDebug(@"G: %d, y: %d", G, allowedMaxY);
     G = G+1-allowedMaxY>0?allowedMaxY-1:G;
     G = G==0?1:G;
@@ -312,11 +318,11 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     //NSArray *sectionOffsetArray = @[@1, @1, @1, @1, @1, @1, @0, @0, @0, @0, @0, @0];
     if (!self.indexArray){
         self.indexArray = [NSArray array];
-        self.indexArray = [self synthesizeIndexingForIndexOrOffset:YES descendingOffset:YES numberOfItems:preferencesInt(kShortcutsPerSection, maxshortcutpersection)];
+        self.indexArray = [self synthesizeIndexingForIndexOrOffset:YES descendingOffset:YES numberOfItems:[self shortcutsPerSection]];
     }
     if (!self.sectionOffsetBackwardArray){
         self.sectionOffsetBackwardArray = [NSArray array];
-        self.sectionOffsetBackwardArray = [self synthesizeIndexingForIndexOrOffset:NO descendingOffset:YES numberOfItems:preferencesInt(kShortcutsPerSection, maxshortcutpersection)];
+        self.sectionOffsetBackwardArray = [self synthesizeIndexingForIndexOrOffset:NO descendingOffset:YES numberOfItems:[self shortcutsPerSection]];
     }
     //HBLogDebug(@"index: %@", indexArray);
     //HBLogDebug(@"offset: %@", sectionOffsetArray);
@@ -339,7 +345,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     //NSInteger centerIndex = ceil((float)self.visibleCells.count/2.0f);
     NSMutableArray *universalIndexArray = [[NSMutableArray alloc] init];
     for (NSIndexPath *ip in indexPaths){
-        [universalIndexArray addObject:[NSNumber numberWithLong:preferencesInt(kShortcutsPerSection, maxshortcutpersection)*ip.section + ip.row]];
+        [universalIndexArray addObject:[NSNumber numberWithLong:[self shortcutsPerSection]*ip.section + ip.row]];
     }
     
     NSSortDescriptor *sort = [NSSortDescriptor sortDescriptorWithKey:nil ascending:YES];
@@ -364,7 +370,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     int x = firstCellIndexPath.section;
     int y = firstCellIndexPath.row;
     int G = preferencesInt(kGranularity, granularity) -1;
-    int allowedMaxY = preferencesInt(kShortcutsPerSection, maxdefaultshortcuts);
+    int allowedMaxY = [self shortcutsPerSection];
     //HBLogDebug(@"G: %d, y: %d", G, y);
     G = G+1-allowedMaxY>0?allowedMaxY-1:G;
     G = G==0?1:G;
@@ -376,11 +382,11 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     //NSArray *sectionOffsetArray = @[@0, @0, @0, @0, @0, @0, @1, @1, @1, @1, @1, @1];
     if (!self.indexArray){
         self.indexArray = [NSArray array];
-        self.indexArray = [self synthesizeIndexingForIndexOrOffset:YES descendingOffset:NO numberOfItems:preferencesInt(kShortcutsPerSection, maxshortcutpersection)];
+        self.indexArray = [self synthesizeIndexingForIndexOrOffset:YES descendingOffset:NO numberOfItems:[self shortcutsPerSection]];
     }
     if (!self.sectionOffsetForwardArray){
         self.sectionOffsetForwardArray = [NSArray array];
-        self.sectionOffsetForwardArray = [self synthesizeIndexingForIndexOrOffset:NO descendingOffset:NO numberOfItems:preferencesInt(kShortcutsPerSection, maxshortcutpersection)];
+        self.sectionOffsetForwardArray = [self synthesizeIndexingForIndexOrOffset:NO descendingOffset:NO numberOfItems:[self shortcutsPerSection]];
     }
     NSIndexPath *newIndexPath = [NSIndexPath indexPathForRow:[self.indexArray[y+G+1] intValue] inSection:x + [self.sectionOffsetForwardArray[y+G+1] intValue]];
     //HBLogDebug(@"index: %@", indexArray);
@@ -410,7 +416,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
      if (firstCellIndexPath.row ==  [self numberOfItemsInSection:firstCellIndexPath.section] -1){
      scrollToIndexPath =  [NSIndexPath indexPathForRow:preferencesInt(kGranularity, granularity) - 1 inSection:firstCellIndexPath.section + 1];
      //HBLogDebug(@"1");
-     }else if (preferencesInt(kGranularity, granularity) == preferencesInt(kShortcutsPerSection, maxshortcutpersection)){
+     }else if (preferencesInt(kGranularity, granularity) == [self shortcutsPerSection]){
      scrollToIndexPath =  [NSIndexPath indexPathForRow:0 inSection:firstCellIndexPath.section + 1];
      //HBLogDebug(@"3");
      }else if (firstCellIndexPath.row + preferencesInt(kGranularity, granularity) > [self numberOfItemsInSection:firstCellIndexPath.section] -1){
@@ -654,6 +660,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     }
     self.kbType = activeKeyboardTypes;
     self.kbTypeLabel = activeKeyboardLabels;
+    self.pagingEnabled = preferencesBool([self scopedPreferenceKey:kPagingkey], preferencesBool(kPagingkey, YES));
     self.indexArray = nil;
     self.sectionOffsetForwardArray = nil;
     self.sectionOffsetBackwardArray = nil;
@@ -783,7 +790,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)shakeButton:(UIButton *)sender{
     if (preferencesBool(kShakeShortcutkey,YES)){
-        BOOL doubleTapEnabled = preferencesBool(kEnabledDoubleTapkey, NO);
+        BOOL doubleTapEnabled = preferencesBool([self scopedPreferenceKey:kEnabledDoubleTapkey], preferencesBool(kEnabledDoubleTapkey, NO));
         if (doubleTapEnabled){
             if ([sender respondsToSelector:@selector(view)]){
                 [self shakeView:((UIGestureRecognizer *)sender).view];
@@ -3201,7 +3208,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 {
     
     //HBLogDebug(@"NUM SEC: %f", ceil((float)(((NSArray *)_shortcuts[kbuttonsImages12]).count)/(float)preferencesInt(kShortcutsPerSection, maxshortcutpersection)));
-    return ceil((float)(((NSArray *)_shortcuts[kbuttonsImages12]).count)/(float)preferencesInt(kShortcutsPerSection, maxshortcutpersection));
+    return ceil((float)(((NSArray *)_shortcuts[kbuttonsImages12]).count)/(float)[self shortcutsPerSection]);
 }
 
 -(NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section
@@ -3216,9 +3223,9 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
             //return ((NSArray *)_shortcuts[kbuttonsImages12]).count>5?5:((NSArray *)_shortcuts[kbuttonsImages12]).count;
             //if (([self numberOfSectionsInCollectionView:collectionView] -1) == section){
             if (([self numberOfSectionsInCollectionView:collectionView] -1) == section){
-                return ((NSArray *)_shortcuts[kbuttonsImages12]).count-preferencesInt(kShortcutsPerSection, maxshortcutpersection)*(section);
+                return ((NSArray *)_shortcuts[kbuttonsImages12]).count-[self shortcutsPerSection]*(section);
             }else{
-                return ((NSArray *)_shortcuts[kbuttonsImages12]).count>preferencesInt(kShortcutsPerSection, maxshortcutpersection)?preferencesInt(kShortcutsPerSection, maxshortcutpersection):((NSArray *)_shortcuts[kbuttonsImages12]).count;
+                return ((NSArray *)_shortcuts[kbuttonsImages12]).count>[self shortcutsPerSection]?[self shortcutsPerSection]:((NSArray *)_shortcuts[kbuttonsImages12]).count;
             }
         }else{
             //if (section == ceil((float)(((NSArray *)_shortcuts[kbuttonsImages12]).count)/6.0f)){
@@ -3228,11 +3235,11 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
             //return ((NSArray *)_shortcuts[kbuttonsImages12]).count>6?6:((NSArray *)_shortcuts[kbuttonsImages12]).count-6*(section);
             if (([self numberOfSectionsInCollectionView:collectionView] -1) == section){
                 //HBLogDebug(@"NUM: %ld, SECTION: %ld", ((NSArray *)_shortcuts[kbuttonsImages12]).count-preferencesInt(kShortcutsPerSection, maxshortcutpersection)*(section), section );
-                return ((NSArray *)_shortcuts[kbuttonsImages12]).count-preferencesInt(kShortcutsPerSection, maxshortcutpersection)*(section);
+                return ((NSArray *)_shortcuts[kbuttonsImages12]).count-[self shortcutsPerSection]*(section);
             }else{
                 //HBLogDebug(@"NUM: %ld, SECTION: %ld", ((NSArray *)_shortcuts[kbuttonsImages12]).count>preferencesInt(kShortcutsPerSection, maxshortcutpersection)?preferencesInt(kShortcutsPerSection, maxshortcutpersection):((NSArray *)_shortcuts[kbuttonsImages12]).count, section );
                 
-                return ((NSArray *)_shortcuts[kbuttonsImages12]).count>preferencesInt(kShortcutsPerSection, maxshortcutpersection)?preferencesInt(kShortcutsPerSection, maxshortcutpersection):((NSArray *)_shortcuts[kbuttonsImages12]).count;
+                return ((NSArray *)_shortcuts[kbuttonsImages12]).count>[self shortcutsPerSection]?[self shortcutsPerSection]:((NSArray *)_shortcuts[kbuttonsImages12]).count;
             }
             //return ((NSArray *)_shortcuts[kbuttonsImages12]).count-6*(section);
             //}
@@ -3245,9 +3252,9 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     //HBLogDebug(@"XXXX");
     
     if (([self numberOfSectionsInCollectionView:collectionView] -1 )== section){
-        return ((NSArray *)_shortcuts[kbuttonsImages12]).count-preferencesInt(kShortcutsPerSection, maxshortcutpersection)*(section);
+        return ((NSArray *)_shortcuts[kbuttonsImages12]).count-[self shortcutsPerSection]*(section);
     }else{
-        return ((NSArray *)_shortcuts[kbuttonsImages12]).count>preferencesInt(kShortcutsPerSection, maxshortcutpersection)?preferencesInt(kShortcutsPerSection, maxshortcutpersection):((NSArray *)_shortcuts[kbuttonsImages12]).count;
+        return ((NSArray *)_shortcuts[kbuttonsImages12]).count>[self shortcutsPerSection]?[self shortcutsPerSection]:((NSArray *)_shortcuts[kbuttonsImages12]).count;
     }
 }
 
@@ -3270,7 +3277,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
         
         //HBLogDebug(@"recognizer: %@", recognizer);
         UIButton *btn = (UIButton *)(recognizer.view);
-        BOOL doubleTapEnabled = preferencesBool(kEnabledDoubleTapkey, NO);
+        BOOL doubleTapEnabled = preferencesBool([self scopedPreferenceKey:kEnabledDoubleTapkey], preferencesBool(kEnabledDoubleTapkey, NO));
         NSArray *targetsForLongPressUsingGesture;
         
         if (doubleTapEnabled){
@@ -3356,7 +3363,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     DXCell *cell = [collectionView dequeueReusableCellWithReuseIdentifier:@"kTypeXCellID" forIndexPath:indexPath];
     //HBLogDebug(@"SECTION %ld, ROW: %ld", indexPath.section, indexPath.row);
     //cell.transform = CGAffineTransformMakeScale(-1, 1);
-    int cellIndex = preferencesInt(kShortcutsPerSection, maxshortcutpersection)*indexPath.section + indexPath.row;
+    int cellIndex = [self shortcutsPerSection]*indexPath.section + indexPath.row;
     //HBLogDebug(@"cellINDEX: %d", cellIndex);
     //[cell.btn setTitle:_buttons[indexPath.row] forState:UIControlStateNormal];
     NSString* selectorName = ((NSArray *)_shortcuts[kselectors])[cellIndex];
@@ -3453,7 +3460,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(activateLPActions:)];
     longPress.minimumPressDuration = 0.5;
     
-    BOOL doubleTapEnabled = preferencesBool(kEnabledDoubleTapkey, NO);
+    BOOL doubleTapEnabled = preferencesBool([self scopedPreferenceKey:kEnabledDoubleTapkey], preferencesBool(kEnabledDoubleTapkey, NO));
     
     DXUIShortTapGestureRecognizer *singleTap;
     DXUIShortTapGestureRecognizer *doubleTap;
@@ -3531,24 +3538,31 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 - (CGSize)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout sizeForItemAtIndexPath:(NSIndexPath *)indexPath {
     //CGFloat useableWidth = collectionView.frame.size.width / ((NSArray *)_shortcuts[kbuttonsImages12]).count;
     //CGFloat useableWidth = collectionView.frame.size.width / ([self numberOfItemsInSection:indexPath.section] <= preferencesInt(kShortcutsPerSection, maxshortcutpersection) ? (((NSArray *)_shortcuts[kbuttonsImages12]).count <=preferencesInt(kShortcutsPerSection, maxshortcutpersection) ? ((NSArray *)_shortcuts[kbuttonsImages12]).count : preferencesInt(kShortcutsPerSection, maxshortcutpersection)) :  [self numberOfItemsInSection:indexPath.section]);
+    if ([self.configuration isEqualToString:@"top"]) {
+        CGFloat width = collectionView.frame.size.width / MAX(1, [self numberOfItemsInSection:indexPath.section]);
+        return CGSizeMake(width, 33.33);
+    }
     UIKeyboardPreferencesController *kbPrefsController = [objc_getClass("UIKeyboardPreferencesController") sharedPreferencesController];
     if (kbPrefsController){
         long long currentHandBias = kbPrefsController.handBias;
         //HBLogDebug(@"currentHandBias: %lld",currentHandBias);
         if (currentHandBias > 0){
-            int shortcutsPerSectionOneHanded = (preferencesInt(kShortcutsPerSection, maxshortcutpersection_onehanded) > maxshortcutpersection_onehanded) ? maxshortcutpersection_onehanded : preferencesInt(kShortcutsPerSection, maxshortcutpersection_onehanded);
+            int shortcutsPerSectionOneHanded = MIN([self shortcutsPerSection], maxshortcutpersection_onehanded);
             CGFloat useableWidth = ((currentBackgroundTintColor && collectionView.frame.size.width-4*buttonSpacing >0) ? collectionView.frame.size.width - 4*buttonSpacing : collectionView.frame.size.width) / ([self numberOfItemsInSection:indexPath.section] <= maxshortcutpersection_onehanded ? (((NSArray *)_shortcuts[kbuttonsImages12]).count <= maxshortcutpersection_onehanded ? ((NSArray *)_shortcuts[kbuttonsImages12]).count : shortcutsPerSectionOneHanded) :  shortcutsPerSectionOneHanded);
             return CGSizeMake(useableWidth, buttonHeight);
             
         }
     }
     
-    CGFloat useableWidth = ((currentBackgroundTintColor && collectionView.frame.size.width-4*buttonSpacing >0) ? collectionView.frame.size.width - 4*buttonSpacing : collectionView.frame.size.width) / ([self numberOfItemsInSection:indexPath.section] <= preferencesInt(kShortcutsPerSection, maxshortcutpersection) ? (((NSArray *)_shortcuts[kbuttonsImages12]).count <=preferencesInt(kShortcutsPerSection, maxshortcutpersection) ? ((NSArray *)_shortcuts[kbuttonsImages12]).count : preferencesInt(kShortcutsPerSection, maxshortcutpersection)) :  [self numberOfItemsInSection:indexPath.section]);
+    CGFloat useableWidth = ((currentBackgroundTintColor && collectionView.frame.size.width-4*buttonSpacing >0) ? collectionView.frame.size.width - 4*buttonSpacing : collectionView.frame.size.width) / ([self numberOfItemsInSection:indexPath.section] <= [self shortcutsPerSection] ? (((NSArray *)_shortcuts[kbuttonsImages12]).count <= [self shortcutsPerSection] ? ((NSArray *)_shortcuts[kbuttonsImages12]).count : [self shortcutsPerSection]) :  [self numberOfItemsInSection:indexPath.section]);
     
     return CGSizeMake(useableWidth, buttonHeight);
 }
 
 - (UIEdgeInsets)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout insetForSectionAtIndex:(NSInteger)section {
+    if ([self.configuration isEqualToString:@"top"]) {
+        return UIEdgeInsetsMake(8.0, 0.0, 0.0, 0.0);
+    }
     if (currentBackgroundTintColor){
         if (section == 0){
             return UIEdgeInsetsMake(topInset, leftInset+2*buttonSpacing, bottomInset, rightInset);

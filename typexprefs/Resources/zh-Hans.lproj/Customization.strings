@@ -3,7 +3,12 @@
 "ENABLED" = "启用";
 "DISABLED" = "停用";
 "CUSTOMIZATION" = "自定义";
+"TOP_TOOLBAR" = "顶部工具栏";
+"TOP_TOOLBAR_BACKGROUND_TINT" = "顶部工具栏背景颜色";
+"TOP_TOOLBAR_PREVIEW" = "顶部工具栏预览";
 "SHORTCUTS_TINT" = "快捷方式颜色";
 "SHORTCUTS_BACKGROUND_TINT" = "快捷方式背景颜色";
 "TOAST_TINT" = "提示颜色";
-"TOAST_BACKGROUND_TINT" = "提示背景颜色";
+"TOAST_BACKGROUND_TINT" = "提示背景颜色";
+"TEST_INPUT_HINT" = "测试输入框（点击弹出键盘预览）";
+"TEST_INPUT_PLACEHOLDER" = "点击此处弹出键盘…";

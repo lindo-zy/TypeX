@@ -26,7 +26,7 @@
 		</dict>
 		<dict>
 			<key>cellClass</key>
-			<string>SparkColourPickerCell</string>
+			<string>DXPNativeColorCell</string>
 			<key>cell</key>
 			<string>PSLinkCell</string>
 			<key>label</key>
@@ -37,19 +37,8 @@
 			<string>shortcutstintpicker</string>
 			<key>PostNotification</key>
 			<string>com.lindo.typex/prefschanged</string>
-			<key>libsparkcolourpicker</key>
-			<dict>
-				<key>PreviewGradient</key>
-				<false/>
-				<key>PreviewStyle</key>
-				<integer>3</integer>
-				<key>defaults</key>
-				<string>com.lindo.typex</string>
-				<key>alpha</key>
-				<true/>
-				<key>fallback</key>
-				<string>#ff0000</string>
-			</dict>
+			<key>fallback</key>
+			<string>#ff0000</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -79,7 +68,7 @@
 		</dict>
 		<dict>
 			<key>cellClass</key>
-			<string>SparkColourPickerCell</string>
+			<string>DXPNativeColorCell</string>
 			<key>cell</key>
 			<string>PSLinkCell</string>
 			<key>label</key>
@@ -90,19 +79,8 @@
 			<string>shortcutsbackgroundtintpicker</string>
 			<key>PostNotification</key>
 			<string>com.lindo.typex/prefschanged</string>
-			<key>libsparkcolourpicker</key>
-			<dict>
-				<key>PreviewGradient</key>
-				<false/>
-				<key>PreviewStyle</key>
-				<integer>3</integer>
-				<key>defaults</key>
-				<string>com.lindo.typex</string>
-				<key>alpha</key>
-				<true/>
-				<key>fallback</key>
-				<string>#5B5B5B</string>
-			</dict>
+			<key>fallback</key>
+			<string>#5B5B5B</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -132,7 +110,7 @@
 		</dict>
 		<dict>
 			<key>cellClass</key>
-			<string>SparkColourPickerCell</string>
+			<string>DXPNativeColorCell</string>
 			<key>cell</key>
 			<string>PSLinkCell</string>
 			<key>label</key>
@@ -143,19 +121,8 @@
 			<string>toasttintpicker</string>
 			<key>PostNotification</key>
 			<string>com.lindo.typex/prefschanged</string>
-			<key>libsparkcolourpicker</key>
-			<dict>
-				<key>PreviewGradient</key>
-				<false/>
-				<key>PreviewStyle</key>
-				<integer>3</integer>
-				<key>defaults</key>
-				<string>com.lindo.typex</string>
-				<key>alpha</key>
-				<true/>
-				<key>fallback</key>
-				<string>#ff0000</string>
-			</dict>
+			<key>fallback</key>
+			<string>#ff0000</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -185,7 +152,7 @@
 		</dict>
 		<dict>
 			<key>cellClass</key>
-			<string>SparkColourPickerCell</string>
+			<string>DXPNativeColorCell</string>
 			<key>cell</key>
 			<string>PSLinkCell</string>
 			<key>label</key>
@@ -196,19 +163,8 @@
 			<string>toastbackgroundtintpicker</string>
 			<key>PostNotification</key>
 			<string>com.lindo.typex/prefschanged</string>
-			<key>libsparkcolourpicker</key>
-			<dict>
-				<key>PreviewGradient</key>
-				<false/>
-				<key>PreviewStyle</key>
-				<integer>3</integer>
-				<key>defaults</key>
-				<string>com.lindo.typex</string>
-				<key>alpha</key>
-				<true/>
-				<key>fallback</key>
-				<string>#000000</string>
-			</dict>
+			<key>fallback</key>
+			<string>#000000</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -235,6 +191,48 @@
 			<string>com.lindo.typex/prefschanged</string>
 			<key>id</key>
 			<string>toastbackgroundtintselection</string>
+		</dict>
+		<dict>
+			<key>cellClass</key>
+			<string>DXPNativeColorCell</string>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>label</key>
+			<string>TOP_TOOLBAR_BACKGROUND_TINT</string>
+			<key>key</key>
+			<string>toptoolbarbackgroundtint</string>
+			<key>id</key>
+			<string>toptoolbarbackgroundtintpicker</string>
+			<key>PostNotification</key>
+			<string>com.lindo.typex/prefschanged</string>
+			<key>fallback</key>
+			<string>#5B5B5B</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSegmentCell</string>
+			<key>detail</key>
+			<string>PSSegmentCell</string>
+			<key>validValues</key>
+			<array>
+				<string>0</string>
+				<string>1</string>
+			</array>
+			<key>validTitles</key>
+			<array>
+				<string>DISABLED</string>
+				<string>ENABLED</string>
+			</array>
+			<key>key</key>
+			<string>toptoolbarbackgroundtintBOOL</string>
+			<key>defaults</key>
+			<string>com.lindo.typex</string>
+			<key>default</key>
+			<string>1</string>
+			<key>PostNotification</key>
+			<string>com.lindo.typex/prefschanged</string>
+			<key>id</key>
+			<string>toptoolbarbackgroundselection</string>
 		</dict>
 	</array>
 	<key>title</key>

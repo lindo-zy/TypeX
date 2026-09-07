@@ -8,6 +8,9 @@
 - (void)setCellForRowAtIndexPath:(NSIndexPath *)indexPath enabled:(BOOL)enabled;
 @end
 
-@interface DXPCustomizationController : PSListController <UISearchBarDelegate>
+@interface DXPCustomizationController : PSListController <UISearchBarDelegate, UITextFieldDelegate, UIColorPickerViewControllerDelegate>
  @property (nonatomic, retain) NSMutableDictionary *dynamicSpecifiers;
+@property(nonatomic, strong) UITextField *previewTextField;
+@property(nonatomic, copy) NSString *pendingColorKey;
+- (void)presentSystemColorPickerForKey:(NSString *)key;
 @end

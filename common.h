@@ -44,7 +44,6 @@
 #define kDisplayTypekey @"displaytype"
 #define kDedicatedGestureButtonkey @"gesturebutton"
 #define kGestureTypekey @"gesturetype"
-#define kSwipeSpaceBarTogglekey @"swipetoggle"
 #define kCustomActionskey @"customactions"
 #define kTopCustomActionskey @"topcustomactions"
 #define kPagingkey @"pagingBOOL"
@@ -52,6 +51,7 @@
 #define kShortcutsBackgroundTintEnabled @"shortcutsbackgroundtintBOOL"
 #define kToastTintEnabled @"toasttintBOOL"
 #define kToastBackgroundTintEnabled @"toastbackgroundtintBOOL"
+#define kTopToolbarBackgroundTintKey @"toptoolbarbackgroundtint"
 #define kKeyboardTypekey @"keyboardtype"
 #define kPasteAndGoEnabledkey @"pasteandgo"
 #define kCustomActionsDTkey @"customactionsdt"
@@ -98,7 +98,7 @@
 #define tweakVersion @"1.3.1"
 #define maxdefaultshortcuts 6
 #define maxshortcutpersection 6
-#define maxshortcutpersection_onehanded 5
+#define maxshortcutpersection_onehanded 6
 #define granularity 3
 
 #define maxdefaultshortcutskbtype 3

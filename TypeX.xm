@@ -3,6 +3,7 @@
 #import "DXShared.h"
 #import "DXToastWindowController.h"
 #import "DXHelper.h"
+#import <objc/runtime.h>
 
 
 id delegate;
@@ -11,18 +12,15 @@ UIColor *currentTintColor;
 UIColor *toastTintColor;
 UIColor *toastBackgroundTintColor;
 UIColor *currentBackgroundTintColor;
+UIColor *currentTopToolbarBackgroundColor;
 BOOL isLandscape = NO;
 NSMutableDictionary *prefs;
 BOOL isDictating = NO;
 BOOL toggledOn = YES;
 UIKeyboardDockView *dockView;
 //BOOL isSandboxed = NO;
-CGPoint startPosition;
-CGPoint endPosition;
-NSDate *prevTime = nil;
 BOOL singleTapDictationEnabled = NO;
 BOOL singleTapGlobeEnabled = NO;
-BOOL isTrackPadMode = NO;
 BOOL isSpringBoard = YES;
 BOOL isApplication = NO;
 BOOL isSafari = NO;
@@ -30,14 +28,111 @@ KeyboardController *kbController;
 BOOL shouldUpdateTrueKBType = NO;
 BOOL shouldPerformBatchUpdate = YES;
 //BOOL shouldSendScrollExecution = YES;
-NSString *key;
-BOOL isDraggedGesture = NO;
 UIKeyboardDockView *dockV;
 BOOL isPagingEnabled = YES;
 BOOL useShortenedLabel = NO;
 NSBundle *tweakBundle;
 BOOL firstInit = YES;
 DXStudlyCapsType spongebobEntropy;
+
+static char kDXTopAccessoryContainerKey;
+
+@interface DXTopAccessoryContainer : UIView
+@property(nonatomic, strong) DXCollectionView *toolbar;
+@property(nonatomic, strong) UIView *originalAccessory;
+@end
+
+@implementation DXTopAccessoryContainer
+- (CGSize)intrinsicContentSize {
+    CGFloat originalHeight = self.originalAccessory ? MAX(0.0, self.originalAccessory.frame.size.height) : 0.0;
+    return CGSizeMake(UIViewNoIntrinsicMetric, 41.5 + (originalHeight > 0.0 ? originalHeight + 1.0 : 0.0));
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGFloat toolbarHeight = 41.5;
+    self.toolbar.frame = CGRectMake(0.0, 0.0, CGRectGetWidth(self.bounds), toolbarHeight);
+    if (self.originalAccessory) {
+        CGFloat originalHeight = MAX(0.0, self.originalAccessory.frame.size.height);
+        self.originalAccessory.frame = CGRectMake(0.0, toolbarHeight + 1.0,
+                                                   CGRectGetWidth(self.bounds), originalHeight);
+    }
+}
+@end
+
+static UIView *DXInputAccessoryView(UIResponder *responder) {
+    if ([responder isKindOfClass:UITextField.class]) return [(UITextField *)responder inputAccessoryView];
+    if ([responder isKindOfClass:UITextView.class]) return [(UITextView *)responder inputAccessoryView];
+    return nil;
+}
+
+static void DXSetInputAccessoryView(UIResponder *responder, UIView *view) {
+    if ([responder isKindOfClass:UITextField.class]) {
+        [(UITextField *)responder setInputAccessoryView:view];
+    } else if ([responder isKindOfClass:UITextView.class]) {
+        [(UITextView *)responder setInputAccessoryView:view];
+    }
+}
+
+static void DXInstallTopAccessoryForResponder(UIResponder *responder) {
+    if (!responder || (!isApplication && !isSpringBoard)) return;
+
+    BOOL enabled = preferencesBool(kEnabledkey, YES);
+    DXTopAccessoryContainer *container = objc_getAssociatedObject(responder, &kDXTopAccessoryContainerKey);
+    UIView *currentAccessory = DXInputAccessoryView(responder);
+
+    if (!container && enabled && toggledOn && !isLandscape && !isDictating) {
+        container = [[DXTopAccessoryContainer alloc] initWithFrame:CGRectMake(0.0, 0.0, 0.0, 41.5)];
+        container.backgroundColor = currentTopToolbarBackgroundColor ?: [UIColor clearColor];
+        container.toolbar = [[DXCollectionView alloc] init];
+        container.toolbar.configuration = @"top";
+        [container.toolbar reloadShortcutConfiguration];
+        container.toolbar.clipsToBounds = YES;
+        [container addSubview:container.toolbar];
+        objc_setAssociatedObject(responder, &kDXTopAccessoryContainerKey, container, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+
+    if (!container) return;
+
+    [container.toolbar reloadShortcutConfiguration];
+    container.backgroundColor = currentTopToolbarBackgroundColor ?: [UIColor clearColor];
+    [container.toolbar.collectionViewLayout invalidateLayout];
+    [container.toolbar reloadData];
+
+    BOOL hasShortcuts = [container.toolbar.shortcuts[kbuttonsImages12] count] > 0;
+    BOOL shouldDisplay = enabled && toggledOn && !isLandscape && !isDictating && hasShortcuts;
+    if (!shouldDisplay) {
+        if (currentAccessory == container) {
+            [container.originalAccessory removeFromSuperview];
+            DXSetInputAccessoryView(responder, container.originalAccessory);
+            if (responder.isFirstResponder) [responder reloadInputViews];
+        }
+        return;
+    }
+
+    if (currentAccessory != container && currentAccessory != container.toolbar && currentAccessory != nil) {
+        if (container.originalAccessory != currentAccessory) {
+            [container.originalAccessory removeFromSuperview];
+            container.originalAccessory = currentAccessory;
+        }
+        if (currentAccessory.superview != container) [container addSubview:currentAccessory];
+        [container invalidateIntrinsicContentSize];
+    }
+
+    if (currentAccessory != container) {
+        DXSetInputAccessoryView(responder, container);
+        if (responder.isFirstResponder) [responder reloadInputViews];
+    }
+    container.toolbar.hidden = NO;
+}
+
+static void DXRefreshActiveTopAccessory(void) {
+    UIKeyboardImpl *keyboard = [objc_getClass("UIKeyboardImpl") activeInstance];
+    UIResponder *active = DXKeyboardInputDelegate(keyboard);
+    if ([active isKindOfClass:UITextField.class] || [active isKindOfClass:UITextView.class]) {
+        DXInstallTopAccessoryForResponder(active);
+    }
+}
 
 float topInset = topInsetDefault;
 float bottomInset = bottomInsetDefault;
@@ -61,6 +156,37 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
 
 #pragma mark hook
 %group TypeX
+
+%hook UITextField
+
+- (BOOL)becomeFirstResponder {
+    BOOL result = %orig;
+    if (result) DXInstallTopAccessoryForResponder(self);
+    return result;
+}
+
+- (void)layoutSubviews {
+    %orig;
+    if (self.isFirstResponder) DXInstallTopAccessoryForResponder(self);
+}
+
+%end
+
+%hook UITextView
+
+- (BOOL)becomeFirstResponder {
+    BOOL result = %orig;
+    if (result) DXInstallTopAccessoryForResponder(self);
+    return result;
+}
+
+- (void)layoutSubviews {
+    %orig;
+    if (self.isFirstResponder) DXInstallTopAccessoryForResponder(self);
+}
+
+%end
+
 %hook UIKeyboardDockView
 //%property (retain, nonatomic) UIKeyboardDockItemButton *leftDockButton;
 //%property (retain, nonatomic) UIKeyboardDockItemButton *rightDockButton;
@@ -103,11 +229,6 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
                 }
                 break;
         }
-        if ([dockView respondsToSelector:@selector(barmoji)] && leading < leadingOffsetDefault) {
-            leading = leadingOffsetDefault;
-        }
-        
-        
         HBLogDebug(@"AFTER leading: %f, trailing: %f",leading, trailing );
         
         NSLayoutConstraint *leadingConstraint = [NSLayoutConstraint constraintWithItem:self.typex attribute:NSLayoutAttributeLeading relatedBy:NSLayoutRelationEqual toItem:dockView attribute:NSLayoutAttributeLeading multiplier:1.0 constant:leading];
@@ -198,16 +319,7 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
         });
         
     }
-    if (![self respondsToSelector:@selector(barmoji)]){
-        self.typex.hidden = YES;
-        toggledOn = YES;
-    }else{
-        if (toggledOn){
-            self.typex.hidden = NO;
-        }else{
-            self.typex.hidden = YES;
-        }
-    }
+    self.typex.hidden = !preferencesBool(kEnabledkey, YES) || !toggledOn;
     
     
     return dockV = dockView;
@@ -237,7 +349,7 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
             if (preferencesInt(kDockModekey, 0) != 1 && preferencesInt(kDockModekey, 0) != 3) {
                 %orig;
             }
-            if ([dockView respondsToSelector:@selector(barmoji)] && preferencesInt(kDockModekey, 0) != 1 && preferencesInt(kDockModekey, 0) != 3){
+            if (preferencesInt(kDockModekey, 0) != 1 && preferencesInt(kDockModekey, 0) != 3){
                 if (preferencesInt(kGestureTypekey,0) == 1){
                     singleTapGlobeEnabled = NO;
                     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(performTypeXToggling:)];
@@ -278,19 +390,17 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
         if (preferencesInt(kDockModekey, 0) == 2 || preferencesInt(kDockModekey, 0) == 3) return;
         if (preferencesInt(kDedicatedGestureButtonkey, 0) == 2 || preferencesInt(kDedicatedGestureButtonkey, 0) == 3){
             %orig;
-            if ([dockView respondsToSelector:@selector(barmoji)]){
-                if (preferencesInt(kGestureTypekey,0) == 1){
-                    singleTapDictationEnabled = NO;
-                    UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(performTypeXToggling:)];
-                    longPress.minimumPressDuration = 0.3;
-                    [dockItem.button addGestureRecognizer:longPress];
-                }else{
-                    singleTapDictationEnabled = YES;
-                    [dockItem.button removeTarget:nil action:NULL forControlEvents:UIControlEventAllEvents];
-                    UITapGestureRecognizer *singleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(performTypeXTogglingTap:)];
-                    singleTap.numberOfTapsRequired = 1;
-                    [dockItem.button addGestureRecognizer:singleTap];
-                }
+            if (preferencesInt(kGestureTypekey,0) == 1){
+                singleTapDictationEnabled = NO;
+                UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(performTypeXToggling:)];
+                longPress.minimumPressDuration = 0.3;
+                [dockItem.button addGestureRecognizer:longPress];
+            }else{
+                singleTapDictationEnabled = YES;
+                [dockItem.button removeTarget:nil action:NULL forControlEvents:UIControlEventAllEvents];
+                UITapGestureRecognizer *singleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(performTypeXTogglingTap:)];
+                singleTap.numberOfTapsRequired = 1;
+                [dockItem.button addGestureRecognizer:singleTap];
             }
             return;
         }
@@ -319,10 +429,8 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
     if (preferencesBool(kEnabledHaptickey,YES)){
         [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
     }
-    //self.barmoji.hidden = !self.typex.hidden;
     toggledOn = self.typex.hidden;
     [[DXPrefsManager sharedInstance] setValue:[NSNumber numberWithBool:toggledOn] forKey:kToggledOnkey fromSandbox:!isSpringBoard];
-    //dockView.barmoji.hidden = !self.hidden;
     /*
      if (isApplication){
      [[DXPrefsManager sharedInstance] setValue:[NSNumber numberWithBool:toggledOn] forKey:kToggledOnkey fromSandbox:isApplication];
@@ -335,55 +443,13 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
      */
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), (CFStringRef)kPrefsChangedIdentifier, NULL, NULL, YES);
     
-    if (self.typex.hidden){
-        self.barmoji.hidden = YES;
-        self.typex.hidden = NO;
-        
-        if (@available(iOS 14.0, *)){
-            self.typex.alpha = 0.0f;
-            [UIView animateWithDuration:0.3f animations:^{
-                self.typex.alpha = 1.0f;
-            } completion:^(BOOL finished) {
-            }];
-        }else{
-            self.typex.transform = CGAffineTransformScale(CGAffineTransformIdentity, 0.001, 0.001);
-            [UIView animateWithDuration:0.3/4 animations:^{
-                self.typex.transform = CGAffineTransformScale(CGAffineTransformIdentity, 1.0, 1.0);
-            } completion:^(BOOL finished) {
-                [UIView animateWithDuration:0.3/4 animations:^{
-                    self.typex.transform = CGAffineTransformScale(CGAffineTransformIdentity, 0.9, 0.9);
-                } completion:^(BOOL finished) {
-                    [UIView animateWithDuration:0.3/4 animations:^{
-                        self.typex.transform = CGAffineTransformIdentity;
-                    }];
-                }];
-            }];
-        }
-    }else{
-        self.typex.hidden = YES;
-        self.barmoji.hidden = NO;
-        
-        if (@available(iOS 14.0, *)){
-            self.barmoji.alpha = 0.0f;
-            [UIView animateWithDuration:0.3f animations:^{
-                self.barmoji.alpha = 1.0f;
-            } completion:^(BOOL finished) {
-            }];
-        }else{
-            self.barmoji.transform = CGAffineTransformScale(CGAffineTransformIdentity, 0.001, 0.001);
-            [UIView animateWithDuration:0.3/4 animations:^{
-                self.barmoji.transform = CGAffineTransformScale(CGAffineTransformIdentity, 1.0, 1.0);
-            } completion:^(BOOL finished) {
-                [UIView animateWithDuration:0.3/4 animations:^{
-                    self.barmoji.transform = CGAffineTransformScale(CGAffineTransformIdentity, 0.9, 0.9);
-                } completion:^(BOOL finished) {
-                    [UIView animateWithDuration:0.3/4 animations:^{
-                        self.barmoji.transform = CGAffineTransformIdentity;
-                    }];
-                }];
-            }];
-        }
+    self.typex.hidden = !toggledOn;
+    if (self.typex.hidden) self.typex.alpha = 1.0f;
+    else {
+        self.typex.alpha = 0.0f;
+        [UIView animateWithDuration:0.2 animations:^{ self.typex.alpha = 1.0f; }];
     }
+    DXRefreshActiveTopAccessory();
     [self layoutSubviews];
     
 }
@@ -451,9 +517,6 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
                     trailing = -45;
                     break;
             }
-        }
-        if ([self respondsToSelector:@selector(barmoji)] && leading < leadingOffsetDefault) {
-            leading = leadingOffsetDefault;
         }
         HBLogDebug(@"HANDBIAS AFTER leading: %f, trailing: %f",leading, trailing );
         
@@ -553,8 +616,6 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
     if (preferencesBool(kEnabledkey,YES)){
         //HBLogDebug(@"toggledOn %d", toggledOn?1:0);
         if (toggledOn){
-            if ([self respondsToSelector:@selector(barmoji)]) self.barmoji.hidden = YES;
-            
             //NSTimeInterval timeInterval = fabs([lastReloadDate timeIntervalSinceNow]);
             //if (lastReloadDate && timeInterval < 0.5f ) lastReloadDate = [NSDate date]; return;
             //if (!self.typex) return;
@@ -578,7 +639,6 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
             //lastReloadDate = [NSDate date];
         }else{
             self.typex.hidden = YES;
-            self.barmoji.hidden = NO;
         }
         
         
@@ -621,7 +681,6 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
         // The dock view is not recreated when the main preference is disabled.
         // Explicitly restore the stock bar on iOS 17.
         self.typex.hidden = YES;
-        if ([self respondsToSelector:@selector(barmoji)]) self.barmoji.hidden = NO;
     }
 }
 /*
@@ -729,7 +788,6 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
 %end
 
 %hook UIKeyboardLayoutStar
-%property (retain, nonatomic) DXCollectionView *typexTop;
 
 -(BOOL)isHandwritingPlane{
     BOOL isHWR = %orig;
@@ -750,23 +808,6 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
 -(id)initWithFrame:(CGRect)arg1{
     self = %orig;
 
-    if (preferencesBool(kEnabledkey,YES) && self) {
-        self.clipsToBounds = NO;
-        self.typexTop = [[DXCollectionView alloc] init];
-        self.typexTop.configuration = @"top";
-        [self.typexTop reloadShortcutConfiguration];
-        self.typexTop.translatesAutoresizingMaskIntoConstraints = NO;
-        self.typexTop.clipsToBounds = NO;
-        [self addSubview:self.typexTop];
-        [NSLayoutConstraint activateConstraints:@[
-            [self.typexTop.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
-            [self.typexTop.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
-            [self.typexTop.bottomAnchor constraintEqualToAnchor:self.topAnchor constant:-2.0],
-            [self.typexTop.heightAnchor constraintEqualToConstant:MAX(44.0, buttonHeight + topInset + bottomInset + 4.0)]
-        ]];
-        self.typexTop.hidden = (self.typexTop.shortcuts.count == 0 || ((NSArray *)self.typexTop.shortcuts[kbuttonsImages12]).count == 0);
-    }
-    
     if (preferencesBool(kEnabledkey,YES) && preferencesBool(kSpaceBarScrollingBOOL,YES)){
         UISwipeGestureRecognizer *leftRecognizer = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(leftSwipeHandle:)];
         leftRecognizer.direction = UISwipeGestureRecognizerDirectionLeft;
@@ -788,15 +829,6 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
         
     }
     return self;
-}
-
--(void)layoutSubviews {
-    %orig;
-    if (self.typexTop) {
-        BOOL shouldHide = !preferencesBool(kEnabledkey, YES) || !toggledOn || isLandscape || isDictating;
-        if (((NSArray *)self.typexTop.shortcuts[kbuttonsImages12]).count == 0) shouldHide = YES;
-        self.typexTop.hidden = shouldHide;
-    }
 }
 
 %new
@@ -859,88 +891,15 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
 
 
 - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event {
-    if (preferencesBool(kEnabledkey,YES) && (preferencesInt(kSwipeSpaceBarTogglekey,0) < 1)){
-        prevTime = [NSDate date] ;
-        UITouch *touch = [[touches allObjects] firstObject];
-        startPosition = [touch locationInView:touch.view];
-        key = [[[self keyHitTest:[touch locationInView:touch.view]] representedString] lowercaseString];
-        //HBLogDebug(@"touchesBegan EVENT: %ld", event.type);
-        //NSString *key = [[[self hitTest:[touch locationInView:touch.view] withEvent:event] representedString] lowercaseString];
-        //if ([key isEqualToString:@" "]){
-        // return;
-        //}
-    }
     %orig;
-    
-}
-
-%new
--(direction)computeDirectionFromTouches {
-    NSInteger xDisplacement = endPosition.x-startPosition.x;
-    NSInteger yDisplacement = endPosition.y-startPosition.y;
-    
-    float angle = atan2(xDisplacement, yDisplacement);
-    int octant = (int)(round(8 * angle / (2 * M_PI) + 8)) % 8;
-    
-    return (direction) octant;
 }
 
 -(void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event{
     %orig;
-    //HBLogDebug(@"isTrackPad: %d", [self isTrackpadMode]?1:0);
-    if (preferencesBool(kEnabledkey,YES)){
-        if ((preferencesInt(kSwipeSpaceBarTogglekey,0) < 1)){
-            isTrackPadMode = [self isTrackpadMode];
-            UITouch *touch =  [[touches allObjects] lastObject];
-            endPosition = [touch locationInView:touch.view];
-            int dragDirection = [self computeDirectionFromTouches];
-            //HBLogDebug(@"Direction: %ld", [self computeDirectionFromTouches]);
-            if ([key isEqualToString:@" "] && (dragDirection == 3 || dragDirection == 4 || dragDirection == 5)){
-                isDraggedGesture = YES;
-            }else{
-                isDraggedGesture = NO;
-            }
-        }
-    }
 }
 
 
 - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event  {
-    //HBLogDebug(@"touchesEnded count: %lu",touches.count);
-    //UIView *endedKey = [self hitTest:[touch locationInView:touch.view] withEvent:event];
-    //CGPoint pt =[dv convertPoint:[touch locationInView:self.window] fromView:self];
-    // NSIndexPath *cidx = [dv.typex indexPathForItemAtPoint:[touch locationInView:touch.window]];
-    
-    if (preferencesBool(kEnabledkey,YES) && (preferencesInt(kSwipeSpaceBarTogglekey,0) < 1) && [key isEqualToString:@" "] && isDraggedGesture && [dockView respondsToSelector:@selector(barmoji)] && !isTrackPadMode){
-        NSTimeInterval elapsedTime = -1.0 * [prevTime timeIntervalSinceNow];
-        isDraggedGesture = NO;
-        //if (startPosition.y > (endPosition.y + 15)){
-        //if (dockView){
-        //[dockView.typex removeFromSuperview];
-        //[dockView layoutSubviews];
-        kbImpl = [%c(UIKeyboardImpl) activeInstance];
-        delegate = DXKeyboardInputDelegate(kbImpl);
-        [kbImpl clearInputWithCandidatesCleared:YES];
-        
-        if (elapsedTime > 0.2){
-            [[NSNotificationCenter defaultCenter] postNotificationName:@"toggleTypeX" object:nil];
-        }
-        
-        
-        
-        //[dockView.barmoji setNeedsLayout];
-        //dockView.barmoji.layer.zPosition = 1;
-        //[dockView.typex removeFromSuperview];
-        //[dockView.barmoji removeFromSuperview];
-        //[dockView addSubview:dockView.barmoji];
-        
-        if ([self respondsToSelector:@selector(clearContinuousPathView)]){
-            [self clearContinuousPathView];
-        }
-        [self touchesCancelled:touches withEvent:event];
-        return;
-    }
-    isDraggedGesture = NO;
     %orig;
 }
 
@@ -981,7 +940,6 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
         }
     }else if (self.dockView.typex){
         self.dockView.typex.hidden = YES;
-        if ([self.dockView respondsToSelector:@selector(barmoji)]) self.dockView.barmoji.hidden = NO;
     }
 }
 
@@ -1040,6 +998,7 @@ static void reloadPrefs(void) {
     //HBLogDebug(@"reloadPrefs: %@", prefs);
     //HBLogDebug(@"kShortcutsPerSection: %@", prefs[kShortcutsPerSection]);
     currentBackgroundTintColor = nil;
+    currentTopToolbarBackgroundColor = nil;
     //currentTintColor = nil;
     if (preferencesBool(kColorEnabledkey,NO)){
         
@@ -1048,6 +1007,7 @@ static void reloadPrefs(void) {
         if (preferencesBool(kShortcutsBackgroundTintEnabled,YES)) currentBackgroundTintColor = DXColorFromHex(prefs[@"shortcutsbackgroundtint"], @"#5B5B5B");
         if (preferencesBool(kToastBackgroundTintEnabled,YES)) toastBackgroundTintColor = DXColorFromHex(prefs[@"toastbackgroundtint"], @"#000000");
     }
+    currentTopToolbarBackgroundColor = DXColorFromHex(prefs[kTopToolbarBackgroundTintKey], @"#5B5B5B");
     
     toggledOn = preferencesBool(kToggledOnkey,YES);
     singleTapGlobeEnabled = (((preferencesInt(kDockModekey, 0) == 0 || preferencesInt(kDockModekey, 0) == 2)) && (preferencesInt(kDedicatedGestureButtonkey,0) == 1 || preferencesInt(kDedicatedGestureButtonkey,0) == 3) && (preferencesInt(kGestureTypekey,0) == 0)) ? YES : NO;
@@ -1084,23 +1044,10 @@ static void reloadPrefs(void) {
     if (dockView.typex) {
         [dockView.typex reloadShortcutConfiguration];
         dockView.typex.hidden = !enabled || !toggledOn || isLandscape || isDictating;
-        if ([dockView respondsToSelector:@selector(barmoji)]) {
-            dockView.barmoji.hidden = enabled && toggledOn && !isLandscape && !isDictating;
-        }
         [dockView.typex.collectionViewLayout invalidateLayout];
         [dockView.typex reloadData];
     }
-    UIKeyboardLayoutStar *keyboardLayout = nil;
-    if (dockView && [dockView respondsToSelector:@selector(_keyboardLayoutView)]) {
-        keyboardLayout = (UIKeyboardLayoutStar *)[dockView _keyboardLayoutView];
-    }
-    if (keyboardLayout.typexTop) {
-        [keyboardLayout.typexTop reloadShortcutConfiguration];
-        BOOL topHasShortcuts = [keyboardLayout.typexTop.shortcuts[kbuttonsImages12] count] > 0;
-        keyboardLayout.typexTop.hidden = !enabled || !toggledOn || isLandscape || isDictating || !topHasShortcuts;
-        [keyboardLayout.typexTop.collectionViewLayout invalidateLayout];
-        [keyboardLayout.typexTop reloadData];
-    }
+    DXRefreshActiveTopAccessory();
     /*
      if (dockView){
      [UIView performWithoutAnimation:^{

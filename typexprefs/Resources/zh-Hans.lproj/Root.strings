@@ -15,7 +15,6 @@
 "BOTTOM_SETTINGS" = "底部设置";
 "DOUBLE_TAP" = "双击";
 "FOOTER_DISPLAY_STYLE" = "设置快捷方式的显示样式。";
-"FOOTER_SWIPE_SPACE_BAR_TOGGLE_BARMOJI" = "允许从空格键向上滑动，在 TypeX 与 Barmoji 之间切换。将手指从空格键向上滑到键盘字母区域，短暂停留后松开即可。";
 "ANSWER_YES" = "是";
 "ANSWER_NO" = "否";
 "FOOTER_DOCK_MODE" = "设置键盘 Dock 模式。";
@@ -23,7 +22,7 @@
 "DICTATION_ONLY" = "仅听写";
 "GLOBE_ONLY" = "仅地球键";
 "NONE" = "无";
-"FOOTER_TOGGLE_BUTTON" = "设置用于切换 TypeX/Barmoji 的按钮。当 Dock 模式为“无”时，此设置不可用。";
+"FOOTER_TOGGLE_BUTTON" = "设置用于切换 TypeX 的按钮。当 Dock 模式为“无”时，此设置不可用。";
 "GLOBE" = "地球键";
 "DICTATION" = "听写";
 "BOTH" = "两者";
@@ -37,6 +36,9 @@
 "SHORTCUTS_BACKGROUND_TINT" = "快捷方式背景颜色";
 "TOAST_TINT" = "提示颜色";
 "TOAST_BACKGROUND_TINT" = "提示背景颜色";
+"TOP_TOOLBAR_SETTINGS" = "顶部工具栏设置";
+"TOP_TOOLBAR" = "顶部工具栏";
+"TOP_TOOLBAR_BACKGROUND_TINT" = "顶部工具栏背景颜色";
 "PAGING" = "分页";
 "FOOTER_PAGING" = "如果点击快捷方式后界面滚回上一页，可关闭分页功能。";
 "ADVANCED" = "高级";

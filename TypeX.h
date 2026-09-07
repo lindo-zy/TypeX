@@ -75,10 +75,6 @@ static inline UIResponder *DXKeyboardInputDelegate(UIKeyboardImpl *keyboard) {
 @property (nonatomic,retain) UILongPressGestureRecognizer * longPressGestureRecognizer;
 @end
 
-@interface BarmojiCollectionView : UICollectionView
-- (instancetype)initForPredictiveBar:(BOOL)forPredictive;
-@end
-
 @interface UIKeyboardDockView : UIView
 @property (nonatomic,retain) UIKeyboardDockItem * leftDockItem;
 @property (nonatomic,retain) UIKeyboardDockItem * rightDockItem;
@@ -86,7 +82,6 @@ static inline UIResponder *DXKeyboardInputDelegate(UIKeyboardImpl *keyboard) {
 //@property (retain, nonatomic) UIKeyboardDockItemButton *leftDockButton;
 //@property (retain, nonatomic) UIKeyboardDockItemButton *rightDockButton;
 @property (nonatomic, retain) DXCollectionView *typex;
-@property (retain, nonatomic) BarmojiCollectionView *barmoji;
 
 -(void)shouldUpdateLayoutWithDelay:(float)delay;
 - (id)_keyboardLayoutView;
@@ -182,7 +177,6 @@ static inline UIResponder *DXKeyboardInputDelegate(UIKeyboardImpl *keyboard) {
 @interface UIKeyboardLayoutStar : UIView{
         BOOL _isContinuousPathUnderway;
 }
-@property (nonatomic, retain) DXCollectionView *typexTop;
 @property (nonatomic,readonly) NSString * localizedInputMode;
 -(MKInfoCardThemeManager *)mk_theme;
 -(UIKBKey *)keyHitTest:(CGPoint)arg1 ;
