@@ -395,7 +395,9 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
 
 - (void)setLeftDockItem:(UIKeyboardDockItem *)dockItem {
     if (preferencesBool(kEnabledkey,YES)){
-        if (!preferencesBool(kColorEnabledkey,NO) || (preferencesBool(kColorEnabledkey,NO)  && !preferencesBool(kShortcutsTintEnabled,YES))){
+        // Only read system tint when user hasn't set a custom color
+        // (when kShortcutsTintEnabled is NO, meaning "follow system")
+        if (!preferencesBool(kShortcutsTintEnabled,YES)){
             currentTintColor = dockItem.button.tintColor;
         }
         if (preferencesInt(kDedicatedGestureButtonkey, 0) == 1 || preferencesInt(kDedicatedGestureButtonkey, 0) == 3){
@@ -437,7 +439,8 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
 }
 - (void)setRightDockItem:(UIKeyboardDockItem *)dockItem {
     if (preferencesBool(kEnabledkey,YES)){
-        if (!preferencesBool(kColorEnabledkey,NO) || (preferencesBool(kColorEnabledkey,NO)  && !preferencesBool(kShortcutsTintEnabled,YES))){
+        // Only read system tint when user hasn't set a custom color
+        if (!preferencesBool(kShortcutsTintEnabled,YES)){
             currentTintColor = dockItem.button.tintColor;
         }
         if (preferencesInt(kDockModekey, 0) == 2 || preferencesInt(kDockModekey, 0) == 3) return;
@@ -644,8 +647,9 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
 
 %new
 -(void)updateTypeXTint{
-    // Only refresh tint when custom color is NOT enabled (or tint override is off)
-    if (preferencesBool(kColorEnabledkey,NO) && preferencesBool(kShortcutsTintEnabled,YES)) return;
+    // Only refresh tint when custom color is NOT enabled
+    // (kShortcutsTintEnabled = NO means "follow system tint")
+    if (preferencesBool(kShortcutsTintEnabled,YES)) return;
 
     UIColor *newTintColor = nil;
     if (self.leftDockItem.button){
@@ -1064,15 +1068,20 @@ static void reloadPrefs(void) {
     currentBackgroundTintColor = nil;
     currentTopToolbarBackgroundColor = nil;
     //currentTintColor = nil;
+    
+    // Shortcuts tint: if enabled, use custom color; otherwise follow system (set in setLeftDockItem/updateTypeXTint)
+    if (preferencesBool(kShortcutsTintEnabled,YES)) {
+        currentTintColor = DXColorFromHex(prefs[@"shortcutstint"], @"#ff0000");
+    }
+    
+    // Legacy colorBOOL block for other tint options (toast, backgrounds)
     if (preferencesBool(kColorEnabledkey,NO)){
-        
-        if (preferencesBool(kShortcutsTintEnabled,YES)) currentTintColor = DXColorFromHex(prefs[@"shortcutstint"], @"#ff0000");
         if (preferencesBool(kToastTintEnabled,YES)) toastTintColor = DXColorFromHex(prefs[@"toasttint"], @"#ff0000");
         if (preferencesBool(kShortcutsBackgroundTintEnabled,YES)) currentBackgroundTintColor = DXColorFromHex(prefs[@"shortcutsbackgroundtint"], @"#5B5B5B");
         if (preferencesBool(kToastBackgroundTintEnabled,YES)) toastBackgroundTintColor = DXColorFromHex(prefs[@"toastbackgroundtint"], @"#000000");
-    }
-    if (preferencesBool(kTopToolbarBackgroundTintEnabledKey,YES)){
-        currentTopToolbarBackgroundColor = DXColorFromHex(prefs[kTopToolbarBackgroundTintKey], @"#5B5B5B");
+        if (preferencesBool(kTopToolbarBackgroundTintEnabledKey,YES)){
+            currentTopToolbarBackgroundColor = DXColorFromHex(prefs[kTopToolbarBackgroundTintKey], @"#5B5B5B");
+        }
     }
     
     toggledOn = preferencesBool(kToggledOnkey,YES);
