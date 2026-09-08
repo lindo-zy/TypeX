@@ -35,7 +35,12 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 - (int)shortcutsPerSection {
     NSString *key = [self scopedPreferenceKey:kShortcutsPerSection];
-    int configured = preferencesInt(key, preferencesInt(kShortcutsPerSection, maxshortcutpersection));
+    // Top and bottom are fully decoupled: each scope uses its own key and falls
+    // back only to maxshortcutpersection (6).  The bottom key is never read
+    // when the top key is missing, so an unconfigured top toolbar defaults to 6
+    // regardless of the bottom toolbar's setting.
+    int fallback = maxshortcutpersection;
+    int configured = preferencesInt(key, fallback);
     return MAX(1, MIN(configured, maxshortcutpersection));
 }
 
@@ -606,6 +611,12 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     NSString *shortcutsKey = [self scopedPreferenceKey:kShortcutskey];
     NSString *keyboardTypeKey = [self scopedPreferenceKey:kKeyboardTypekey];
     NSArray *configuredShortcuts = currentPrefs[shortcutsKey];
+    NSArray *configuredKeyboardTypes = currentPrefs[keyboardTypeKey];
+
+    // Top and bottom shortcuts are fully decoupled.  When a scoped key has no
+    // persisted value (e.g. user never opened "顶部设置"), the else-branch
+    // below uses the default set (first N actions from DXShortcutsGenerator).
+    // The bottom configuration is never inherited by the top toolbar.
 
     if ([configuredShortcuts isKindOfClass:[NSArray class]] && configuredShortcuts.count > 0) {
         for (NSDictionary *item in configuredShortcuts[0]) {
@@ -640,7 +651,6 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     self.keyboardTypeLabelFull = [self.shortcutsGenerator keyboardTypeLabel];
     NSMutableArray *activeKeyboardTypes = [NSMutableArray array];
     NSMutableArray *activeKeyboardLabels = [NSMutableArray array];
-    NSArray *configuredKeyboardTypes = currentPrefs[keyboardTypeKey];
     if ([configuredKeyboardTypes isKindOfClass:[NSArray class]] && configuredKeyboardTypes.count > 0) {
         for (NSDictionary *item in configuredKeyboardTypes[0]) {
             NSNumber *data = item[@"data"];

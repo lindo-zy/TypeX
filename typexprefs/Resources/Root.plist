@@ -44,14 +44,6 @@
 			<key>cell</key>
 			<string>PSLinkCell</string>
 			<key>detail</key>
-			<string>DXPTopToolbarSettingsController</string>
-			<key>label</key>
-			<string>顶部工具栏</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSLinkCell</string>
-			<key>detail</key>
 			<string>DXPManageShortcutsController</string>
 			<key>label</key>
 			<string>底部设置</string>
@@ -117,8 +109,50 @@
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>顶部快捷数量</string>
 			<key>footerText</key>
 			<string>FOOTER_SHORTCUT_NUM</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSegmentCell</string>
+			<key>detail</key>
+			<string>PSSegmentCell</string>
+			<key>validValues</key>
+			<array>
+				<string>1</string>
+				<string>2</string>
+				<string>3</string>
+				<string>4</string>
+				<string>5</string>
+				<string>6</string>
+			</array>
+			<key>validTitles</key>
+			<array>
+				<string>1</string>
+				<string>2</string>
+				<string>3</string>
+				<string>4</string>
+				<string>5</string>
+				<string>6</string>
+			</array>
+			<key>key</key>
+			<string>topshortcutsnum</string>
+			<key>defaults</key>
+			<string>com.lindo.typex</string>
+			<key>default</key>
+			<string>6</string>
+			<key>PostNotification</key>
+			<string>com.lindo.typex/prefschanged</string>
+			<key>id</key>
+			<string>topmodeselection</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>底部快捷数量</string>
 		</dict>
 		<dict>
 			<key>cell</key>

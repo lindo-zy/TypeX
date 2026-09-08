@@ -113,17 +113,21 @@ static char kDXTopAccessoryContainerKey;
 
 @end
 
+static inline BOOL DXResponderSupportsInputAccessoryView(UIResponder *responder) {
+    return [responder respondsToSelector:@selector(setInputAccessoryView:)] &&
+           [responder respondsToSelector:@selector(inputAccessoryView)];
+}
+
 static UIView *DXInputAccessoryView(UIResponder *responder) {
-    if ([responder isKindOfClass:UITextField.class]) return [(UITextField *)responder inputAccessoryView];
-    if ([responder isKindOfClass:UITextView.class]) return [(UITextView *)responder inputAccessoryView];
+    if (DXResponderSupportsInputAccessoryView(responder)) {
+        return [responder performSelector:@selector(inputAccessoryView)];
+    }
     return nil;
 }
 
 static void DXSetInputAccessoryView(UIResponder *responder, UIView *view) {
-    if ([responder isKindOfClass:UITextField.class]) {
-        [(UITextField *)responder setInputAccessoryView:view];
-    } else if ([responder isKindOfClass:UITextView.class]) {
-        [(UITextView *)responder setInputAccessoryView:view];
+    if (DXResponderSupportsInputAccessoryView(responder)) {
+        [responder performSelector:@selector(setInputAccessoryView:) withObject:view];
     }
 }
 
@@ -134,13 +138,13 @@ static void DXInstallTopAccessoryForResponder(UIResponder *responder) {
     DXTopAccessoryContainer *container = objc_getAssociatedObject(responder, &kDXTopAccessoryContainerKey);
     UIView *currentAccessory = DXInputAccessoryView(responder);
 
-    if (!container && enabled && toggledOn && !isLandscape && !isDictating) {
+    if (!container && enabled && toggledOn && !isLandscape && !isDictating && DXResponderSupportsInputAccessoryView(responder)) {
         container = [[DXTopAccessoryContainer alloc] initWithFrame:CGRectMake(0.0, 0.0, 0.0, 41.5)];
         [container dxApplyCustomBackgroundColor];
         container.toolbar = [[DXCollectionView alloc] init];
         container.toolbar.configuration = @"top";
-        [container.toolbar reloadShortcutConfiguration];
         container.toolbar.clipsToBounds = YES;
+        [container.toolbar reloadShortcutConfiguration];
         [container addSubview:container.toolbar];
         objc_setAssociatedObject(responder, &kDXTopAccessoryContainerKey, container, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
@@ -182,7 +186,7 @@ static void DXInstallTopAccessoryForResponder(UIResponder *responder) {
 static void DXRefreshActiveTopAccessory(void) {
     UIKeyboardImpl *keyboard = [objc_getClass("UIKeyboardImpl") activeInstance];
     UIResponder *active = DXKeyboardInputDelegate(keyboard);
-    if ([active isKindOfClass:UITextField.class] || [active isKindOfClass:UITextView.class]) {
+    if (active && DXResponderSupportsInputAccessoryView(active)) {
         DXInstallTopAccessoryForResponder(active);
     }
 }
@@ -369,6 +373,10 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
             [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(toggleTypeX:) name:@"toggleTypeX" object:nil];
             
             [self handBiasChanged];
+            
+            // Ensure the top accessory is installed for the current first responder
+            // when the dock view first appears, not just on UITextField/UITextView hooks.
+            DXRefreshActiveTopAccessory();
         });
         
     }
@@ -691,6 +699,11 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
                 //HBLogDebug(@"Shouldn't Hide");
                 [self updateTypeXTint];
                 self.typex.hidden = NO;
+                
+                // Ensure the top accessory follows the current first responder
+                // every time the dock view lays out (search box, text field, web
+                // view, etc. all share the same keyboard dock).
+                DXRefreshActiveTopAccessory();
                 
             }
             //lastReloadDate = [NSDate date];

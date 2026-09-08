@@ -39,6 +39,7 @@
 #define kSpaceBarScrollingBOOL @"enabledSpaceBarScrollingBOOL"
 #define kGranularity @"granularityvalue"
 #define kShortcutsPerSection @"shortcutsnum"
+#define kTopShortcutsPerSection @"topshortcutsnum"
 #define kToggledOnkey @"toggledOnBOOL"
 #define kDockModekey @"dockmode"
 #define kDisplayTypekey @"displaytype"
