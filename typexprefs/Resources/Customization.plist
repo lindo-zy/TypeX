@@ -48,7 +48,7 @@
 			<key>defaults</key>
 			<string>com.lindo.typex</string>
 			<key>default</key>
-			<string>1</string>
+			<string>0</string>
 			<key>PostNotification</key>
 			<string>com.lindo.typex/prefschanged</string>
 			<key>id</key>

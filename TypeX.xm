@@ -397,7 +397,7 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
     if (preferencesBool(kEnabledkey,YES)){
         // Only read system tint when user hasn't set a custom color
         // (when kShortcutsTintEnabled is NO, meaning "follow system")
-        if (!preferencesBool(kShortcutsTintEnabled,YES)){
+        if (!preferencesBool(kShortcutsTintEnabled,NO)){
             currentTintColor = dockItem.button.tintColor;
         }
         if (preferencesInt(kDedicatedGestureButtonkey, 0) == 1 || preferencesInt(kDedicatedGestureButtonkey, 0) == 3){
@@ -440,7 +440,7 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
 - (void)setRightDockItem:(UIKeyboardDockItem *)dockItem {
     if (preferencesBool(kEnabledkey,YES)){
         // Only read system tint when user hasn't set a custom color
-        if (!preferencesBool(kShortcutsTintEnabled,YES)){
+        if (!preferencesBool(kShortcutsTintEnabled,NO)){
             currentTintColor = dockItem.button.tintColor;
         }
         if (preferencesInt(kDockModekey, 0) == 2 || preferencesInt(kDockModekey, 0) == 3) return;
@@ -649,7 +649,7 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
 -(void)updateTypeXTint{
     // Only refresh tint when custom color is NOT enabled
     // (kShortcutsTintEnabled = NO means "follow system tint")
-    if (preferencesBool(kShortcutsTintEnabled,YES)) return;
+    if (preferencesBool(kShortcutsTintEnabled,NO)) return;
 
     UIColor *newTintColor = nil;
     if (self.leftDockItem.button){
@@ -1070,7 +1070,7 @@ static void reloadPrefs(void) {
     //currentTintColor = nil;
     
     // Shortcuts tint: if enabled, use custom color; otherwise follow system (set in setLeftDockItem/updateTypeXTint)
-    if (preferencesBool(kShortcutsTintEnabled,YES)) {
+    if (preferencesBool(kShortcutsTintEnabled,NO)) {
         currentTintColor = DXColorFromHex(prefs[@"shortcutstint"], @"#ff0000");
     }
     
