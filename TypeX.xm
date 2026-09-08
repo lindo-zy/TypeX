@@ -40,9 +40,14 @@ static char kDXTopAccessoryContainerKey;
 @interface DXTopAccessoryContainer : UIView
 @property(nonatomic, strong) DXCollectionView *toolbar;
 @property(nonatomic, strong) UIView *originalAccessory;
+/// When YES, setBackgroundColor: bypasses the guard and sets the color directly via super.
+/// Used internally by dxApplyCustomBackgroundColor so it can set the real color
+/// without being intercepted by our own override.
+@property(nonatomic, assign) BOOL dxSettingInternalColor;
 @end
 
 @implementation DXTopAccessoryContainer
+
 - (CGSize)intrinsicContentSize {
     CGFloat originalHeight = self.originalAccessory ? MAX(0.0, self.originalAccessory.frame.size.height) : 0.0;
     return CGSizeMake(UIViewNoIntrinsicMetric, 41.5 + (originalHeight > 0.0 ? originalHeight + 1.0 : 0.0));
@@ -57,7 +62,50 @@ static char kDXTopAccessoryContainerKey;
         self.originalAccessory.frame = CGRectMake(0.0, toolbarHeight + 1.0,
                                                    CGRectGetWidth(self.bounds), originalHeight);
     }
+    // Re-apply custom background: system layout may have overridden it
+    [self dxApplyCustomBackgroundColor];
 }
+
+/// Intercept ALL external setBackgroundColor: calls.
+/// The system overrides this when keyboard switches to light mode.
+/// We ignore the system's value and always apply our configured color instead.
+- (void)setBackgroundColor:(UIColor *)backgroundColor {
+    if (self.dxSettingInternalColor) {
+        // Our own code is setting the color — allow it through
+        [super setBackgroundColor:backgroundColor];
+        return;
+    }
+    // System or external caller — always use our custom color
+    [super setBackgroundColor:currentTopToolbarBackgroundColor ?: [UIColor clearColor]];
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+    [super traitCollectionDidChange:previousTraitCollection];
+    // Keyboard appearance change triggers trait change — re-apply custom color
+    [self dxApplyCustomBackgroundColor];
+}
+
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    // View re-attached to keyboard hierarchy after appearance change
+    [self dxApplyCustomBackgroundColor];
+}
+
+- (void)willMoveToSuperview:(UIView *)newSuperview {
+    [super willMoveToSuperview:newSuperview];
+    if (newSuperview) {
+        [self dxApplyCustomBackgroundColor];
+    }
+}
+
+/// Apply the configured toolbar background color, bypassing our own setBackgroundColor: guard.
+- (void)dxApplyCustomBackgroundColor {
+    UIColor *customColor = currentTopToolbarBackgroundColor ?: [UIColor clearColor];
+    self.dxSettingInternalColor = YES;
+    [super setBackgroundColor:customColor];
+    self.dxSettingInternalColor = NO;
+}
+
 @end
 
 static UIView *DXInputAccessoryView(UIResponder *responder) {
@@ -83,7 +131,7 @@ static void DXInstallTopAccessoryForResponder(UIResponder *responder) {
 
     if (!container && enabled && toggledOn && !isLandscape && !isDictating) {
         container = [[DXTopAccessoryContainer alloc] initWithFrame:CGRectMake(0.0, 0.0, 0.0, 41.5)];
-        container.backgroundColor = currentTopToolbarBackgroundColor ?: [UIColor clearColor];
+        [container dxApplyCustomBackgroundColor];
         container.toolbar = [[DXCollectionView alloc] init];
         container.toolbar.configuration = @"top";
         [container.toolbar reloadShortcutConfiguration];
@@ -95,7 +143,7 @@ static void DXInstallTopAccessoryForResponder(UIResponder *responder) {
     if (!container) return;
 
     [container.toolbar reloadShortcutConfiguration];
-    container.backgroundColor = currentTopToolbarBackgroundColor ?: [UIColor clearColor];
+    [container dxApplyCustomBackgroundColor];
     [container.toolbar.collectionViewLayout invalidateLayout];
     [container.toolbar reloadData];
 
