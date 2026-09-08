@@ -75,8 +75,13 @@ static char kDXTopAccessoryContainerKey;
         [super setBackgroundColor:backgroundColor];
         return;
     }
-    // System or external caller — always use our custom color
-    [super setBackgroundColor:currentTopToolbarBackgroundColor ?: [UIColor clearColor]];
+    // When custom top toolbar background is enabled, intercept and use our color.
+    // When disabled, allow the system's color through so it adapts to light/dark mode.
+    if (currentTopToolbarBackgroundColor) {
+        [super setBackgroundColor:currentTopToolbarBackgroundColor];
+    } else {
+        [super setBackgroundColor:backgroundColor];
+    }
 }
 
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
@@ -100,9 +105,9 @@ static char kDXTopAccessoryContainerKey;
 
 /// Apply the configured toolbar background color, bypassing our own setBackgroundColor: guard.
 - (void)dxApplyCustomBackgroundColor {
-    UIColor *customColor = currentTopToolbarBackgroundColor ?: [UIColor clearColor];
+    if (!currentTopToolbarBackgroundColor) return;
     self.dxSettingInternalColor = YES;
-    [super setBackgroundColor:customColor];
+    [super setBackgroundColor:currentTopToolbarBackgroundColor];
     self.dxSettingInternalColor = NO;
 }
 
@@ -642,21 +647,25 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
     // Only refresh tint when custom color is NOT enabled (or tint override is off)
     if (preferencesBool(kColorEnabledkey,NO) && preferencesBool(kShortcutsTintEnabled,YES)) return;
 
+    UIColor *newTintColor = nil;
     if (self.leftDockItem.button){
-        currentTintColor = self.leftDockItem.button.tintColor;
+        newTintColor = self.leftDockItem.button.tintColor;
     }else if (self.rightDockItem.button){
-        currentTintColor = self.rightDockItem.button.tintColor;
+        newTintColor = self.rightDockItem.button.tintColor;
     }else{
         if (@available(iOS 13.0, *)){
-            if ([UITraitCollection currentTraitCollection].userInterfaceStyle == UIUserInterfaceStyleDark) {
-                currentTintColor = [UIColor whiteColor];
+            if (self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark) {
+                newTintColor = [UIColor whiteColor];
             }else{
-                currentTintColor = [UIColor blackColor];
+                newTintColor = [UIColor blackColor];
             }
         }
     }
-    // Notify toolbar cells to re-render with the updated tint
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"typeXLayoutChanged" object:nil];
+    // Only notify if the tint actually changed to avoid unnecessary reloadData on every layout
+    if (newTintColor && ![newTintColor isEqual:currentTintColor]) {
+        currentTintColor = newTintColor;
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"typeXLayoutChanged" object:nil];
+    }
 }
 
 - (void)layoutSubviews{
@@ -678,7 +687,6 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
                 //HBLogDebug(@"Shouldn't Hide");
                 [self updateTypeXTint];
                 self.typex.hidden = NO;
-                [[NSNotificationCenter defaultCenter] postNotificationName:@"typeXLayoutChanged" object:nil];
                 
             }
             //lastReloadDate = [NSDate date];
@@ -756,7 +764,13 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
  */
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
     %orig;
-    [self updateTypeXTint];
+    // Defer tint refresh to next runloop: the system updates dock button
+    // tintColor AFTER traitCollectionDidChange returns, so a synchronous
+    // read here would still get the old (pre-switch) color.
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [weakSelf updateTypeXTint];
+    });
 }
 
 %end
@@ -1057,7 +1071,9 @@ static void reloadPrefs(void) {
         if (preferencesBool(kShortcutsBackgroundTintEnabled,YES)) currentBackgroundTintColor = DXColorFromHex(prefs[@"shortcutsbackgroundtint"], @"#5B5B5B");
         if (preferencesBool(kToastBackgroundTintEnabled,YES)) toastBackgroundTintColor = DXColorFromHex(prefs[@"toastbackgroundtint"], @"#000000");
     }
-    currentTopToolbarBackgroundColor = DXColorFromHex(prefs[kTopToolbarBackgroundTintKey], @"#5B5B5B");
+    if (preferencesBool(kTopToolbarBackgroundTintEnabledKey,YES)){
+        currentTopToolbarBackgroundColor = DXColorFromHex(prefs[kTopToolbarBackgroundTintKey], @"#5B5B5B");
+    }
     
     toggledOn = preferencesBool(kToggledOnkey,YES);
     singleTapGlobeEnabled = (((preferencesInt(kDockModekey, 0) == 0 || preferencesInt(kDockModekey, 0) == 2)) && (preferencesInt(kDedicatedGestureButtonkey,0) == 1 || preferencesInt(kDedicatedGestureButtonkey,0) == 3) && (preferencesInt(kGestureTypekey,0) == 0)) ? YES : NO;

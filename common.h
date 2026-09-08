@@ -52,6 +52,7 @@
 #define kToastTintEnabled @"toasttintBOOL"
 #define kToastBackgroundTintEnabled @"toastbackgroundtintBOOL"
 #define kTopToolbarBackgroundTintKey @"toptoolbarbackgroundtint"
+#define kTopToolbarBackgroundTintEnabledKey @"toptoolbarbackgroundtintBOOL"
 #define kKeyboardTypekey @"keyboardtype"
 #define kPasteAndGoEnabledkey @"pasteandgo"
 #define kCustomActionsDTkey @"customactionsdt"
