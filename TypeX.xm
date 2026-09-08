@@ -637,26 +637,27 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
     
 }
 
-/*
- %new
- -(void)updateTypeXTint{
- if (self.leftDockItem.button){
- currentTintColor = self.leftDockItem.button.tintColor;
- }else if (self.rightDockItem.button){
- currentTintColor = self.rightDockItem.button.tintColor;
- }else{
- if (@available(iOS 13.0, *)){
- if ([UITraitCollection currentTraitCollection].userInterfaceStyle == UIUserInterfaceStyleDark) {
- currentTintColor = [UIColor whiteColor];
- }else{
- currentTintColor = [UIColor blackColor];
- }
- }else{
- 
- }
- }
- }
- */
+%new
+-(void)updateTypeXTint{
+    // Only refresh tint when custom color is NOT enabled (or tint override is off)
+    if (preferencesBool(kColorEnabledkey,NO) && preferencesBool(kShortcutsTintEnabled,YES)) return;
+
+    if (self.leftDockItem.button){
+        currentTintColor = self.leftDockItem.button.tintColor;
+    }else if (self.rightDockItem.button){
+        currentTintColor = self.rightDockItem.button.tintColor;
+    }else{
+        if (@available(iOS 13.0, *)){
+            if ([UITraitCollection currentTraitCollection].userInterfaceStyle == UIUserInterfaceStyleDark) {
+                currentTintColor = [UIColor whiteColor];
+            }else{
+                currentTintColor = [UIColor blackColor];
+            }
+        }
+    }
+    // Notify toolbar cells to re-render with the updated tint
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"typeXLayoutChanged" object:nil];
+}
 
 - (void)layoutSubviews{
     %orig;
@@ -671,15 +672,11 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
                 //HBLogDebug(@"Should Hide");
                 self.typex.hidden = YES;
                 return;
-                
-                //if (!preferencesBool(kColorEnabledkey,NO)){
-                //[self updateTypeXTint];
-                //}
                 //NSNotification * note = [NSNotification notificationWithName:@"typeXLayoutChanged" object:nil];
-                //[[NSNotificationQueue defaultQueue] enqueueNotification:note postingStyle:NSPostASAP coalesceMask:NSNotificationCoalescingOnName forModes:nil];
+                //[[NSNotificationCenterQueue defaultQueue] enqueueNotification:note postingStyle:NSPostASAP coalesceMask:NSNotificationCoalescingOnName forModes:nil];
             }else{
                 //HBLogDebug(@"Shouldn't Hide");
-                
+                [self updateTypeXTint];
                 self.typex.hidden = NO;
                 [[NSNotificationCenter defaultCenter] postNotificationName:@"typeXLayoutChanged" object:nil];
                 
@@ -757,6 +754,11 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
  }
  }
  */
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+    %orig;
+    [self updateTypeXTint];
+}
+
 %end
 
 %hook UIKeyboardDockItem
