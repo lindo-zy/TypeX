@@ -54,9 +54,8 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     
     if (self = [super initWithFrame:CGRectZero collectionViewLayout:flowLayout]) {
         self.configuration = configuration ?: @"bottom";
+        HBLogDebug(@"DXCollectionView initWithConfiguration: %@, shortcutsPerSection: %d", self.configuration, [self shortcutsPerSection]);
         self.shortcutsGenerator = [DXShortcutsGenerator sharedInstance];
-        
-        
         if (!prefs){
             prefs = [[[DXPrefsManager sharedInstance] readPrefsFromSandbox:!isSpringBoard] mutableCopy];
         }
@@ -71,7 +70,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
         NSString *keyboardTypeKey = [self scopedPreferenceKey:kKeyboardTypekey];
         NSString *cacheKey = [self scopedPreferenceKey:kCachekey];
         if (prefs[cacheKey] && !DXShortcutCacheContainsHiddenSelectors(prefs[cacheKey]) &&
-            [prefs[cacheKey][@"shortcuts"][kbuttonsImages12] count] <= maxdefaultshortcuts &&
+            [prefs[cacheKey][@"shortcuts"][kbuttonsImages12] count] <= [self shortcutsPerSection] &&
             !prefs[shortcutsKey] && !prefs[keyboardTypeKey]){
             NSDictionary *cache = prefs[cacheKey];
             self.shortcuts = cache[@"shortcuts"];
@@ -106,7 +105,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
             if (prefs[shortcutsKey]){
                 
                 for (NSDictionary *item in prefs[shortcutsKey][0]){
-                    if (currentOrder12.count >= maxdefaultshortcuts) break;
+                    if (currentOrder12.count >= [self shortcutsPerSection]) break;
                     if (DXIsHiddenShortcutSelector(item[@"selector"])){ 
                         continue;
                     }
@@ -121,7 +120,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
                     //}
                 }
             }else{
-                for (int i = 0; i < maxdefaultshortcuts; i++ ){
+                for (int i = 0; i < [self shortcutsPerSection]; i++ ){
                     [currentOrder12 addObject:[currentOrderDefault12 objectAtIndex:i]];
                     [currentOrder13 addObject:[currentOrderDefault13 objectAtIndex:i]];
                     [selectors addObject:[selectorsDefault objectAtIndex:i]];
@@ -598,8 +597,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     NSDictionary *currentPrefs = [[DXPrefsManager sharedInstance] readPrefsFromSandbox:!isSpringBoard];
     if (![currentPrefs isKindOfClass:[NSDictionary class]]) currentPrefs = @{};
     prefs = [currentPrefs mutableCopy];
-
-
+    HBLogDebug(@"reloadShortcutConfiguration configuration=%@ shortcutsPerSection=%d scopedKey=%@", self.configuration, [self shortcutsPerSection], [self scopedPreferenceKey:kShortcutskey]);
     NSMutableArray *defaultImages12 = [[self.shortcutsGenerator imageNameArrayForiOS:0] mutableCopy];
     NSMutableArray *defaultImages13 = [[self.shortcutsGenerator imageNameArrayForiOS:1] mutableCopy];
     NSMutableArray *defaultSelectors = [[self.shortcutsGenerator selectorNameForLongPress:NO] mutableCopy];
@@ -621,7 +619,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
     if ([configuredShortcuts isKindOfClass:[NSArray class]] && configuredShortcuts.count > 0) {
         for (NSDictionary *item in configuredShortcuts[0]) {
-            if (images12.count >= maxdefaultshortcuts) break;
+            if (images12.count >= [self shortcutsPerSection]) break;
             if (![item isKindOfClass:[NSDictionary class]]) continue;
             NSString *selector = item[@"selector"];
             if (DXIsHiddenShortcutSelector(selector)) continue;
@@ -633,7 +631,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
             }
         }
     } else {
-        NSUInteger count = MIN((NSUInteger)maxdefaultshortcuts,
+        NSUInteger count = MIN((NSUInteger)[self shortcutsPerSection],
                                MIN(defaultImages12.count,
                                    MIN(defaultImages13.count,
                                        MIN(defaultSelectors.count, defaultSelectorsLP.count))));
@@ -646,8 +644,8 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     }
 
     self.shortcuts = @[images12, images13, selectors, selectorsLP];
+    HBLogDebug(@"reloadShortcutConfiguration built shortcuts count=%lu for scope=%@", (unsigned long)images12.count, self.configuration);
     self.fullshortcuts = @[defaultImages12, defaultImages13, defaultSelectors, defaultSelectorsLP];
-
     self.keyboardTypeDataFull = [self.shortcutsGenerator keyboardTypeData];
     self.keyboardTypeLabelFull = [self.shortcutsGenerator keyboardTypeLabel];
     NSMutableArray *activeKeyboardTypes = [NSMutableArray array];
