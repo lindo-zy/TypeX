@@ -62,10 +62,38 @@ static void reloadPrefs(CFNotificationCenterRef center, void *observer, CFString
     return _messagingCenter;
 }
 
+#pragma mark - Shared file fallback for sandboxed processes
+
+static NSString *DXSharedPrefsPath(void) {
+    return TypeXSharedPrefsPath;
+}
+
+- (void)writeSharedPrefs:(NSDictionary *)dictionary {
+    if (![dictionary isKindOfClass:[NSDictionary class]]) return;
+    NSString *path = DXSharedPrefsPath();
+    NSString *dir = [path stringByDeletingLastPathComponent];
+    NSFileManager *fm = [NSFileManager defaultManager];
+    if (![fm fileExistsAtPath:dir]) {
+        [fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:@{NSFileOwnerAccountName:@"mobile", NSFileGroupOwnerAccountName:@"mobile"} error:nil];
+    }
+    [dictionary writeToFile:path atomically:YES];
+    NSDictionary *attrs = @{NSFileOwnerAccountName:@"mobile", NSFileGroupOwnerAccountName:@"mobile"};
+    [fm setAttributes:attrs ofItemAtPath:path error:nil];
+}
+
+- (NSDictionary *)readSharedPrefs {
+    return [NSDictionary dictionaryWithContentsOfFile:DXSharedPrefsPath()] ?: @{};
+}
+
 #pragma mark - Read
 
 - (NSDictionary *)readPrefsFromSandbox:(BOOL)isSandbox {
     if (isSandbox) {
+        NSDictionary *shared = [self readSharedPrefs];
+        if ([shared isKindOfClass:[NSDictionary class]] && shared.count > 0) {
+            return shared;
+        }
+        // Fallback to IPC if shared file is missing/stale.
         return [[self messagingCenter] sendMessageAndReceiveReplyName:@"typeXFetchPrefs" userInfo:nil] ?: @{};
     }
     return [self readPrefs];
@@ -97,6 +125,7 @@ static void reloadPrefs(CFNotificationCenterRef center, void *observer, CFString
 
 - (void)writePrefs:(NSDictionary *)dictionary fromSandbox:(BOOL)isSandbox {
     if (isSandbox) {
+        [self writeSharedPrefs:dictionary];
         [[self messagingCenter] sendMessageName:@"typeXWritePrefs" userInfo:dictionary];
         return;
     }
@@ -130,6 +159,7 @@ static void reloadPrefs(CFNotificationCenterRef center, void *observer, CFString
     // Keep the on-disk representation available to legacy preference cells.
     [dictionary writeToFile:kPrefsPath atomically:YES];
     self.prefs = [dictionary copy];
+    [self writeSharedPrefs:dictionary];
     [self postChangedNotification];
 }
 
@@ -137,6 +167,11 @@ static void reloadPrefs(CFNotificationCenterRef center, void *observer, CFString
 
 - (void)setValue:(id)value forKey:(NSString *)key fromSandbox:(BOOL)isSandbox {
     if (isSandbox) {
+        NSDictionary *current = [self readSharedPrefs];
+        NSMutableDictionary *updated = [current mutableCopy] ?: [NSMutableDictionary dictionary];
+        if (value) updated[key] = value;
+        else [updated removeObjectForKey:key];
+        [self writeSharedPrefs:updated];
         NSDictionary *userInfo = @{
             @"key": key ?: @"",
             @"value": value ?: [NSNull null]
@@ -157,8 +192,7 @@ static void reloadPrefs(CFNotificationCenterRef center, void *observer, CFString
 
 - (id)getValueForKey:(NSString *)key fromSandbox:(BOOL)isSandbox {
     if (isSandbox) {
-        NSDictionary *reply = [[self messagingCenter] sendMessageAndReceiveReplyName:@"typeXGetValue" userInfo:@{@"key": key ?: @""}];
-        return reply[@"value"];
+        return [self readSharedPrefs][key];
     }
     return [self getValueForKey:key];
 }
@@ -169,6 +203,9 @@ static void reloadPrefs(CFNotificationCenterRef center, void *observer, CFString
 
 - (void)removeKey:(NSString *)key fromSandbox:(BOOL)isSandbox {
     if (isSandbox) {
+        NSMutableDictionary *current = [[self readSharedPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
+        [current removeObjectForKey:key];
+        [self writeSharedPrefs:current];
         [[self messagingCenter] sendMessageName:@"typeXRemoveKey" userInfo:@{@"key": key ?: @""}];
         return;
     }
