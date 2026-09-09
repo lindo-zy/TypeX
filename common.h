@@ -130,7 +130,7 @@
 #define secondActionDelay 0.05
 
 #define TypeXCachePath DX_ROOT_PATH_NS(@"/var/mobile/Library/Caches/com.lindo.typex")
-#define TypeXSharedPrefsPath TypeXCachePath @"/shared.plist"
+#define TypeXSharedPrefsPath DX_ROOT_PATH_NS(@"/var/mobile/Library/Caches/com.lindo.typex/shared.plist")
 
 static inline NSString *DXScopedPreferenceKey(NSString *baseKey, NSString *configuration) {
     if ([configuration isEqualToString:@"top"]) {
