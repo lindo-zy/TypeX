@@ -39,7 +39,21 @@ static void reloadPrefs(CFNotificationCenterRef center, void *observer, CFString
     return self;
 }
 
+#pragma mark - IPC helpers
+
+- (CPDistributedMessagingCenter *)messagingCenter {
+    if (!_messagingCenter) {
+        _messagingCenter = [CPDistributedMessagingCenter centerNamed:@"com.lindo.typex.server"];
+    }
+    return _messagingCenter;
+}
+
+#pragma mark - Read
+
 - (NSDictionary *)readPrefsFromSandbox:(BOOL)isSandbox {
+    if (isSandbox) {
+        return [[self messagingCenter] sendMessageAndReceiveReplyName:@"typeXFetchPrefs" userInfo:nil] ?: @{};
+    }
     return [self readPrefs];
 }
 
@@ -65,7 +79,13 @@ static void reloadPrefs(CFNotificationCenterRef center, void *observer, CFString
     return [NSDictionary dictionaryWithContentsOfFile:kPrefsPath] ?: @{};
 }
 
+#pragma mark - Write
+
 - (void)writePrefs:(NSDictionary *)dictionary fromSandbox:(BOOL)isSandbox {
+    if (isSandbox) {
+        [[self messagingCenter] sendMessageName:@"typeXWritePrefs" userInfo:dictionary];
+        return;
+    }
     [self writePrefs:dictionary];
 }
 
@@ -99,7 +119,17 @@ static void reloadPrefs(CFNotificationCenterRef center, void *observer, CFString
     [self postChangedNotification];
 }
 
+#pragma mark - Set / Get / Remove
+
 - (void)setValue:(id)value forKey:(NSString *)key fromSandbox:(BOOL)isSandbox {
+    if (isSandbox) {
+        NSDictionary *userInfo = @{
+            @"key": key ?: @"",
+            @"value": value ?: [NSNull null]
+        };
+        [[self messagingCenter] sendMessageName:@"typeXSaveValue" userInfo:userInfo];
+        return;
+    }
     [self setValue:value forKey:key];
 }
 
@@ -112,6 +142,10 @@ static void reloadPrefs(CFNotificationCenterRef center, void *observer, CFString
 }
 
 - (id)getValueForKey:(NSString *)key fromSandbox:(BOOL)isSandbox {
+    if (isSandbox) {
+        NSDictionary *reply = [[self messagingCenter] sendMessageAndReceiveReplyName:@"typeXGetValue" userInfo:@{@"key": key ?: @""}];
+        return reply[@"value"];
+    }
     return [self getValueForKey:key];
 }
 
@@ -120,6 +154,10 @@ static void reloadPrefs(CFNotificationCenterRef center, void *observer, CFString
 }
 
 - (void)removeKey:(NSString *)key fromSandbox:(BOOL)isSandbox {
+    if (isSandbox) {
+        [[self messagingCenter] sendMessageName:@"typeXRemoveKey" userInfo:@{@"key": key ?: @""}];
+        return;
+    }
     [self removeKey:key];
 }
 

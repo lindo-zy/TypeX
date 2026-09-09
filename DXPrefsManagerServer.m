@@ -7,18 +7,18 @@
 + (void)load {
     @autoreleasepool {
         NSArray *args = [[NSClassFromString(@"NSProcessInfo") processInfo] arguments];
-        
+
         if (args.count != 0) {
             NSString *executablePath = args[0];
-            
+
             if (executablePath) {
                 NSString *processName = [executablePath lastPathComponent];
-                
+
                 BOOL isSpringBoard = [processName isEqualToString:@"SpringBoard"];
-                
+
                 if (isSpringBoard) {
                     [self sharedInstance];
-                    
+
                 }
             }
         }
@@ -34,12 +34,18 @@
     return sharedInstance;
 }
 
-
 - (instancetype)init {
     self = [super init];
     if (self) {
+        _messagingCenter = [CPDistributedMessagingCenter centerNamed:@"com.lindo.typex.server"];
+        [_messagingCenter registerForMessageName:@"typeXFetchPrefs" target:self selector:@selector(readPrefs:withUserInfo:)];
+        [_messagingCenter registerForMessageName:@"typeXWritePrefs" target:self selector:@selector(writePrefs:withUserInfo:)];
+        [_messagingCenter registerForMessageName:@"typeXSaveValue" target:self selector:@selector(setValue:withUserInfo:)];
+        [_messagingCenter registerForMessageName:@"typeXGetValue" target:self selector:@selector(getValueForKey:withUserInfo:)];
+        [_messagingCenter registerForMessageName:@"typeXRemoveKey" target:self selector:@selector(removeKey:withUserInfo:)];
+        [_messagingCenter runServerOnCurrentThread];
     }
-    
+
     return self;
 }
 
@@ -55,7 +61,9 @@
 -(NSDictionary *)setValue:(NSString *)name withUserInfo:(NSDictionary *)userInfo{
     NSString *key = userInfo[@"key"];
     if ([key isKindOfClass:[NSString class]]) {
-        [[DXPrefsManager sharedInstance] setValue:userInfo[@"value"] forKey:key];
+        id value = userInfo[@"value"];
+        if ([value isKindOfClass:[NSNull class]]) value = nil;
+        [[DXPrefsManager sharedInstance] setValue:value forKey:key];
     }
     return nil;
 }

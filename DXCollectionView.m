@@ -54,7 +54,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     
     if (self = [super initWithFrame:CGRectZero collectionViewLayout:flowLayout]) {
         self.configuration = configuration ?: @"bottom";
-        HBLogDebug(@"DXCollectionView initWithConfiguration: %@, shortcutsPerSection: %d", self.configuration, [self shortcutsPerSection]);
+        //HBLogDebug(@"DXCollectionView initWithConfiguration: %@, shortcutsPerSection: %d", self.configuration, [self shortcutsPerSection]);
         self.shortcutsGenerator = [DXShortcutsGenerator sharedInstance];
         if (!prefs){
             prefs = [[[DXPrefsManager sharedInstance] readPrefsFromSandbox:!isSpringBoard] mutableCopy];
@@ -597,7 +597,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     NSDictionary *currentPrefs = [[DXPrefsManager sharedInstance] readPrefsFromSandbox:!isSpringBoard];
     if (![currentPrefs isKindOfClass:[NSDictionary class]]) currentPrefs = @{};
     prefs = [currentPrefs mutableCopy];
-    HBLogDebug(@"reloadShortcutConfiguration configuration=%@ shortcutsPerSection=%d scopedKey=%@", self.configuration, [self shortcutsPerSection], [self scopedPreferenceKey:kShortcutskey]);
+    //HBLogDebug(@"reloadShortcutConfiguration configuration=%@ shortcutsPerSection=%d scopedKey=%@", self.configuration, [self shortcutsPerSection], [self scopedPreferenceKey:kShortcutskey]);
     NSMutableArray *defaultImages12 = [[self.shortcutsGenerator imageNameArrayForiOS:0] mutableCopy];
     NSMutableArray *defaultImages13 = [[self.shortcutsGenerator imageNameArrayForiOS:1] mutableCopy];
     NSMutableArray *defaultSelectors = [[self.shortcutsGenerator selectorNameForLongPress:NO] mutableCopy];
@@ -644,7 +644,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     }
 
     self.shortcuts = @[images12, images13, selectors, selectorsLP];
-    HBLogDebug(@"reloadShortcutConfiguration built shortcuts count=%lu for scope=%@", (unsigned long)images12.count, self.configuration);
+    //HBLogDebug(@"reloadShortcutConfiguration built shortcuts count=%lu for scope=%@", (unsigned long)images12.count, self.configuration);
     self.fullshortcuts = @[defaultImages12, defaultImages13, defaultSelectors, defaultSelectorsLP];
     self.keyboardTypeDataFull = [self.shortcutsGenerator keyboardTypeData];
     self.keyboardTypeLabelFull = [self.shortcutsGenerator keyboardTypeLabel];
