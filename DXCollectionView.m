@@ -44,7 +44,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     return MAX(1, MIN(configured, maxshortcutpersection));
 }
 
-- (instancetype)init{
+- (instancetype)initWithConfiguration:(NSString *)configuration{
     
     UICollectionViewFlowLayout *flowLayout = [[UICollectionViewFlowLayout alloc] init];
     flowLayout.scrollDirection = UICollectionViewScrollDirectionHorizontal;
@@ -53,7 +53,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     
     
     if (self = [super initWithFrame:CGRectZero collectionViewLayout:flowLayout]) {
-        self.configuration = @"bottom";
+        self.configuration = configuration ?: @"bottom";
         self.shortcutsGenerator = [DXShortcutsGenerator sharedInstance];
         
         
@@ -80,9 +80,9 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
             self.kbTypeLabel = cache[@"kbTypeLabel"];
             self.keyboardTypeDataFull = cache[@"keyboardTypeDataFull"];
             self.keyboardTypeLabelFull = cache[@"keyboardTypeLabelFull"];
-            HBLogDebug(@"Utilized cache");
+            //HBLogDebug(@"Utilized cache");
         }else{
-            HBLogDebug(@"Update cache");
+            //HBLogDebug(@"Update cache");
             
             NSMutableDictionary *cache = [[NSMutableDictionary alloc] init];
             
@@ -599,6 +599,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     if (![currentPrefs isKindOfClass:[NSDictionary class]]) currentPrefs = @{};
     prefs = [currentPrefs mutableCopy];
 
+
     NSMutableArray *defaultImages12 = [[self.shortcutsGenerator imageNameArrayForiOS:0] mutableCopy];
     NSMutableArray *defaultImages13 = [[self.shortcutsGenerator imageNameArrayForiOS:1] mutableCopy];
     NSMutableArray *defaultSelectors = [[self.shortcutsGenerator selectorNameForLongPress:NO] mutableCopy];
@@ -824,7 +825,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
             self.refreshView = YES;
         });
     }
-    HBLogDebug(@"shakeButton: %@", sender);
+    //HBLogDebug(@"shakeButton: %@", sender);
     
 }
 
@@ -1447,14 +1448,14 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
  if (isWKContentView){
  [(WKContentView *)tempDelegate executeEditCommandWithCallback:@"toggleBold"];
  }else{
- HBLogDebug(@"tempDelegate: %@", tempDelegate);
+ //HBLogDebug(@"tempDelegate: %@", tempDelegate);
  BOOL isUITextView = [tempDelegate respondsToSelector:@selector(allowsEditingTextAttributes)];
- HBLogDebug(@"isUITextView: %d",  isUITextView?1:0);
+ //HBLogDebug(@"isUITextView: %d",  isUITextView?1:0);
  
  //BOOL isUITextView = [[tempDelegate superclass] isKindOfClass:objc_getClass("UITextView")];
  if (isUITextView){
  UITextView *textViewDelegate = (UITextView *)delegate;
- HBLogDebug(@"allowsEditingTextAttributes: %d",  textViewDelegate.allowsEditingTextAttributes?1:0);
+ //HBLogDebug(@"allowsEditingTextAttributes: %d",  textViewDelegate.allowsEditingTextAttributes?1:0);
  if (textViewDelegate.allowsEditingTextAttributes){
  [textViewDelegate toggleBoldface:nil];
  }else{
@@ -2063,7 +2064,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
             }
         }else{
             //HBLogDebug(@"ELSEEEEEE");
-            HBLogDebug(@"self.kbType: %@", self.kbType);
+            //HBLogDebug(@"self.kbType: %@", self.kbType);
             int kbTypeInt = [self.kbType[0] intValue];
             int i = 1;
             while (kbTypeInt == (int)[delegate keyboardType]){
@@ -3307,20 +3308,20 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
         
         for (id target in sets) {
             NSArray *actions;
-            HBLogDebug(@"00000000000000000000000000");
+            //HBLogDebug(@"00000000000000000000000000");
             if (doubleTapEnabled){
                 actions = @[NSStringFromSelector([(UIGestureRecognizerTarget *)target action])];
             }else{
                 actions = [btn actionsForTarget:target forControlEvent:UIControlEventTouchUpInside];
             }
             for (NSString *action in actions) {
-                HBLogDebug(@"######## action: %@", action);
+                //HBLogDebug(@"######## action: %@", action);
                 int gestureType = 0;
                 if (isDoubleTap) gestureType = 1;
                 NSString *selectorName1 = preferencesSelectorForIdentifierScoped(action, 1, gestureType, @"", self.configuration);
                 NSString *selectorName2 = preferencesSelectorForIdentifierScoped(action, 2, gestureType, @"", self.configuration);
-                HBLogDebug(@"selectorName1: %@", selectorName1);
-                HBLogDebug(@"selectorName2: %@", selectorName2);
+                //HBLogDebug(@"selectorName1: %@", selectorName1);
+                //HBLogDebug(@"selectorName2: %@", selectorName2);
                 
                 SEL action1 = NSSelectorFromString(selectorName1);
                 SEL action2 = NSSelectorFromString(selectorName2);

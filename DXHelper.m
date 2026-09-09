@@ -135,7 +135,7 @@
     }else{
         actionName = [NSString stringWithFormat:@"LONG_%@", [actionName uppercaseString]];
     }
-    HBLogDebug(@"localizedStringForActionNamed: %@", actionName);
+    //HBLogDebug(@"localizedStringForActionNamed: %@", actionName);
     return [tweakBundle localizedStringForKey:actionName value:@"" table:nil];
 }
 
@@ -145,7 +145,7 @@
     NSRegularExpression *regexp = [NSRegularExpression regularExpressionWithPattern:@"([a-z])([A-Z])" options:0 error:NULL];
     actionName = [regexp stringByReplacingMatchesInString:actionName options:0 range:NSMakeRange(0, actionName.length) withTemplate:@"$1_$2"];
     actionName = [NSString stringWithFormat:@"TOAST_%@", [actionName uppercaseString]];
-    HBLogDebug(@"localizedStringForActionNamed: %@", actionName);
+    //HBLogDebug(@"localizedStringForActionNamed: %@", actionName);
     return [tweakBundle localizedStringForKey:actionName value:@"" table:nil];
 }
 @end

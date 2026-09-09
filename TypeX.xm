@@ -134,6 +134,7 @@ static void DXSetInputAccessoryView(UIResponder *responder, UIView *view) {
 static void DXInstallTopAccessoryForResponder(UIResponder *responder) {
     if (!responder || (!isApplication && !isSpringBoard)) return;
 
+
     BOOL enabled = preferencesBool(kEnabledkey, YES);
     DXTopAccessoryContainer *container = objc_getAssociatedObject(responder, &kDXTopAccessoryContainerKey);
     UIView *currentAccessory = DXInputAccessoryView(responder);
@@ -141,8 +142,7 @@ static void DXInstallTopAccessoryForResponder(UIResponder *responder) {
     if (!container && enabled && toggledOn && !isLandscape && !isDictating && DXResponderSupportsInputAccessoryView(responder)) {
         container = [[DXTopAccessoryContainer alloc] initWithFrame:CGRectMake(0.0, 0.0, 0.0, 41.5)];
         [container dxApplyCustomBackgroundColor];
-        container.toolbar = [[DXCollectionView alloc] init];
-        container.toolbar.configuration = @"top";
+        container.toolbar = [[DXCollectionView alloc] initWithConfiguration:@"top"];
         container.toolbar.clipsToBounds = YES;
         [container.toolbar reloadShortcutConfiguration];
         [container addSubview:container.toolbar];
@@ -150,6 +150,7 @@ static void DXInstallTopAccessoryForResponder(UIResponder *responder) {
     }
 
     if (!container) return;
+
 
     [container.toolbar reloadShortcutConfiguration];
     [container dxApplyCustomBackgroundColor];
@@ -252,7 +253,7 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
 - (instancetype)initWithFrame:(CGRect)frame {
     dockView = %orig;
     if (preferencesBool(kEnabledkey,YES) && dockView) {
-        self.typex = [[DXCollectionView alloc] init];
+        self.typex = [[DXCollectionView alloc] initWithConfiguration:@"bottom"];
         
         //self.typex = [[DXCollectionView alloc] init];
         
@@ -264,7 +265,7 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
         float leading = leadingOffset;
         float trailing = trailingOffset;
         
-        HBLogDebug(@"BEFORE leading: %f, trailing: %f",leading, trailing );
+        //HBLogDebug(@"BEFORE leading: %f, trailing: %f",leading, trailing );
         
         switch (preferencesInt(kDockModekey, 0)){
             case 1:
@@ -286,7 +287,7 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
                 }
                 break;
         }
-        HBLogDebug(@"AFTER leading: %f, trailing: %f",leading, trailing );
+        //HBLogDebug(@"AFTER leading: %f, trailing: %f",leading, trailing );
         
         NSLayoutConstraint *leadingConstraint = [NSLayoutConstraint constraintWithItem:self.typex attribute:NSLayoutAttributeLeading relatedBy:NSLayoutRelationEqual toItem:dockView attribute:NSLayoutAttributeLeading multiplier:1.0 constant:leading];
         leadingConstraint.identifier = @"TypeX";
@@ -527,9 +528,9 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
         
         float leading = leadingOffset;
         float trailing = trailingOffset;
-        HBLogDebug(@"HANDBIAS BEFORE leading: %f, trailing: %f",leading, trailing );
-        HBLogDebug(@"fabs(leading - leadingOffsetDefault): %f", fabs(leading - leadingOffsetDefault));
-        HBLogDebug(@"fabs(trailing - trailingOffsetDefault): %f", fabs(trailing - trailingOffsetDefault));
+        //HBLogDebug(@"HANDBIAS BEFORE leading: %f, trailing: %f",leading, trailing );
+        //HBLogDebug(@"fabs(leading - leadingOffsetDefault): %f", fabs(leading - leadingOffsetDefault));
+        //HBLogDebug(@"fabs(trailing - trailingOffsetDefault): %f", fabs(trailing - trailingOffsetDefault));
         if (currentHandBias == 0){
             switch (preferencesInt(kDockModekey, 0)){
                 case 1:
@@ -582,7 +583,7 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
                     break;
             }
         }
-        HBLogDebug(@"HANDBIAS AFTER leading: %f, trailing: %f",leading, trailing );
+        //HBLogDebug(@"HANDBIAS AFTER leading: %f, trailing: %f",leading, trailing );
         
         //HBLogDebug(@"received handbiaschangednotification: %lld", currentHandBias);
         //if (currentHandBias == 0){
@@ -958,7 +959,7 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
  %new
  - (void)upSwipeHandle:(UISwipeGestureRecognizer*)recognizer
  {
- HBLogDebug(@"upSwipeHandle");
+ //HBLogDebug(@"upSwipeHandle");
  //if (recognizer.state == UIGestureRecognizerStateBegan) {
  //NSString *key = [[[self keyHitTest:[recognizer locationInView:recognizer.view]] representedString] lowercaseString];
  //if ([key isEqualToString:@" "]){
@@ -1183,7 +1184,7 @@ static void sbDidLaunch(){
         
         if (args.count != 0){
             NSString *executablePath = args[0];
-            HBLogDebug(@"executablePath: %@", executablePath);
+            //HBLogDebug(@"executablePath: %@", executablePath);
             if (executablePath){
                 NSString *processName = [executablePath lastPathComponent];
                 //HBLogDebug(@"INIT: %@", processName);
@@ -1192,7 +1193,7 @@ static void sbDidLaunch(){
 				isApplication = isApplication ?: ([executablePath rangeOfString:@".appex/"].location != NSNotFound ?: isApplication);
                 //isApplication = [processName isEqualToString:@"MarkupPhotoExtension"] ?: isApplication;
                 isSafari = [processName isEqualToString:@"MobileSafari"];
-				HBLogDebug(@"isSpringBoard: %d ** isApplication: %d ** isSafari: %d", isSpringBoard, isApplication, isSafari);
+                //HBLogDebug(@"isSpringBoard: %d ** isApplication: %d ** isSafari: %d", isSpringBoard, isApplication, isSafari);
 				
                 if (isSpringBoard || isApplication){
                     tweakBundle = [NSBundle bundleWithPath:bundlePath];
