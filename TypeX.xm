@@ -1041,7 +1041,7 @@ static void updateAutoCapitalization() {
 }
 
 static void reloadPrefs(void) {
-    prefs = [[[DXPrefsManager sharedInstance] readPrefsFromSandbox:!isSpringBoard] mutableCopy];
+    prefs = [[[DXPrefsManager sharedInstance] readPrefsFromSandbox:[DXPrefsManager isRunningInSandbox]] mutableCopy];
     
     if (!firstInit){
         // Cache invalidation is an internal maintenance operation.  Do not post
