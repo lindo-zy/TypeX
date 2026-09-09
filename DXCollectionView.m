@@ -57,7 +57,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
         //HBLogDebug(@"DXCollectionView initWithConfiguration: %@, shortcutsPerSection: %d", self.configuration, [self shortcutsPerSection]);
         self.shortcutsGenerator = [DXShortcutsGenerator sharedInstance];
         if (!prefs){
-            prefs = [[[DXPrefsManager sharedInstance] readPrefsFromSandbox:!isSpringBoard] mutableCopy];
+            prefs = [[[DXPrefsManager sharedInstance] readPrefsFromSandbox:[DXPrefsManager isRunningInSandbox]] mutableCopy];
         }
         
         
@@ -168,8 +168,8 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
             cache[@"kbTypeLabel"] = self.kbTypeLabel;
             
             dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-                [[DXPrefsManager sharedInstance] setValue:cache forKey:cacheKey fromSandbox:!isSpringBoard];
-                prefs = [[[DXPrefsManager sharedInstance] readPrefsFromSandbox:!isSpringBoard] mutableCopy];
+                [[DXPrefsManager sharedInstance] setValue:cache forKey:cacheKey fromSandbox:[DXPrefsManager isRunningInSandbox]];
+                prefs = [[[DXPrefsManager sharedInstance] readPrefsFromSandbox:[DXPrefsManager isRunningInSandbox]] mutableCopy];
             });
         }
         
@@ -212,7 +212,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
      //}
      //dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
      if (@available(iOS 11.0, *)){
-     [[DXPrefsManager sharedInstance] setValue:[NSKeyedArchiver archivedDataWithRootObject:self requiringSecureCoding:YES error:nil] forKey:@"prevState" fromSandbox:!isSpringBoard];
+     [[DXPrefsManager sharedInstance] setValue:[NSKeyedArchiver archivedDataWithRootObject:self requiringSecureCoding:YES error:nil] forKey:@"prevState" fromSandbox:[DXPrefsManager isRunningInSandbox]];
      }
      //});
      */
@@ -594,7 +594,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 }
 
 -(void)reloadShortcutConfiguration{
-    NSDictionary *currentPrefs = [[DXPrefsManager sharedInstance] readPrefsFromSandbox:!isSpringBoard];
+    NSDictionary *currentPrefs = [[DXPrefsManager sharedInstance] readPrefsFromSandbox:[DXPrefsManager isRunningInSandbox]];
     if (![currentPrefs isKindOfClass:[NSDictionary class]]) currentPrefs = @{};
     prefs = [currentPrefs mutableCopy];
     //HBLogDebug(@"reloadShortcutConfiguration configuration=%@ shortcutsPerSection=%d scopedKey=%@", self.configuration, [self shortcutsPerSection], [self scopedPreferenceKey:kShortcutskey]);

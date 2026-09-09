@@ -28,6 +28,18 @@ static void reloadPrefs(CFNotificationCenterRef center, void *observer, CFString
     return manager;
 }
 
++ (BOOL)isRunningInSandbox {
+    NSArray *args = [[NSClassFromString(@"NSProcessInfo") processInfo] arguments];
+    if (args.count == 0) return NO;
+
+    NSString *executablePath = args[0];
+    NSString *processName = executablePath.lastPathComponent;
+    BOOL isSpringBoardProcess = [processName isEqualToString:@"SpringBoard"];
+    BOOL isApplicationProcess = [executablePath rangeOfString:@"/Application"].location != NSNotFound;
+    BOOL isAppExtension = [executablePath rangeOfString:@".appex/"].location != NSNotFound;
+    return !(isSpringBoardProcess || isApplicationProcess || isAppExtension);
+}
+
 - (instancetype)init {
     self = [super init];
     if (self) {

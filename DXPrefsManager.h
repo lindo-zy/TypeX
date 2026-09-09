@@ -5,6 +5,7 @@
 }
 @property(nonatomic, strong) NSDictionary *prefs;
 + (instancetype)sharedInstance;
++ (BOOL)isRunningInSandbox;
 -(NSDictionary *)readPrefs;
 -(NSDictionary *)readPrefsFromSandbox:(BOOL)isSandbox;
 -(void)writePrefs:(NSDictionary *)dictionary;
