@@ -32,12 +32,14 @@ static void reloadPrefs(CFNotificationCenterRef center, void *observer, CFString
     NSArray *args = [[NSClassFromString(@"NSProcessInfo") processInfo] arguments];
     if (args.count == 0) return NO;
 
+    // Only SpringBoard can read /var/mobile/Library/Preferences directly and is
+    // the host of the DXPrefsManagerServer IPC endpoint.  Apps and keyboard
+    // extensions are sandboxed and cannot access the com.lindo.typex domain, so
+    // they must go through IPC; treat any non-SpringBoard process as sandboxed.
     NSString *executablePath = args[0];
     NSString *processName = executablePath.lastPathComponent;
     BOOL isSpringBoardProcess = [processName isEqualToString:@"SpringBoard"];
-    BOOL isApplicationProcess = [executablePath rangeOfString:@"/Application"].location != NSNotFound;
-    BOOL isAppExtension = [executablePath rangeOfString:@".appex/"].location != NSNotFound;
-    return !(isSpringBoardProcess || isApplicationProcess || isAppExtension);
+    return !isSpringBoardProcess;
 }
 
 - (instancetype)init {
