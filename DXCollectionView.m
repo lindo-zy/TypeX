@@ -3279,6 +3279,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 -(void)activateLPActions:(UIGestureRecognizer *)recognizer{
     //HBLogDebug(@"recognizer: %@", recognizer);
     BOOL isDoubleTap = [recognizer isKindOfClass:objc_getClass("UITapGestureRecognizer")];
+    __block BOOL didTriggerAction = NO;
     
     if (recognizer.state == UIGestureRecognizerStateBegan || (isDoubleTap && recognizer.state == UIGestureRecognizerStateEnded)) {
         [self autoPaginationControl];
@@ -3335,35 +3336,25 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
                     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(secondActionDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                         ((void(*)(id, SEL, id))objc_msgSend)(self, action2, nil);
                     });
+                    didTriggerAction = YES;
                 }else if ([selectorName1 length] > 0){
                     self.hapticType = 2;
                     ((void(*)(id, SEL, id))objc_msgSend)(self, action1, nil);
+                    didTriggerAction = YES;
                 }else if ([selectorName2 length] > 0){
                     self.hapticType = 2;
                     ((void(*)(id, SEL, id))objc_msgSend)(self, action2, nil);
+                    didTriggerAction = YES;
                 }else{
-                    NSString *originalSelectorName;
-                    BOOL isLP = NO;
-                    if (isDoubleTap){
-                        originalSelectorName = [action stringByReplacingOccurrencesOfString:@"Action:" withString:@"ActionDT:"];
-                    }else{
-                        [self autoPaginationControl];
-                        isLP = YES;
-                        originalSelectorName = [action stringByReplacingOccurrencesOfString:@"Action:" withString:@"ActionLP:"];
-                    }
-                    
-                    SEL originalAction = NSSelectorFromString(originalSelectorName);
-                    //HBLogDebug(@"###### SEL %@", originalSelectorName);
-                    if ([self respondsToSelector:originalAction]){
-                        ((void(*)(id, SEL, id))objc_msgSend)(self, originalAction, recognizer);
-                        if (isLP) [self autoPaginationControl];
-                    }
+                    // No custom action selected; do nothing.
                 }
             }
         }
         
     }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
+        if (didTriggerAction) {
+            [self shakeView:recognizer.view];
+        }
     }
 }
 

@@ -194,41 +194,13 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 
 "FOOTER_TEXT_FOR_EXTRAS" = "Tap item to customize.";
 
-"FOOTER_TEXT_FOR_DEFAULT_LONG_PRESS_GESTURES" = "Default long press gesture for:
-Select - select all words
-Select All - select last word
-Copy - select all and copy
-Paste - select all and paste
-Cut - delete last word
-Undo - go to beginning of document
-Redo - go to ending of document
-Beginning of Document - undo
-Ending of Document - redo
-Capitalize Last Word - uppercase last word
-lowercase - uppercase last word
-UPPERCASE - lowercase last word
-Delete - select all and delete
-Delete Forward - select all and delete
-Bold - select last word and toggle bold face
-Italic - select last word and toggle italic
-Underline - select last word and toggle underline
-Cursor Left - move cursor backward exponentionally
-Cursor Right - move cursor forward exponentionally
-Cursor Up - move cursor upward exponentionally
-Cursor Down - move cursor downward exponentionally
-Keyboard Input - revert back to original input type
-Previous & Next Word - select word
-Line Start & End - select line
-Start & End of Paragraph - select paragraph
-Start & End of Sentence  - select sentence
-Globe - activate dictation
-sPonGeBob teXt - select all and sPonGeBob";
+"FOOTER_TEXT_FOR_DEFAULT_LONG_PRESS_GESTURES" = "Set a long-press or double-tap action for each shortcut below. Leaving an action blank means the gesture does nothing.";
 
 
 //=====================CUSTOM ACTIONS PAGE=====================
 "FIRST_ACTION" = "First Action";
 "SECOND_ACTION" = "Second Action";
-"FOOTER_FIRST_ACTION" = "This action will be performed prior to the second action below. It can be none. Leave all blank for default actions.";
+"FOOTER_FIRST_ACTION" = "This action is performed before the second action below. Leave blank to disable the gesture.";
 
 //=====================ADVANCED SETTINGS PAGE=====================
 //Shortcuts
