@@ -331,19 +331,7 @@ typedef enum PSCellType {
 @property (assign,nonatomic) id<UnifiedFieldDelegate> delegate;
 @end
 
-@interface UIKeyboardInputMode : UITextInputMode
--(NSString *)identifier;
--(NSString *)normalizedIdentifier;
-@end
 
-@interface UIKeyboardInputModeController : NSObject
-@property (retain) UIKeyboardInputMode * currentInputMode;
-@property (retain) NSArray * keyboardInputModes;
-+(id)sharedInputModeController;
--(id)activeInputModes;
--(void)setCurrentInputMode:(UIKeyboardInputMode *)arg1;
-
-@end
 
 
 @interface WKWebView : NSObject

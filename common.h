@@ -54,7 +54,6 @@
 #define kToastBackgroundTintEnabled @"toastbackgroundtintBOOL"
 #define kTopToolbarBackgroundTintKey @"toptoolbarbackgroundtint"
 #define kTopToolbarBackgroundTintEnabledKey @"toptoolbarbackgroundtintBOOL"
-#define kKeyboardTypekey @"keyboardtype"
 #define kPasteAndGoEnabledkey @"pasteandgo"
 #define kCustomActionsDTkey @"customactionsdt"
 #define kCustomActionsSTkey @"customactionsst"
@@ -72,7 +71,6 @@
 #define kAttemptOffsetAutoAdjustInOneHandedkey @"rightinset"
 #define kEnabledSmartDeletekey @"smartdeleteBOOL"
 #define kEnabledSmartDeleteForwardkey @"smartdeleteforwardBOOL"
-#define kEnabledSkipEmojikey @"skipEmojiInputBOOL"
 #define kShortLabelEnabledKey @"shortLabelBOOL"
 #define kCellHeightkey @"shortcutheight"
 #define kCellRadiuskey @"shortcutradius"
@@ -103,7 +101,6 @@
 #define maxshortcutpersection_onehanded 6
 #define granularity 3
 
-#define maxdefaultshortcutskbtype 3
 
 #define topInsetDefault 22.0f
 #define bottomInsetDefault 0.0f

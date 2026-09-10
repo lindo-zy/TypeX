@@ -10,11 +10,13 @@
 #import <objc/message.h>
 
 static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
-    return [selector isEqualToString:@"runCommandAction:"] ||
-           [selector isEqualToString:@"spongebobAction:"];
+    return ![DXShortcutsGenerator isAvailableShortcutSelector:selector];
 }
 
 static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
+    NSArray *fullGroups = cache[@"fullshortcuts"];
+    if (![fullGroups isKindOfClass:[NSArray class]] || fullGroups.count < 3 ||
+        ![fullGroups[2] isEqual:[[DXShortcutsGenerator sharedInstance] selectorNameForLongPress:NO]]) return YES;
     NSArray *shortcutGroups = cache[@"shortcuts"];
     if (![shortcutGroups isKindOfClass:[NSArray class]] || shortcutGroups.count < 3) {
         return NO;
@@ -62,33 +64,24 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
         
         
         
-        // A cache is only safe when the user has never customized either
-        // shortcut order or keyboard types.  On iOS 17 the collection view can
+        // A cache is only safe when the user has never customized the
+        // shortcut order.  On iOS 17 the collection view can
         // outlive the Settings controller, so a stale cache otherwise masks the
         // newly written configuration.
         NSString *shortcutsKey = [self scopedPreferenceKey:kShortcutskey];
-        NSString *keyboardTypeKey = [self scopedPreferenceKey:kKeyboardTypekey];
         NSString *cacheKey = [self scopedPreferenceKey:kCachekey];
         if (prefs[cacheKey] && !DXShortcutCacheContainsHiddenSelectors(prefs[cacheKey]) &&
             [prefs[cacheKey][@"shortcuts"][kbuttonsImages12] count] <= [self shortcutsPerSection] &&
-            !prefs[shortcutsKey] && !prefs[keyboardTypeKey]){
+            !prefs[shortcutsKey]){
             NSDictionary *cache = prefs[cacheKey];
             self.shortcuts = cache[@"shortcuts"];
             self.fullshortcuts = cache[@"fullshortcuts"];
-            self.kbType = cache[@"kbType"];
-            self.kbTypeLabel = cache[@"kbTypeLabel"];
-            self.keyboardTypeDataFull = cache[@"keyboardTypeDataFull"];
-            self.keyboardTypeLabelFull = cache[@"keyboardTypeLabelFull"];
             //HBLogDebug(@"Utilized cache");
         }else{
             //HBLogDebug(@"Update cache");
             
             NSMutableDictionary *cache = [[NSMutableDictionary alloc] init];
             
-            self.keyboardTypeDataFull = [self.shortcutsGenerator keyboardTypeData];
-            self.keyboardTypeLabelFull = [self.shortcutsGenerator keyboardTypeLabel];
-            cache[@"keyboardTypeDataFull"] = self.keyboardTypeDataFull;
-            cache[@"keyboardTypeLabelFull"] = self.keyboardTypeLabelFull;
             
             NSMutableArray *currentOrderDefault12 = [[self.shortcutsGenerator imageNameArrayForiOS:0] mutableCopy];
             NSMutableArray *currentOrderDefault13 =  [[self.shortcutsGenerator imageNameArrayForiOS:1] mutableCopy];
@@ -144,29 +137,6 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
             cache[@"fullshortcuts"] = self.fullshortcuts;
             
             
-            NSMutableArray *kbTypeActive = [[NSMutableArray alloc] init];
-            NSMutableArray *kbTypeActiveLabel = [[NSMutableArray alloc] init];
-            
-            if (prefs[keyboardTypeKey]){
-                
-                for (NSDictionary *item in prefs[keyboardTypeKey][0]){
-                    [kbTypeActive addObject:[NSNumber numberWithInt:[item[@"data"] intValue]]];
-                    NSUInteger index = [self.keyboardTypeDataFull indexOfObject:item[@"data"]];
-                    [kbTypeActiveLabel addObject:self.keyboardTypeLabelFull[index]];
-                    
-                }
-                
-            }else{
-                for (int i = 0; i < maxdefaultshortcutskbtype; i++){
-                    [kbTypeActive addObject:self.keyboardTypeDataFull[i]];
-                    [kbTypeActiveLabel addObject:self.keyboardTypeLabelFull[i]];
-                }
-            }
-            self.kbType = kbTypeActive;
-            self.kbTypeLabel = kbTypeActiveLabel;
-            cache[@"kbType"] = self.kbType;
-            cache[@"kbTypeLabel"] = self.kbTypeLabel;
-            
             dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
                 [[DXPrefsManager sharedInstance] setValue:cache forKey:cacheKey fromSandbox:[DXPrefsManager isRunningInSandbox]];
                 prefs = [[[DXPrefsManager sharedInstance] readPrefsFromSandbox:[DXPrefsManager isRunningInSandbox]] mutableCopy];
@@ -201,7 +171,6 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(scrollForward:) name:@"scrollForward" object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateAutoCorrection:) name:@"updateAutoCorrection" object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateAutoCapitalization:) name:@"updateAutoCapitalization" object:nil];
-        //[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateKeyboardType:) name:UITextFieldTextDidBeginEditingNotification object:nil];
         
     }
     
@@ -242,9 +211,6 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     //HBLogDebug(@"didEndDisplayingCell: %@", indexPath);
     if (indexPath.section == 0 && indexPath.row == 0){
         self.firstCellVisible = NO;
-    }
-    if (indexPath == self.keyboardInputTypeCellIndexPath){
-        self.keyboardInputTypeCell = nil;
     }
 }
 
@@ -608,9 +574,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     NSMutableArray *selectors = [NSMutableArray array];
     NSMutableArray *selectorsLP = [NSMutableArray array];
     NSString *shortcutsKey = [self scopedPreferenceKey:kShortcutskey];
-    NSString *keyboardTypeKey = [self scopedPreferenceKey:kKeyboardTypekey];
     NSArray *configuredShortcuts = currentPrefs[shortcutsKey];
-    NSArray *configuredKeyboardTypes = currentPrefs[keyboardTypeKey];
 
     // Top and bottom shortcuts are fully decoupled.  When a scoped key has no
     // persisted value (e.g. user never opened "顶部设置"), the else-branch
@@ -646,29 +610,6 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     self.shortcuts = @[images12, images13, selectors, selectorsLP];
     //HBLogDebug(@"reloadShortcutConfiguration built shortcuts count=%lu for scope=%@", (unsigned long)images12.count, self.configuration);
     self.fullshortcuts = @[defaultImages12, defaultImages13, defaultSelectors, defaultSelectorsLP];
-    self.keyboardTypeDataFull = [self.shortcutsGenerator keyboardTypeData];
-    self.keyboardTypeLabelFull = [self.shortcutsGenerator keyboardTypeLabel];
-    NSMutableArray *activeKeyboardTypes = [NSMutableArray array];
-    NSMutableArray *activeKeyboardLabels = [NSMutableArray array];
-    if ([configuredKeyboardTypes isKindOfClass:[NSArray class]] && configuredKeyboardTypes.count > 0) {
-        for (NSDictionary *item in configuredKeyboardTypes[0]) {
-            NSNumber *data = item[@"data"];
-            NSUInteger index = [self.keyboardTypeDataFull indexOfObject:data];
-            if (data && index != NSNotFound) {
-                [activeKeyboardTypes addObject:data];
-                [activeKeyboardLabels addObject:self.keyboardTypeLabelFull[index]];
-            }
-        }
-    }
-    if (activeKeyboardTypes.count == 0) {
-        NSUInteger count = MIN((NSUInteger)maxdefaultshortcutskbtype, self.keyboardTypeDataFull.count);
-        for (NSUInteger index = 0; index < count; index++) {
-            [activeKeyboardTypes addObject:self.keyboardTypeDataFull[index]];
-            [activeKeyboardLabels addObject:self.keyboardTypeLabelFull[index]];
-        }
-    }
-    self.kbType = activeKeyboardTypes;
-    self.kbTypeLabel = activeKeyboardLabels;
     self.pagingEnabled = preferencesBool([self scopedPreferenceKey:kPagingkey], preferencesBool(kPagingkey, YES));
     self.indexArray = nil;
     self.sectionOffsetForwardArray = nil;
@@ -946,37 +887,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
         NSString *actionName = [DXHelper localizedStringOfToastForActionNamed:selname bundle:tweakBundle];
         
         //HBLogDebug(@"^^^^^^^^^actionName: %@", actionName);
-        if ([selname isEqualToString:@"keyboardTypeAction:"]){
-            NSUInteger index = [self.kbType indexOfObject:[NSNumber numberWithInt:[delegate keyboardType]>12?0:[delegate keyboardType]]];
-            if (index != NSNotFound){
-                NSUInteger idx = index + 1;
-                if (index < [self.kbType count] - 1 ){
-                    if ([delegate keyboardType] < 0){
-                        idx = idx + 1;
-                    }
-                    actionName = self.kbTypeLabel[idx];
-                    
-                }else{
-                    actionName = self.kbTypeLabel[0];
-                }
-            }else{
-                actionName = LOCALIZED(@"TOAST_KEYBOARD_TYPE_DEFAULT");
-            }
-            //if (preferencesInt(kDisplayTypekey, 0) == 1){
-            //tw = tw + 15;
-            //}
-        }else if ([selname isEqualToString:@"keyboardTypeActionLP:"]){
-            NSUInteger index = [self.kbType indexOfObject:[NSNumber numberWithInt:self.trueKBType]];
-            if (index != NSNotFound){
-                actionName = self.kbTypeLabel[index];
-            }else{
-                actionName = LOCALIZED(@"TOAST_KEYBOARD_TYPE_DEFAULT");
-            }
-            //if (preferencesInt(kDisplayTypekey, 0) == 1){
-            //tw = tw + 15;
-            //}
-            selname = @"keyboardTypeAction:";
-        }else if ([selname containsString:@"runCommandAction"]){
+        if ([selname containsString:@"runCommandAction"]){
             actionName = self.commandTitle;
             //if (preferencesInt(kDisplayTypekey, 0) == 1){
             //tw = tw + 15;
@@ -1281,77 +1192,8 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     [self autoPaginationControl];
 }
 
--(void)capitalizeAction:(UIButton*)sender{
-    [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:10  toastHeightOffset:0];
-    NSString *selectedString = [delegate textInRange:[delegate selectedTextRange]];
-    if (!selectedString.length) {
-        UITextRange *textRange = [self selectedWordTextRangeWithDelegate:delegate];
-        
-        if (!textRange)
-            return;
-        UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
-        tempDelegate.selectedTextRange = textRange;
-        
-        NSString *capitalizedStrings = [[delegate textInRange:textRange] capitalizedString];
-        [kbImpl insertText:capitalizedStrings];
-        
-    }else{
-        NSString *capitalizedStrings = [selectedString capitalizedString];
-        [kbImpl insertText:capitalizedStrings];
-    }
-    [kbImpl clearTransientState];
-    [kbImpl clearAnimations];
-    [kbImpl setCaretBlinks:YES];
-    [self autoPaginationControl];
-}
 
--(void)lowercaseAction:(UIButton*)sender{
-    [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:10  toastHeightOffset:-5];
-    NSString *selectedString = [delegate textInRange:[delegate selectedTextRange]];
-    if (!selectedString.length) {
-        UITextRange *textRange = [self selectedWordTextRangeWithDelegate:delegate];
-        
-        if (!textRange)
-            return;
-        UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
-        tempDelegate.selectedTextRange = textRange;
-        
-        NSString *lowercaseStrings = [[delegate textInRange:textRange] lowercaseString];
-        [kbImpl insertText:lowercaseStrings];
-    }else{
-        NSString *lowercaseStrings = [selectedString lowercaseString];
-        [kbImpl insertText:lowercaseStrings];
-    }
-    [kbImpl clearTransientState];
-    [kbImpl clearAnimations];
-    [kbImpl setCaretBlinks:YES];
-    [self autoPaginationControl];
-}
 
--(void)uppercaseAction:(UIButton*)sender{
-    [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
-    NSString *selectedString = [delegate textInRange:[delegate selectedTextRange]];
-    if (!selectedString.length) {
-        UITextRange *textRange = [self selectedWordTextRangeWithDelegate:delegate];
-        
-        if (!textRange) return;
-        UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
-        tempDelegate.selectedTextRange = textRange;
-        
-        NSString *uppercaseStrings = [[delegate textInRange:textRange] uppercaseString];
-        [kbImpl insertText:uppercaseStrings];
-    }else{
-        NSString *uppercaseStrings = [selectedString uppercaseString];
-        [kbImpl insertText:uppercaseStrings];
-    }
-    [kbImpl clearTransientState];
-    [kbImpl clearAnimations];
-    [kbImpl setCaretBlinks:YES];
-    [self autoPaginationControl];
-}
 
 -(void)deleteAction:(UIButton*)sender{
     [self autoPaginationControl];
@@ -1435,95 +1277,9 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     });
 }
 
-/*
- -(void)boldAction:(UIButton*)sender{
- [self triggerImpactAndAnimationWithButton:sender selectorName:NSStringFromSelector(_cmd) toastWidthOffset:0 toastHeightOffset:0];
- kbImpl = [objc_getClass("UIKeyboardImpl") activeInstance];
- delegate = DXKeyboardInputDelegate(kbImpl);
- UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
- 
- BOOL isWKContentView = [tempDelegate isKindOfClass:objc_getClass("WKContentView")];
- if (isWKContentView){
- [(WKContentView *)tempDelegate executeEditCommandWithCallback:@"toggleBold"];
- }else{
- //HBLogDebug(@"tempDelegate: %@", tempDelegate);
- BOOL isUITextView = [tempDelegate respondsToSelector:@selector(allowsEditingTextAttributes)];
- //HBLogDebug(@"isUITextView: %d",  isUITextView?1:0);
- 
- //BOOL isUITextView = [[tempDelegate superclass] isKindOfClass:objc_getClass("UITextView")];
- if (isUITextView){
- UITextView *textViewDelegate = (UITextView *)delegate;
- //HBLogDebug(@"allowsEditingTextAttributes: %d",  textViewDelegate.allowsEditingTextAttributes?1:0);
- if (textViewDelegate.allowsEditingTextAttributes){
- [textViewDelegate toggleBoldface:nil];
- }else{
- 
- UITextRange *textRange = [self selectedWordTextRangeWithDelegate:delegate];
- 
- UITextPosition *beginning = textViewDelegate.beginningOfDocument;
- UITextPosition* selectionStart = textRange.start;
- UITextPosition* selectionEnd = textRange.end;
- 
- const NSInteger location = [textViewDelegate offsetFromPosition:beginning toPosition:selectionStart];
- const NSInteger length = [textViewDelegate offsetFromPosition:selectionStart toPosition:selectionEnd];
- 
- NSRange range = NSMakeRange(location, length);
- NSMutableDictionary *attrDict = [(NSMutableDictionary *)[textViewDelegate.textStorage attributesAtIndex:0 effectiveRange:&range] mutableCopy];
- UIFont *font = [attrDict objectForKey:NSFontAttributeName];
- UIFontDescriptor *fontD = [font.fontDescriptor
- fontDescriptorWithSymbolicTraits:UIFontDescriptorTraitBold];
- UIFont *newFont = [UIFont fontWithDescriptor:fontD size:0];
- [attrDict setObject:newFont forKey:NSFontAttributeName ];
- [textViewDelegate.textStorage setAttributes:attrDict range:range];
- 
- }
- }
- }
- 
- }
- */
 
--(void)boldAction:(UIButton*)sender{
-    [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
-    UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
-    
-    BOOL isWKContentView = [tempDelegate isKindOfClass:objc_getClass("WKContentView")];
-    if (isWKContentView){
-        [(WKContentView *)tempDelegate executeEditCommandWithCallback:@"toggleBold"];
-    }else{
-        [tempDelegate toggleBoldface:nil];
-    }
-    [self autoPaginationControl];
-}
 
--(void)italicAction:(UIButton*)sender{
-    [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
-    UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
-    
-    BOOL isWKContentView = [tempDelegate isKindOfClass:objc_getClass("WKContentView")];
-    if (isWKContentView){
-        [(WKContentView *)tempDelegate executeEditCommandWithCallback:@"toggleItalic"];
-    }else{
-        [tempDelegate toggleItalics:nil];
-    }
-    [self autoPaginationControl];
-}
 
--(void)underlineAction:(UIButton*)sender{
-    [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
-    UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
-    
-    BOOL isWKContentView = [tempDelegate isKindOfClass:objc_getClass("WKContentView")];
-    if (isWKContentView){
-        [(WKContentView *)tempDelegate executeEditCommandWithCallback:@"toggleUnderline"];
-    }else{
-        [tempDelegate toggleUnderline:nil];
-    }
-    [self autoPaginationControl];
-}
 
 -(void)dismissKeyboardAction:(UIButton*)sender{
     [self autoPaginationControl];
@@ -2038,77 +1794,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     [self autoPaginationControl];
 }
 
--(void)keyboardTypeAction:(UIButton*)sender{
-    [self autoPaginationControl];
-    kbImpl = [objc_getClass("UIKeyboardImpl") activeInstance];
-    delegate = DXKeyboardInputDelegate(kbImpl);
-    if ([delegate respondsToSelector:@selector(keyboardType)]){
-        //HBLogDebug(@"keyboardTypeAction: %ld", [delegate keyboardType]);
-        [self triggerImpactAndAnimationWithButton:sender selectorName:NSStringFromSelector(_cmd) toastWidthOffset:0 toastHeightOffset:0];
-        [self beginUpdateDelegate];
-        
-        NSUInteger index = [self.kbType indexOfObject:[NSNumber numberWithInt:[delegate keyboardType]>12?0:[delegate keyboardType]]];
-        //HBLogDebug(@"kbtype current index: %ld, count: %lu", index, [self.kbType count]);
-        if (index < [self.kbType count] - 1 ){
-            int kbTypeInt = [self.kbType[index+1] intValue];
-            //HBLogDebug(@"XXXXXX===== kbTypeInt: %d, keyboardType: %@", kbTypeInt, [NSNumber numberWithInt:[delegate keyboardType]]);
-            if ([delegate keyboardType] < 0 || kbTypeInt == -1 ){
-                kbTypeInt = [self.kbType[index+2] intValue];
-            }
-            if (kbTypeInt >= 0){
-                [delegate setKeyboardType:kbTypeInt];
-            }else{
-                [delegate setKeyboardType:self.trueKBType];
-            }
-        }else{
-            //HBLogDebug(@"ELSEEEEEE");
-            //HBLogDebug(@"self.kbType: %@", self.kbType);
-            int kbTypeInt = [self.kbType[0] intValue];
-            int i = 1;
-            while (kbTypeInt == (int)[delegate keyboardType]){
-                kbTypeInt = [self.kbType[i] intValue];
-                i = i + 1;
-            }
-            [delegate setKeyboardType:kbTypeInt];
-        }
-        [delegate reloadInputViews];
-    }
-    [self autoPaginationControl];
-}
 
--(void)updateKeyboardType:(NSNotification*)notification{
-    //HBLogDebug(@"updateKeyboardType");
-    kbImpl = [objc_getClass("UIKeyboardImpl") activeInstance];
-    delegate = DXKeyboardInputDelegate(kbImpl);
-    NSMutableAttributedString *imageOfName = [[NSMutableAttributedString alloc] initWithString:@""];
-    
-    UIImage *image;
-    NSMutableAttributedString *attributeString = [[NSMutableAttributedString alloc] initWithString:@"Input"];
-    NSMutableAttributedString *strikedAttributeString = [attributeString mutableCopy];
-    [strikedAttributeString addAttribute:NSStrikethroughStyleAttributeName value:@2 range:NSMakeRange(0, [attributeString length])];
-    
-    if (@available(iOS 13.0, *)){
-        if (useShortenedLabel){
-            imageOfName = [delegate respondsToSelector:@selector(keyboardType)]?attributeString:strikedAttributeString;
-        }else{
-            image = [UIImage systemImageNamed:[delegate respondsToSelector:@selector(keyboardType)]?@"number.circle.fill":@"number.circle"];
-        }
-    }else{
-        if (useShortenedLabel){
-            imageOfName = [delegate respondsToSelector:@selector(keyboardType)]?attributeString:strikedAttributeString;
-        }else{
-            image = [UIImage imageNamed:[delegate respondsToSelector:@selector(keyboardType)]?@"reachable_full":@"dictation_keyboard_dark" inBundle:[NSBundle bundleWithPath:@"/System/Library/PrivateFrameworks/UIKitCore.framework/Artwork.bundle"] compatibleWithTraitCollection:NULL];
-        }
-    }
-    
-    if (useShortenedLabel){
-        [self.keyboardInputTypeCell.btn setImage:nil forState:UIControlStateNormal];
-        [self.keyboardInputTypeCell.btn setAttributedTitle:imageOfName forState:UIControlStateNormal];
-    }else{
-        [self.keyboardInputTypeCell.btn setAttributedTitle:nil forState:UIControlStateNormal];
-        [self.keyboardInputTypeCell.btn setImage:image forState:UIControlStateNormal];
-    }
-}
 
 -(void)defineAction:(UIButton*)sender{
     [self autoPaginationControl];
@@ -2231,30 +1917,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     [self autoPaginationControl];
 }
 
--(void)globeAction:(UIButton*)sender{
-    [self autoPaginationControl];
-    [self triggerImpactAndAnimationWithButton:sender selectorName:NSStringFromSelector(_cmd) toastWidthOffset:0 toastHeightOffset:0];
-    UIKeyboardInputModeController *kbController = [objc_getClass("UIKeyboardInputModeController") sharedInputModeController];
-    UIKeyboardInputMode *currentInputMode = [kbController currentInputMode];
-    NSMutableArray* activeInputs = [kbController activeInputModes];
-    NSUInteger indexOfCurrentInputMode = [activeInputs indexOfObject:currentInputMode];
-    if (preferencesBool(kEnabledSkipEmojikey, YES)){
-        NSPredicate *emojiInputArray = [NSPredicate predicateWithFormat:@"SELF.normalizedIdentifier contains[cd] %@", @"emoji"];
-        UIKeyboardInputMode *emojiInputmode = [[activeInputs filteredArrayUsingPredicate:emojiInputArray] firstObject];
-        if (emojiInputmode) [activeInputs removeObject:emojiInputmode];
-    }
-    NSUInteger nextInputModeIndex = indexOfCurrentInputMode + 1;
-    nextInputModeIndex = nextInputModeIndex >= [activeInputs count] ? 0 : nextInputModeIndex;
-    [kbController setCurrentInputMode:activeInputs[nextInputModeIndex]];
-    [self autoPaginationControl];
-}
 
--(void)dictationAction:(UIButton*)sender{
-    [self autoPaginationControl];
-    [self triggerImpactAndAnimationWithButton:sender selectorName:NSStringFromSelector(_cmd) toastWidthOffset:0 toastHeightOffset:0];
-    [[objc_getClass("UIDictationController") sharedInstance] switchToDictationInputModeWithTouch:nil];
-    [self autoPaginationControl];
-}
 
 -(BOOL)boolWithProbability:(double)probability{
     return rand() <  probability * ((double)RAND_MAX + 1.0);
@@ -2484,32 +2147,8 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     }
 }
 
--(void)capitalizeActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 2;
-        [self uppercaseAction:nil];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
 
--(void)lowercaseActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 2;
-        [self uppercaseAction:nil];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
 
--(void)uppercaseActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 2;
-        [self lowercaseAction:nil];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
 
 -(void)deleteActionLP:(UILongPressGestureRecognizer *)recognizer{
     if (recognizer.state == UIGestureRecognizerStateBegan) {
@@ -2529,56 +2168,10 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     }
 }
 
--(void)boldActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 0;
-        [self selectAction:nil];
-        self.hapticType = 2;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(secondActionDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self boldAction:nil];
-        });
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
 
--(void)italicActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 0;
-        [self selectAction:nil];
-        self.hapticType = 2;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(secondActionDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self italicAction:nil];
-        });
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
 
--(void)underlineActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 0;
-        [self selectAction:nil];
-        self.hapticType = 2;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(secondActionDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self underlineAction:nil];
-        });
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
 
 -(void)dismissKeyboardActionLP:(UILongPressGestureRecognizer *)recognizer{
-    /*
-     if (recognizer.state == UIGestureRecognizerStateBegan) {
-     self.hapticType = 0;
-     [self selectAction:nil];
-     self.hapticType = 2;
-     [self underlineAction:nil];
-     }else if (recognizer.state == UIGestureRecognizerStateEnded){
-     [self shakeView:recognizer.view];
-     }
-     */
 }
 
 -(void)retestGestureStatusForMovingCursor:(NSTimer *)timer{
@@ -3092,65 +2685,13 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 }
 
 -(void)autoCorrectionActionLP:(UILongPressGestureRecognizer *)recognizer{
-    /*
-     if (recognizer.state == UIGestureRecognizerStateBegan) {
-     self.hapticType = 0;
-     [self selectAction:nil];
-     self.hapticType = 2;
-     [self underlineAction:nil];
-     }else if (recognizer.state == UIGestureRecognizerStateEnded){
-     [self shakeView:recognizer.view];
-     }
-     */
 }
 
 -(void)autoCapitalizationActionLP:(UILongPressGestureRecognizer *)recognizer{
-    /*
-     if (recognizer.state == UIGestureRecognizerStateBegan) {
-     self.hapticType = 0;
-     [self selectAction:nil];
-     self.hapticType = 2;
-     [self underlineAction:nil];
-     }else if (recognizer.state == UIGestureRecognizerStateEnded){
-     [self shakeView:recognizer.view];
-     }
-     */
 }
 
--(void)keyboardTypeActionLP:(UILongPressGestureRecognizer *)recognizer{
-    
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        kbImpl = [objc_getClass("UIKeyboardImpl") activeInstance];
-        delegate = DXKeyboardInputDelegate(kbImpl);
-        if ([delegate respondsToSelector:@selector(keyboardType)]){
-            self.hapticType = 2;
-            [self triggerImpactAndAnimationWithButton:nil selectorName:NSStringFromSelector(_cmd) toastWidthOffset:0 toastHeightOffset:0];
-            kbImpl = [objc_getClass("UIKeyboardImpl") activeInstance];
-            delegate = DXKeyboardInputDelegate(kbImpl);
-            [delegate setKeyboardType:self.trueKBType];
-            [delegate reloadInputViews];
-        }
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        kbImpl = [objc_getClass("UIKeyboardImpl") activeInstance];
-        delegate = DXKeyboardInputDelegate(kbImpl);
-        if ([delegate respondsToSelector:@selector(keyboardType)]){
-            [self shakeView:recognizer.view];
-        }
-    }
-    
-}
 
 -(void)defineActionLP:(UILongPressGestureRecognizer *)recognizer{
-    /*
-     if (recognizer.state == UIGestureRecognizerStateBegan) {
-     self.hapticType = 0;
-     [self selectAction:nil];
-     self.hapticType = 2;
-     [self underlineAction:nil];
-     }else if (recognizer.state == UIGestureRecognizerStateEnded){
-     [self shakeView:recognizer.view];
-     }
-     */
 }
 
 -(void)runCommandActionLP:(UILongPressGestureRecognizer *)recognizer{
@@ -3179,15 +2720,6 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     return DXKeyWindow();
 }
 
--(void)globeActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 2;
-        [self dictationAction:nil];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-    
-}
 
 -(void)spongebobActionLP:(UILongPressGestureRecognizer *)recognizer{
     if (recognizer.state == UIGestureRecognizerStateBegan) {
@@ -3415,23 +2947,6 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
             imageOfName = useShortenedLabel ? self.autoCapitalizationEnabled?attributeString:strikedAttributeString : self.autoCapitalizationEnabled?[@"shift.fill" attributedString]:[@"shift" attributedString];
         }else{
             imageOfName = useShortenedLabel ? self.autoCapitalizationEnabled?attributeString:strikedAttributeString : self.autoCapitalizationEnabled?[@"shift_on_portrait" attributedString]:[@"shift_portrait" attributedString];
-        }
-        if (!useShortenedLabel) image = [DXHelper imageForName:imageOfName.string  withSystemColor:NO completion:nil];
-    }else if ([selectorName isEqualToString:@"keyboardTypeAction:"]){
-        self.keyboardInputTypeCell = cell;
-        self.keyboardInputTypeCellIndexPath = indexPath;
-        
-        [self beginUpdateDelegate];
-        BOOL keyboardTypeChangable = [delegate respondsToSelector:@selector(keyboardType)];
-        
-        NSMutableAttributedString *attributeString = [[NSMutableAttributedString alloc] initWithString:[DXHelper localizedStringForActionNamed:selectorName shortName:YES bundle:tweakBundle]];
-        NSMutableAttributedString *strikedAttributeString = [attributeString mutableCopy];
-        [strikedAttributeString addAttribute:NSStrikethroughStyleAttributeName value:@2 range:NSMakeRange(0, [attributeString length])];
-        
-        if (@available(iOS 13.0, *)){
-            imageOfName = useShortenedLabel ? keyboardTypeChangable?attributeString:strikedAttributeString : keyboardTypeChangable?[@"number.circle.fill" attributedString]:[@"number.circle" attributedString];
-        }else{
-            imageOfName = useShortenedLabel ? keyboardTypeChangable?attributeString:strikedAttributeString : keyboardTypeChangable?[@"reachable_full" attributedString]:[@"dictation_keyboard_dark" attributedString];
         }
         if (!useShortenedLabel) image = [DXHelper imageForName:imageOfName.string  withSystemColor:NO completion:nil];
     }else{

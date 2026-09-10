@@ -12,19 +12,12 @@
 "SHORT_SELECT" = "选择";
 "SHORT_BEGINNING" = "开头";
 "SHORT_ENDING" = "结尾";
-"SHORT_CAPITALIZE" = "大写锁定";
-"SHORT_LOWERCASE" = "小写";
-"SHORT_UPPERCASE" = "大写";
 "SHORT_DELETE" = "删除";
-"SHORT_BOLD" = "粗体";
-"SHORT_ITALIC" = "斜体";
-"SHORT_UNDERLINE" = "下划线";
 "SHORT_DISMISS_KEYBOARD" = "收起";
 "SHORT_MOVE_CURSOR_LEFT" = "左";
 "SHORT_MOVE_CURSOR_RIGHT" = "右";
 "SHORT_AUTO_CORRECTION" = "自动更正";
 "SHORT_AUTO_CAPITALIZATION" = "自动大写";
-"SHORT_KEYBOARD_TYPE" = "输入法";
 "SHORT_MOVE_CURSOR_UP" = "上";
 "SHORT_MOVE_CURSOR_DOWN" = "下";
 "SHORT_DEFINE" = "查词";
@@ -41,8 +34,6 @@
 "SHORT_SELECT_LINE" = "选择行";
 "SHORT_SELECT_PARAGRAPH" = "选择段落";
 "SHORT_SELECT_SENTENCE" = "选择句子";
-"SHORT_GLOBE" = "地球键";
-"SHORT_DICTATION" = "听写";
 "SHORT_DELETE_FORWARD" = "向后删除";
 "SHORT_COPY_LOG" = "复制记录";
 "SHORT_SPONGEBOB" = "sPoNge";
@@ -58,19 +49,12 @@
 "LONG_SELECT" = "选择";
 "LONG_BEGINNING" = "移动到文档开头";
 "LONG_ENDING" = "移动到文档末尾";
-"LONG_CAPITALIZE" = "将最后一个词设为大写";
-"LONG_LOWERCASE" = "转换为小写";
-"LONG_UPPERCASE" = "转换为大写";
 "LONG_DELETE" = "删除";
-"LONG_BOLD" = "加粗";
-"LONG_ITALIC" = "斜体";
-"LONG_UNDERLINE" = "下划线";
 "LONG_DISMISS_KEYBOARD" = "收起键盘";
 "LONG_MOVE_CURSOR_LEFT" = "光标向左";
 "LONG_MOVE_CURSOR_RIGHT" = "光标向右";
 "LONG_AUTO_CORRECTION" = "自动更正";
 "LONG_AUTO_CAPITALIZATION" = "自动大写";
-"LONG_KEYBOARD_TYPE" = "输入法";
 "LONG_MOVE_CURSOR_UP" = "光标向上";
 "LONG_MOVE_CURSOR_DOWN" = "光标向下";
 "LONG_DEFINE" = "查词";
@@ -87,8 +71,6 @@
 "LONG_SELECT_LINE" = "选择整行";
 "LONG_SELECT_PARAGRAPH" = "选择整段";
 "LONG_SELECT_SENTENCE" = "选择整句";
-"LONG_GLOBE" = "地球键";
-"LONG_DICTATION" = "听写";
 "LONG_DELETE_FORWARD" = "向后删除";
 "LONG_COPY_LOG" = "复制记录";
 "LONG_SPONGEBOB" = "sPonGeBob teXt";
@@ -103,19 +85,12 @@
 "TOAST_SELECT" = "选择";
 "TOAST_BEGINNING" = "移动到文档开头";
 "TOAST_ENDING" = "移动到文档末尾";
-"TOAST_CAPITALIZE" = "切换大写锁定";
-"TOAST_LOWERCASE" = "转换为小写";
-"TOAST_UPPERCASE" = "转换为大写";
 "TOAST_DELETE" = "删除";
-"TOAST_BOLD" = "切换粗体";
-"TOAST_ITALIC" = "切换斜体";
-"TOAST_UNDERLINE" = "切换下划线";
 "TOAST_DISMISS_KEYBOARD" = "收起键盘";
 "TOAST_MOVE_CURSOR_LEFT" = "光标向左";
 "TOAST_MOVE_CURSOR_RIGHT" = "光标向右";
 "TOAST_AUTO_CORRECTION" = "自动更正";
 "TOAST_AUTO_CAPITALIZATION" = "自动大写";
-"TOAST_KEYBOARD_TYPE" = "输入法";
 "TOAST_MOVE_CURSOR_UP" = "光标向上";
 "TOAST_MOVE_CURSOR_DOWN" = "光标向下";
 "TOAST_DEFINE" = "查词";
@@ -132,32 +107,14 @@
 "TOAST_SELECT_LINE" = "选择整行";
 "TOAST_SELECT_PARAGRAPH" = "选择整段";
 "TOAST_SELECT_SENTENCE" = "选择整句";
-"TOAST_GLOBE" = "切换输入法";
-"TOAST_DICTATION" = "听写";
 "TOAST_DELETE_FORWARD" = "向后删除";
 "TOAST_COPY_LOG" = "复制记录";
 "TOAST_SPONGEBOB" = "sPoNge";
 "TOAST_ON" = "开启";
 "TOAST_OFF" = "关闭";
-"TOAST_KEYBOARD_TYPE_GENERIC" = "通用";
-"TOAST_KEYBOARD_TYPE_DEFAULT" = "默认";
-"TOAST_KEYBOARD_TYPE_ORIGINAL" = "原始";
-"TOAST_KEYBOARD_TYPE_DECIMAL_PAD" = "十进制数字键盘";
-"TOAST_KEYBOARD_TYPE_NUMBER_PAD" = "数字键盘";
-"TOAST_KEYBOARD_TYPE_URL" = "网址键盘";
-"TOAST_KEYBOARD_TYPE_EMAIL" = "电子邮件键盘";
-"TOAST_KEYBOARD_TYPE_ASCII" = "ASCII 键盘";
-"TOAST_KEYBOARD_TYPE_NUMBERS_AND_PUNC" = "数字与符号键盘";
-"TOAST_KEYBOARD_TYPE_PHONE_PAD" = "电话键盘";
-"TOAST_KEYBOARD_TYPE_NAME_AND_PHONE_PAD" = "姓名和电话键盘";
-"TOAST_KEYBOARD_TYPE_TWITTER" = "Twitter 键盘";
-"TOAST_KEYBOARD_TYPE_WEB_SEARCH" = "网络搜索键盘";
-"TOAST_KEYBOARD_TYPE_NUMBER_PAD_ASCII" = "ASCII 数字键盘";
-"TOAST_KEYBOARD_TYPE_ALPHABET" = "字母";
 
 //=====================Manage Shortcuts=====================
 //Extras
-"EXTRAS_KEYBOARD_INPUT_BEHAVIOUR" = "键盘输入行为";
 "EXTRAS_SHELL_COMMANDS" = "命令行";
 "EXTRAS_INSERT_TEXT_CONTENT" = "插入文本内容";
 "EXTRAS_PREVIOUS_WORD_BEHAVIOUR" = "上一个词行为";
@@ -170,7 +127,6 @@
 "EXTRAS_END_OF_SENTENCE_BEHAVIOUR" = "句尾行为";
 "EXTRAS_DELETE_BEHAVIOUR" = "删除行为";
 "EXTRAS_DELETE_FORWARD_BEHAVIOUR" = "向后删除行为";
-"EXTRAS_GLOBE_BEHAVIOUR" = "地球键行为";
 "EXTRAS_PASTE_BEHAVIOUR" = "粘贴行为";
 
 //Title
@@ -226,7 +182,6 @@
 "ENABLED_INPUT_TYPE" = "已启用的输入法";
 "FOOTER_ENABLED" = "启用后，点击快捷方式即可循环切换输入法。如果“默认”与“原始”相同，将跳过“默认”。请至少选择两个项目，并包含“原始”。\n\n注意：某些输入法不支持切换输入类型，TypeX 会将当前图标显示为空心、灰色或带删除线，以表示该状态。";
 "RESET_TO_DEFAULT_MESSAGE" = "恢复为默认设置？";
-"KEYBOARD_INPUT_TYPE_TITLE" = "输入法切换";
 
 //=====================CURSOR BEHAVIOR=====================
 "CURSOR_BEHAVIOR_WHOLE_PARA" = "整段";
@@ -265,8 +220,6 @@
 "FOOTER_DELETE" = "智能删除会在删除后插入一个空格。\n\n注意：如果未选择任何词语，将选择最近的词语或标点符号进行删除。";
 
 //=====================GLOBE BEHAVIOR=====================
-"EMOJI_KEYBOARD" = "Emoji 键盘";
-"SKIP_EMOJI" = "跳过 Emoji";
 
 //=====================PASTE BEHAVIOR=====================
 "SAFARI" = "Safari";

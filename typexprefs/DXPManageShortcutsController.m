@@ -1,21 +1,18 @@
 #import "DXPManageShortcutsController.h"
 #import "DXPCustomActionViewController.h"
-#import "DXPKeyboardTypeOptions.h"
 #import "DXPInsertTextEntryController.h"
 #import "DXPCursorMoveAndSelectEntryController.h"
 #import "../DXShortcutsGenerator.h"
 #import "../DXHelper.h"
 #import "DXPGesturePickerController.h"
 #import "DXPDeleteOptions.h"
-#import "DXPGlobeOptions.h"
 #import "DXPPasteOptions.h"
 
 static UISearchController *searchController;
 static NSBundle *tweakBundle;
 
 static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
-    return [selector isEqualToString:@"runCommandAction:"] ||
-           [selector isEqualToString:@"spongebobAction:"];
+    return ![DXShortcutsGenerator isAvailableShortcutSelector:selector];
 }
 
 
@@ -193,13 +190,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         [self pushController:gesturePickerController];
         
     }else{
-        if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"keyboardType"]){
-            DXPKeyboardTypeOptions *kbTypeOptions = [[DXPKeyboardTypeOptions alloc] init];
-            kbTypeOptions.configuration = self.topConfiguration ? @"top" : @"bottom";
-            [kbTypeOptions setRootController: [self rootController]];
-            [kbTypeOptions setParentController: [self parentController]];
-            [self pushController:kbTypeOptions];
-        }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"insertText"]){
+        if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"insertText"]){
             DXPInsertTextEntryController *insertTextController = [[DXPInsertTextEntryController alloc] init];
             insertTextController.entryID = @"insertTextAction:";
             insertTextController.configuration = self.topConfiguration ? @"top" : @"bottom";
@@ -276,12 +267,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
             [deleteOptions setRootController: [self rootController]];
             [deleteOptions setParentController: [self parentController]];
             [self pushController:deleteOptions];
-        }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"globe"]){
-            DXPGlobeOptions *globeOptions = [[DXPGlobeOptions alloc] init];
-            globeOptions.configuration = self.topConfiguration ? @"top" : @"bottom";
-            [globeOptions setRootController: [self rootController]];
-            [globeOptions setParentController: [self parentController]];
-            [self pushController:globeOptions];
         }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"paste"]){
             DXPPasteOptions *pasteOptions = [[DXPPasteOptions alloc] init];
             pasteOptions.configuration = self.topConfiguration ? @"top" : @"bottom";
@@ -432,7 +417,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         if (DXIsHiddenShortcutSelector(defaultOrderSelector[i])) {
             continue;
         }
-        if ( i == 0 || i == 6 || i == 35 | i == 36 || i == 37){
+        if ([@[@"selectAllAction:", @"selectAction:", @"selectLineAction:", @"selectParagraphAction:", @"selectSentenceAction:"] containsObject:defaultOrderSelector[i]]){
             [firstOrderDict addObject: @{
                 @"label" : defaultOrderLabel[i],
                 @"images12" : defaultOrder12[i],
@@ -555,10 +540,10 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         self.currentOrder[1] = defaultOrderDict;
     }
     
-    NSArray *extrasOptionsLabel = @[LOCALIZED(@"EXTRAS_KEYBOARD_INPUT_BEHAVIOUR"), LOCALIZED(@"EXTRAS_INSERT_TEXT_CONTENT"), LOCALIZED(@"EXTRAS_PREVIOUS_WORD_BEHAVIOUR"), LOCALIZED(@"EXTRAS_NEXT_WORD_BEHAVIOUR"), LOCALIZED(@"EXTRAS_LINE_START_BEHAVIOUR"), LOCALIZED(@"EXTRAS_LINE_END_BEHAVIOUR"), LOCALIZED(@"EXTRAS_START_OF_PARAGRAPH_BEHAVIOUR"), LOCALIZED(@"EXTRAS_END_OF_PARAGRAPH_BEHAVIOUR"), LOCALIZED(@"EXTRAS_START_OF_SENTENCE_BEHAVIOUR"), LOCALIZED(@"EXTRAS_END_OF_SENTENCE_BEHAVIOUR"), LOCALIZED(@"EXTRAS_DELETE_BEHAVIOUR"), LOCALIZED(@"EXTRAS_DELETE_FORWARD_BEHAVIOUR"), LOCALIZED(@"EXTRAS_GLOBE_BEHAVIOUR"), LOCALIZED(@"EXTRAS_PASTE_BEHAVIOUR")];
-    NSArray *extrasOptionsID = @[@"keyboardType", @"insertText", @"prevWord", @"nextWord", @"lineStart", @"lineEnd", @"startOfParagraph", @"endOfParagraph", @"startOfSentence", @"endOfSentence", @"delete", @"deleteForward", @"globe", @"paste"];
-    NSArray *extrasOptions12 = @[@"reachable_full", @"messages_writeboard", @"UICalloutBarPreviousArrow", @"UICalloutBarNextArrow", @"KeyGlyph-rtlTab-larg", @"KeyGlyph-tab-large", @"KeyGlyph-return-large", @"KeyGlyph-rtlReturn-large", @"UIMovieScrubberEditingGlassLeft", @"UIMovieScrubberEditingGlassRight", @"delete_portrait", @"delete_portrait", @"globe_dockitem-portrait", @"UIButtonBarKeyboardPaste"];
-    NSArray *extrasOptions13 = @[@"number.circle.fill", @"text.bubble", @"arrow.left.circle.fill", @"arrow.right.circle.fill", @"arrow.left.to.line", @"arrow.right.to.line", @"text.insert", @"text.append", @"decrease.quotelevel", @"increase.quotelevel", @"delete.left", @"delete.right", @"globe", @"doc.on.clipboard"];
+    NSArray *extrasOptionsLabel = @[ LOCALIZED(@"EXTRAS_INSERT_TEXT_CONTENT"), LOCALIZED(@"EXTRAS_PREVIOUS_WORD_BEHAVIOUR"), LOCALIZED(@"EXTRAS_NEXT_WORD_BEHAVIOUR"), LOCALIZED(@"EXTRAS_LINE_START_BEHAVIOUR"), LOCALIZED(@"EXTRAS_LINE_END_BEHAVIOUR"), LOCALIZED(@"EXTRAS_START_OF_PARAGRAPH_BEHAVIOUR"), LOCALIZED(@"EXTRAS_END_OF_PARAGRAPH_BEHAVIOUR"), LOCALIZED(@"EXTRAS_START_OF_SENTENCE_BEHAVIOUR"), LOCALIZED(@"EXTRAS_END_OF_SENTENCE_BEHAVIOUR"), LOCALIZED(@"EXTRAS_DELETE_BEHAVIOUR"), LOCALIZED(@"EXTRAS_DELETE_FORWARD_BEHAVIOUR"), LOCALIZED(@"EXTRAS_PASTE_BEHAVIOUR")];
+    NSArray *extrasOptionsID = @[ @"insertText", @"prevWord", @"nextWord", @"lineStart", @"lineEnd", @"startOfParagraph", @"endOfParagraph", @"startOfSentence", @"endOfSentence", @"delete", @"deleteForward", @"paste"];
+    NSArray *extrasOptions12 = @[ @"messages_writeboard", @"UICalloutBarPreviousArrow", @"UICalloutBarNextArrow", @"KeyGlyph-rtlTab-larg", @"KeyGlyph-tab-large", @"KeyGlyph-return-large", @"KeyGlyph-rtlReturn-large", @"UIMovieScrubberEditingGlassLeft", @"UIMovieScrubberEditingGlassRight", @"delete_portrait", @"delete_portrait", @"UIButtonBarKeyboardPaste"];
+    NSArray *extrasOptions13 = @[ @"text.bubble", @"arrow.left.circle.fill", @"arrow.right.circle.fill", @"arrow.left.to.line", @"arrow.right.to.line", @"text.insert", @"text.append", @"decrease.quotelevel", @"increase.quotelevel", @"delete.left", @"delete.right", @"doc.on.clipboard"];
     
     NSMutableArray *extrasOptionsDict = [[NSMutableArray alloc] init];
     

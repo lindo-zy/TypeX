@@ -59,11 +59,10 @@ NSString *preferencesSelectorForIdentifierScoped(NSString* identifier, int selec
     //HBLogDebug(@"return2 %@", index != NSNotFound ? selectorList2[index] : fallback);
     
     //NSMutableDictionary *IDDict = index != NSNotFound ? prefs[kCustomActionskey][index] : nil;
-    if (selectorNum == 1){
-        return index != NSNotFound && (index <= [selectorList count] -1) ? selectorList[index] : fallback;
-    }else{
-        return index != NSNotFound  && (index <= [selectorList2 count] -1)  ? selectorList2[index] : fallback;
-    }
+    NSArray *selectors = selectorNum == 1 ? selectorList : selectorList2;
+    NSString *selector = index != NSNotFound && index < selectors.count ? selectors[index] : fallback;
+    // Ignore saved gesture actions that are no longer in the shortcut catalog.
+    return [DXShortcutsGenerator isAvailableShortcutSelector:selector] ? selector : fallback;
 }
 
 NSString *preferencesSelectorForIdentifier(NSString* identifier, int selectorNum, int gestureType, NSString *fallback) {

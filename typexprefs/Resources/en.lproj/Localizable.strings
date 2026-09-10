@@ -12,19 +12,12 @@
 "SHORT_SELECT" = "Slct";
 "SHORT_BEGINNING" = "Bgn";
 "SHORT_ENDING" = "End";
-"SHORT_CAPITALIZE" = "Cap";
-"SHORT_LOWERCASE" = "low";
-"SHORT_UPPERCASE" = "UPP";
 "SHORT_DELETE" = "Del";
-"SHORT_BOLD" = "Bold";
-"SHORT_ITALIC" = "Itlic";
-"SHORT_UNDERLINE" = "Udln";
 "SHORT_DISMISS_KEYBOARD" = "Dmiss";
 "SHORT_MOVE_CURSOR_LEFT" = "Left";
 "SHORT_MOVE_CURSOR_RIGHT" = "Right";
 "SHORT_AUTO_CORRECTION" = "ACrrtn";
 "SHORT_AUTO_CAPITALIZATION" = "ACap";
-"SHORT_KEYBOARD_TYPE" = "Input";
 "SHORT_MOVE_CURSOR_UP" = "Up";
 "SHORT_MOVE_CURSOR_DOWN" = "Down";
 "SHORT_DEFINE" = "Dfne";
@@ -41,8 +34,6 @@
 "SHORT_SELECT_LINE" = "Line";
 "SHORT_SELECT_PARAGRAPH" = "Prgph";
 "SHORT_SELECT_SENTENCE" = "Stn";
-"SHORT_GLOBE" = "Globe";
-"SHORT_DICTATION" = "Dcttn";
 "SHORT_DELETE_FORWARD" = "DelFw";
 "SHORT_COPY_LOG" = "CLog";
 "SHORT_SPONGEBOB" = "sPoNge";
@@ -58,19 +49,12 @@
 "LONG_SELECT" = "Select";
 "LONG_BEGINNING" = "Beginning of Document";
 "LONG_ENDING" = "Ending of Document";
-"LONG_CAPITALIZE" = "Capitalize Last Word";
-"LONG_LOWERCASE" = "lowercase";
-"LONG_UPPERCASE" = "UPPERCASE";
 "LONG_DELETE" = "Delete";
-"LONG_BOLD" = "Bold";
-"LONG_ITALIC" = "Italic";
-"LONG_UNDERLINE" = "Underline";
 "LONG_DISMISS_KEYBOARD" = "Dismiss Keyboard";
 "LONG_MOVE_CURSOR_LEFT" = "Cursor Left";
 "LONG_MOVE_CURSOR_RIGHT" = "Cursor Right";
 "LONG_AUTO_CORRECTION" = "Auto-Correction";
 "LONG_AUTO_CAPITALIZATION" = "Auto-Capitalization";
-"LONG_KEYBOARD_TYPE" = "Keyboard Input";
 "LONG_MOVE_CURSOR_UP" = "Cursor Up";
 "LONG_MOVE_CURSOR_DOWN" = "Cursor Down";
 "LONG_DEFINE" = "Define Word";
@@ -87,8 +71,6 @@
 "LONG_SELECT_LINE" = "Select Line";
 "LONG_SELECT_PARAGRAPH" = "Select Paragraph";
 "LONG_SELECT_SENTENCE" = "Select Sentence";
-"LONG_GLOBE" = "Globe";
-"LONG_DICTATION" = "Dictation";
 "LONG_DELETE_FORWARD" = "Delete Forward";
 "LONG_SPONGEBOB" = "sPonGeBob teXt";
 
@@ -102,19 +84,12 @@
 "TOAST_SELECT" = "Select";
 "TOAST_BEGINNING" = "Beginning";
 "TOAST_ENDING" = "Ending";
-"TOAST_CAPITALIZE" = "Capitalize";
-"TOAST_LOWERCASE" = "lowercase";
-"TOAST_UPPERCASE" = "UPPERCASE";
 "TOAST_DELETE" = "Delete";
-"TOAST_BOLD" = "Bold";
-"TOAST_ITALIC" = "Italic";
-"TOAST_UNDERLINE" = "Underline";
 "TOAST_DISMISS_KEYBOARD" = "Dismiss";
 "TOAST_MOVE_CURSOR_LEFT" = "Left";
 "TOAST_MOVE_CURSOR_RIGHT" = "Right";
 "TOAST_AUTO_CORRECTION" = "Auto-Correction";
 "TOAST_AUTO_CAPITALIZATION" = "Auto-Capitalization";
-"TOAST_KEYBOARD_TYPE" = "Keyboard Input";
 "TOAST_MOVE_CURSOR_UP" = "Up";
 "TOAST_MOVE_CURSOR_DOWN" = "Down";
 "TOAST_DEFINE" = "Define";
@@ -131,31 +106,13 @@
 "TOAST_SELECT_LINE" = "Select Line";
 "TOAST_SELECT_PARAGRAPH" = "Select Paragraph";
 "TOAST_SELECT_SENTENCE" = "Select Sentence";
-"TOAST_GLOBE" = "Globe";
-"TOAST_DICTATION" = "Dictation";
 "TOAST_DELETE_FORWARD" = "Delete";
 "TOAST_SPONGEBOB" = "sPoNge";
 "TOAST_ON" = "On";
 "TOAST_OFF" = "Off";
-"TOAST_KEYBOARD_TYPE_GENERIC" = "Generic";
-"TOAST_KEYBOARD_TYPE_DEFAULT" = "Default";
-"TOAST_KEYBOARD_TYPE_ORIGINAL" = "Original";
-"TOAST_KEYBOARD_TYPE_DECIMAL_PAD" = "Decimal Pad";
-"TOAST_KEYBOARD_TYPE_NUMBER_PAD" = "Number Pad";
-"TOAST_KEYBOARD_TYPE_URL" = "URL";
-"TOAST_KEYBOARD_TYPE_EMAIL" = "eMail";
-"TOAST_KEYBOARD_TYPE_ASCII" = "ASCII";
-"TOAST_KEYBOARD_TYPE_NUMBERS_AND_PUNC" = "Num & Punct.";
-"TOAST_KEYBOARD_TYPE_PHONE_PAD" = "Phone Pad";
-"TOAST_KEYBOARD_TYPE_NAME_AND_PHONE_PAD" = "Name & Phone";
-"TOAST_KEYBOARD_TYPE_TWITTER" = "Twitter";
-"TOAST_KEYBOARD_TYPE_WEB_SEARCH" = "Web Search";
-"TOAST_KEYBOARD_TYPE_NUMBER_PAD_ASCII" = "Number Pad";
-"TOAST_KEYBOARD_TYPE_ALPHABET" = "Alphabet";
 
 //=====================Manage Shortcuts=====================
 //Extras
-"EXTRAS_KEYBOARD_INPUT_BEHAVIOUR" = "Keyboard Input Behaviour";
 "EXTRAS_SHELL_COMMANDS" = "Shell Commands";
 "EXTRAS_INSERT_TEXT_CONTENT" = "Insert Text Content";
 "EXTRAS_PREVIOUS_WORD_BEHAVIOUR" = "Previous Word Behaviour";
@@ -168,7 +125,6 @@
 "EXTRAS_END_OF_SENTENCE_BEHAVIOUR" = "End of Sentence Behaviour";
 "EXTRAS_DELETE_BEHAVIOUR" = "Delete Behaviour";
 "EXTRAS_DELETE_FORWARD_BEHAVIOUR" = "Delete Forward Behaviour";
-"EXTRAS_GLOBE_BEHAVIOUR" = "Globe Behaviour";
 "EXTRAS_PASTE_BEHAVIOUR" = "Paste Behaviour";
 "EXTRAS_SPONGEBOB_BEHAVIOUR" = "sPonGeBob teXt Behaviour";
 
@@ -225,7 +181,6 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "ENABLED_INPUT_TYPE" = "Enabled Input Type";
 "FOOTER_ENABLED" = "Enabled input will be cycled when shorcut is tapped. \"Default\" type will be skipped if it is same as \"Original\". Set a minimum of 2 items, including Original.\n\nNOTE: Some input doesn't support changing input type, TypeX indicates it by changing the current icon to hollow/grey/strikethrough.";
 "RESET_TO_DEFAULT_MESSAGE" = "Reset to default?";
-"KEYBOARD_INPUT_TYPE_TITLE" = "Keyboard Input";
 
 //=====================CURSOR BEHAVIOR=====================
 "CURSOR_BEHAVIOR_WHOLE_PARA" = "Whole Paragraph";
@@ -264,8 +219,6 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "FOOTER_DELETE" = "Smart delete will insert a space after deletion.\n\nNOTE: If no word is selected, closest word/punctuation will be selected for delete.";
 
 //=====================GLOBE BEHAVIOR=====================
-"EMOJI_KEYBOARD" = "Emoji Keyboard";
-"SKIP_EMOJI" = "Skip Emoji";
 
 //=====================PASTE BEHAVIOR=====================
 "SAFARI" = "Safari";

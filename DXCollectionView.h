@@ -14,15 +14,10 @@ typedef NS_ENUM(NSInteger, direction) {
 @property (nonatomic, copy) NSString *configuration;
 @property (strong, nonatomic) NSArray *shortcuts;
 @property (strong, nonatomic) NSArray *fullshortcuts;
-@property (strong, nonatomic) NSArray *kbType;
-@property (strong, nonatomic) NSArray *kbTypeLabel;
 @property (nonatomic, assign) NSInteger hapticType;
-@property (nonatomic, assign) NSInteger trueKBType;
 @property (nonatomic, assign) BOOL isSameProcess;
 @property (strong, nonatomic) DXCell *autoCorrectionCell;
 @property (strong, nonatomic) DXCell *autoCapitalizationCell;
-//@property (strong, nonatomic) UIButton *keyboardInputTypeButton;
-@property (strong, nonatomic) __block DXCell *keyboardInputTypeCell;
 
 @property (nonatomic, assign) BOOL refreshView;
 @property (nonatomic, assign) BOOL firstCellVisible;
@@ -47,9 +42,6 @@ typedef NS_ENUM(NSInteger, direction) {
 @property (nonatomic, assign) BOOL moveCursorWithSelect;
 @property (nonatomic, assign) BOOL isWordSender;
 @property (nonatomic, assign) BOOL asyncUpdated;
-@property (nonatomic, strong) NSIndexPath *keyboardInputTypeCellIndexPath;
-@property (strong, nonatomic) NSArray *keyboardTypeDataFull;
-@property (strong, nonatomic) NSArray *keyboardTypeLabelFull;
 @property (strong, nonatomic) DXShortcutsGenerator *shortcutsGenerator;
 
 /// Rebuilds the active shortcut/keyboard-type data from the current preference domain.
@@ -68,20 +60,13 @@ typedef NS_ENUM(NSInteger, direction) {
 -(IBAction)selectAction:(UIButton*)sender;
 -(IBAction)beginningAction:(UIButton*)sender;
 -(IBAction)endingAction:(UIButton*)sender;
--(IBAction)capitalizeAction:(UIButton*)sender;
--(IBAction)lowercaseAction:(UIButton*)sender;
--(IBAction)uppercaseAction:(UIButton*)sender;
 -(IBAction)deleteAction:(UIButton*)sender;
 -(IBAction)deleteAllAction:(UIButton*)sender;
--(IBAction)boldAction:(UIButton*)sender;
--(IBAction)italicAction:(UIButton*)sender;
--(IBAction)underlineAction:(UIButton*)sender;
 -(IBAction)dismissKeyboardAction:(UIButton*)sender;
 -(void)moveCursorLeftAction:(UIButton*)sender;
 -(void)moveCursorRightAction:(UIButton*)sender;
 -(void)moveCursorUpAction:(UIButton*)sender;
 -(void)moveCursorDownAction:(UIButton*)sender;
--(void)keyboardTypeAction:(UIButton*)sender;
 -(void)defineAction:(UIButton*)sender;
 -(void)runCommandAction:(UIButton*)sender;
 -(void)insertTextAction:(UIButton*)sender;
@@ -97,8 +82,6 @@ typedef NS_ENUM(NSInteger, direction) {
 -(void)moveCursorEndOfParagraphAction:(UIButton*)sender;
 -(void)moveCursorStartOfSentenceAction:(UIButton*)sender;
 -(void)moveCursorEndOfSentenceAction:(UIButton*)sender;
--(void)globeAction:(UIButton*)sender;
--(void)dictationAction:(UIButton*)sender;
 -(void)deleteForwardAction:(UIButton*)sender;
 
 -(void)selectAllActionLP:(UILongPressGestureRecognizer *)recognizer;
@@ -110,19 +93,12 @@ typedef NS_ENUM(NSInteger, direction) {
 -(void)selectActionLP:(UILongPressGestureRecognizer *)recognizer;
 -(void)beginningActionLP:(UILongPressGestureRecognizer *)recognizer;
 -(void)endingActionLP:(UILongPressGestureRecognizer *)recognizer;
--(void)capitalizeActionLP:(UILongPressGestureRecognizer *)recognizer;
--(void)lowercaseActionLP:(UILongPressGestureRecognizer *)recognizer;
--(void)uppercaseActionLP:(UILongPressGestureRecognizer *)recognizer;
 -(void)deleteActionLP:(UILongPressGestureRecognizer *)recognizer;
--(void)boldActionLP:(UILongPressGestureRecognizer *)recognizer;
--(void)italicActionLP:(UILongPressGestureRecognizer *)recognizer;
--(void)underlineActionLP:(UILongPressGestureRecognizer *)recognizer;
 -(void)dismissKeyboardActionLP:(UILongPressGestureRecognizer *)recognizer;
 -(void)moveCursorLeftActionLP:(UILongPressGestureRecognizer*)recognizer;
 -(void)moveCursorRightActionLP:(UILongPressGestureRecognizer*)recognizer;
 -(void)moveCursorUpActionLP:(UILongPressGestureRecognizer*)recognizer;
 -(void)moveCursorDownActionLP:(UILongPressGestureRecognizer*)recognizer;
--(void)keyboardTypeActionLP:(UILongPressGestureRecognizer *)recognizer;
 -(void)defineActionLP:(UILongPressGestureRecognizer*)recognizer;
 -(void)runCommandActionLP:(UILongPressGestureRecognizer*)recognizer;
 -(void)insertTextActionLP:(UILongPressGestureRecognizer*)recognizer;
@@ -140,7 +116,6 @@ typedef NS_ENUM(NSInteger, direction) {
 -(void)moveCursorEndOfSentenceActionLP:(UILongPressGestureRecognizer *)recognizer;
 -(UIWindow*)keyWindow;
 -(void)activateLPActions:(UIGestureRecognizer *)recognizer;
--(void)globeActionLP:(UILongPressGestureRecognizer*)recognizer;
 -(void)deleteForwardActionLP:(UILongPressGestureRecognizer *)recognizer;
 
 -(void)moveCursorContinuoslyWithDelegate:(id <UITextInput, UITextInputTokenizer>)delegate offset:(int)offset;

@@ -25,7 +25,6 @@ BOOL isSpringBoard = YES;
 BOOL isApplication = NO;
 BOOL isSafari = NO;
 KeyboardController *kbController;
-BOOL shouldUpdateTrueKBType = NO;
 BOOL shouldPerformBatchUpdate = YES;
 //BOOL shouldSendScrollExecution = YES;
 UIKeyboardDockView *dockV;
@@ -35,80 +34,77 @@ NSBundle *tweakBundle;
 BOOL firstInit = YES;
 DXStudlyCapsType spongebobEntropy;
 
+static const CGFloat kDXTopToolbarHeight = 41.5;
 static char kDXTopAccessoryContainerKey;
 
 @interface DXTopAccessoryContainer : UIView
 @property(nonatomic, strong) DXCollectionView *toolbar;
 @property(nonatomic, strong) UIView *originalAccessory;
-/// When YES, setBackgroundColor: bypasses the guard and sets the color directly via super.
-/// Used internally by dxApplyCustomBackgroundColor so it can set the real color
-/// without being intercepted by our own override.
-@property(nonatomic, assign) BOOL dxSettingInternalColor;
 @end
 
 @implementation DXTopAccessoryContainer
 
+- (CGFloat)dxOriginalAccessoryHeight {
+    if (!self.originalAccessory) return 0.0;
+    CGFloat height = MAX(0.0, CGRectGetHeight(self.originalAccessory.frame));
+    if (height <= 0.0) {
+        CGFloat intrinsicHeight = [self.originalAccessory intrinsicContentSize].height;
+        if (intrinsicHeight != UIViewNoIntrinsicMetric) height = MAX(0.0, intrinsicHeight);
+    }
+    return height;
+}
+
 - (CGSize)intrinsicContentSize {
-    CGFloat originalHeight = self.originalAccessory ? MAX(0.0, self.originalAccessory.frame.size.height) : 0.0;
-    return CGSizeMake(UIViewNoIntrinsicMetric, 41.5 + (originalHeight > 0.0 ? originalHeight + 1.0 : 0.0));
+    CGFloat originalHeight = [self dxOriginalAccessoryHeight];
+    return CGSizeMake(UIViewNoIntrinsicMetric,
+                      kDXTopToolbarHeight + (originalHeight > 0.0 ? originalHeight + 1.0 : 0.0));
 }
 
 - (void)layoutSubviews {
     [super layoutSubviews];
-    CGFloat toolbarHeight = 41.5;
-    self.toolbar.frame = CGRectMake(0.0, 0.0, CGRectGetWidth(self.bounds), toolbarHeight);
+    self.toolbar.frame = CGRectMake(0.0, 0.0, CGRectGetWidth(self.bounds), kDXTopToolbarHeight);
     if (self.originalAccessory) {
-        CGFloat originalHeight = MAX(0.0, self.originalAccessory.frame.size.height);
-        self.originalAccessory.frame = CGRectMake(0.0, toolbarHeight + 1.0,
+        CGFloat originalHeight = [self dxOriginalAccessoryHeight];
+        self.originalAccessory.frame = CGRectMake(0.0, kDXTopToolbarHeight + 1.0,
                                                    CGRectGetWidth(self.bounds), originalHeight);
     }
-    // Re-apply custom background: system layout may have overridden it
-    [self dxApplyCustomBackgroundColor];
-}
-
-/// Intercept ALL external setBackgroundColor: calls.
-/// The system overrides this when keyboard switches to light mode.
-/// We ignore the system's value and always apply our configured color instead.
-- (void)setBackgroundColor:(UIColor *)backgroundColor {
-    if (self.dxSettingInternalColor) {
-        // Our own code is setting the color — allow it through
-        [super setBackgroundColor:backgroundColor];
-        return;
-    }
-    // When custom top toolbar background is enabled, intercept and use our color.
-    // When disabled, allow the system's color through so it adapts to light/dark mode.
-    if (currentTopToolbarBackgroundColor) {
-        [super setBackgroundColor:currentTopToolbarBackgroundColor];
-    } else {
-        [super setBackgroundColor:backgroundColor];
-    }
+    [self dxApplyBackgroundColor];
 }
 
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
     [super traitCollectionDidChange:previousTraitCollection];
-    // Keyboard appearance change triggers trait change — re-apply custom color
-    [self dxApplyCustomBackgroundColor];
+    [self dxApplyBackgroundColor];
 }
 
 - (void)didMoveToWindow {
     [super didMoveToWindow];
-    // View re-attached to keyboard hierarchy after appearance change
-    [self dxApplyCustomBackgroundColor];
+    [self dxApplyBackgroundColor];
 }
 
-- (void)willMoveToSuperview:(UIView *)newSuperview {
-    [super willMoveToSuperview:newSuperview];
-    if (newSuperview) {
-        [self dxApplyCustomBackgroundColor];
+- (void)setBackgroundColor:(UIColor *)backgroundColor {
+    if (currentTopToolbarBackgroundColor) {
+        [super setBackgroundColor:currentTopToolbarBackgroundColor];
+    } else if (backgroundColor && CGColorGetAlpha(backgroundColor.CGColor) > 0.01) {
+        [super setBackgroundColor:backgroundColor];
+    } else {
+        [self dxApplyBackgroundColor];
     }
 }
 
-/// Apply the configured toolbar background color, bypassing our own setBackgroundColor: guard.
-- (void)dxApplyCustomBackgroundColor {
-    if (!currentTopToolbarBackgroundColor) return;
-    self.dxSettingInternalColor = YES;
-    [super setBackgroundColor:currentTopToolbarBackgroundColor];
-    self.dxSettingInternalColor = NO;
+- (void)dxApplyBackgroundColor {
+    UIColor *backgroundColor = currentTopToolbarBackgroundColor;
+    UIColor *accessoryColor = self.originalAccessory.backgroundColor;
+    if (!backgroundColor && accessoryColor && CGColorGetAlpha(accessoryColor.CGColor) > 0.01) {
+        backgroundColor = accessoryColor;
+    }
+    if (!backgroundColor) {
+        if (@available(iOS 13.0, *)) {
+            backgroundColor = [UIColor systemBackgroundColor];
+        } else {
+            backgroundColor = [UIColor whiteColor];
+        }
+    }
+    [super setBackgroundColor:backgroundColor];
 }
 
 @end
@@ -119,10 +115,8 @@ static inline BOOL DXResponderSupportsInputAccessoryView(UIResponder *responder)
 }
 
 static UIView *DXInputAccessoryView(UIResponder *responder) {
-    if (DXResponderSupportsInputAccessoryView(responder)) {
-        return [responder performSelector:@selector(inputAccessoryView)];
-    }
-    return nil;
+    if (!DXResponderSupportsInputAccessoryView(responder)) return nil;
+    return [responder performSelector:@selector(inputAccessoryView)];
 }
 
 static void DXSetInputAccessoryView(UIResponder *responder, UIView *view) {
@@ -131,35 +125,36 @@ static void DXSetInputAccessoryView(UIResponder *responder, UIView *view) {
     }
 }
 
-static void DXInstallTopAccessoryForResponder(UIResponder *responder) {
-    if (!responder || (!isApplication && !isSpringBoard)) return;
-
+static void DXInstallTopAccessoryForResponder(UIResponder *responder, BOOL reloadConfiguration) {
+    if (!responder || (!isApplication && !isSpringBoard) || !DXResponderSupportsInputAccessoryView(responder)) return;
 
     BOOL enabled = preferencesBool(kEnabledkey, YES);
     DXTopAccessoryContainer *container = objc_getAssociatedObject(responder, &kDXTopAccessoryContainerKey);
     UIView *currentAccessory = DXInputAccessoryView(responder);
+    BOOL mayCreate = enabled && toggledOn && !isLandscape && !isDictating;
 
-    if (!container && enabled && toggledOn && !isLandscape && !isDictating && DXResponderSupportsInputAccessoryView(responder)) {
-        container = [[DXTopAccessoryContainer alloc] initWithFrame:CGRectMake(0.0, 0.0, 0.0, 41.5)];
-        [container dxApplyCustomBackgroundColor];
+    if (!container && mayCreate) {
+        container = [[DXTopAccessoryContainer alloc] initWithFrame:CGRectMake(0.0, 0.0, 0.0,
+                                                                               kDXTopToolbarHeight)];
+        container.clipsToBounds = YES;
         container.toolbar = [[DXCollectionView alloc] initWithConfiguration:@"top"];
         container.toolbar.clipsToBounds = YES;
         [container.toolbar reloadShortcutConfiguration];
         [container addSubview:container.toolbar];
         objc_setAssociatedObject(responder, &kDXTopAccessoryContainerKey, container, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-
     if (!container) return;
 
-
-    [container.toolbar reloadShortcutConfiguration];
-    [container dxApplyCustomBackgroundColor];
-    [container.toolbar.collectionViewLayout invalidateLayout];
-    [container.toolbar reloadData];
+    if (reloadConfiguration) {
+        [container.toolbar reloadShortcutConfiguration];
+        [container.toolbar.collectionViewLayout invalidateLayout];
+        [container.toolbar reloadData];
+    }
 
     BOOL hasShortcuts = [container.toolbar.shortcuts[kbuttonsImages12] count] > 0;
     BOOL shouldDisplay = enabled && toggledOn && !isLandscape && !isDictating && hasShortcuts;
     if (!shouldDisplay) {
+        container.toolbar.hidden = YES;
         if (currentAccessory == container) {
             [container.originalAccessory removeFromSuperview];
             DXSetInputAccessoryView(responder, container.originalAccessory);
@@ -177,20 +172,39 @@ static void DXInstallTopAccessoryForResponder(UIResponder *responder) {
         [container invalidateIntrinsicContentSize];
     }
 
+    [container dxApplyBackgroundColor];
+    container.toolbar.hidden = NO;
     if (currentAccessory != container) {
         DXSetInputAccessoryView(responder, container);
         if (responder.isFirstResponder) [responder reloadInputViews];
     }
-    container.toolbar.hidden = NO;
 }
 
-static void DXRefreshActiveTopAccessory(void) {
+static void DXRefreshActiveTopToolbar(void) {
     UIKeyboardImpl *keyboard = [objc_getClass("UIKeyboardImpl") activeInstance];
     UIResponder *active = DXKeyboardInputDelegate(keyboard);
-    if (active && DXResponderSupportsInputAccessoryView(active)) {
-        DXInstallTopAccessoryForResponder(active);
-    }
+    DXInstallTopAccessoryForResponder(active, YES);
 }
+
+@interface DXTopToolbarLifecycleObserver : NSObject
+@end
+
+@implementation DXTopToolbarLifecycleObserver
+
+- (void)keyboardDidShow:(NSNotification *)notification {
+    (void)notification;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        DXRefreshActiveTopToolbar();
+    });
+}
+
+- (void)keyboardWillHide:(NSNotification *)notification {
+    (void)notification;
+}
+
+@end
+
+static DXTopToolbarLifecycleObserver *topToolbarLifecycleObserver;
 
 float topInset = topInsetDefault;
 float bottomInset = bottomInsetDefault;
@@ -219,13 +233,13 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
 
 - (BOOL)becomeFirstResponder {
     BOOL result = %orig;
-    if (result) DXInstallTopAccessoryForResponder(self);
+    if (result) DXInstallTopAccessoryForResponder(self, YES);
     return result;
 }
 
 - (void)layoutSubviews {
     %orig;
-    if (self.isFirstResponder) DXInstallTopAccessoryForResponder(self);
+    if (self.isFirstResponder) DXInstallTopAccessoryForResponder(self, NO);
 }
 
 %end
@@ -234,13 +248,13 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
 
 - (BOOL)becomeFirstResponder {
     BOOL result = %orig;
-    if (result) DXInstallTopAccessoryForResponder(self);
+    if (result) DXInstallTopAccessoryForResponder(self, YES);
     return result;
 }
 
 - (void)layoutSubviews {
     %orig;
-    if (self.isFirstResponder) DXInstallTopAccessoryForResponder(self);
+    if (self.isFirstResponder) DXInstallTopAccessoryForResponder(self, NO);
 }
 
 %end
@@ -309,75 +323,14 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
             
             kbImpl = [objc_getClass("UIKeyboardImpl") activeInstance];
             delegate = DXKeyboardInputDelegate(kbImpl);
-            if ([delegate respondsToSelector:@selector(keyboardType)]){
-                if (shouldUpdateTrueKBType){
-                    self.typex.trueKBType = [[NSNumber numberWithInt:[delegate keyboardType]] intValue];
-                    shouldUpdateTrueKBType = NO;
-                }
-                NSUInteger index = [self.typex.kbType indexOfObject:[NSNumber numberWithInt:[delegate keyboardType]]];
-                //HBLogDebug(@"indexXXXXX: %lu", index);
-                if (index == NSNotFound){
-                    //HBLogDebug(@"INDEXOF: %@", [NSNumber numberWithInt:[delegate keyboardType]]);
-                    NSMutableArray *kbTypeMutable = [self.typex.kbType mutableCopy];
-                    NSMutableArray *kbTypeLabelMutable = [self.typex.kbTypeLabel mutableCopy];
-                    
-                    NSUInteger indexInArray = [self.typex.keyboardTypeDataFull indexOfObject:[NSNumber numberWithInt:[delegate keyboardType]]];
-                    if (index == NSNotFound){
-                        if ([delegate keyboardType] > 12){
-                            self.typex.trueKBType = 0;
-                            shouldUpdateTrueKBType = NO;
-                        }else{
-                            [kbTypeMutable insertObject:[NSNumber numberWithInt:[delegate keyboardType]] atIndex:0];
-                            if (indexInArray != NSNotFound){
-                                [kbTypeLabelMutable insertObject:self.typex.keyboardTypeLabelFull[indexInArray] atIndex:0];
-                            }else{
-                                [kbTypeLabelMutable insertObject:LOCALIZED(@"TOAST_KEYBOARD_TYPE_GENERIC") atIndex:0];
-                            }
-                        }
-                    }else{
-                        [kbTypeMutable insertObject:self.typex.keyboardTypeDataFull[indexInArray] atIndex:0];
-                        [kbTypeLabelMutable insertObject:self.typex.keyboardTypeLabelFull[indexInArray] atIndex:0];
-                    }
-                    self.typex.kbTypeLabel = kbTypeLabelMutable;
-                    self.typex.kbType = kbTypeMutable;
-                    
-                }else{
-                    self.typex.trueKBType = 0;
-                    shouldUpdateTrueKBType = NO;
-                }
-            }else{
-                UIImage *image;
-                NSMutableAttributedString *imageOfName = [[NSMutableAttributedString alloc] initWithString:@""];
-                
-                NSMutableAttributedString *attributeString = [[NSMutableAttributedString alloc] initWithString:@"Input"];
-                NSMutableAttributedString *strikedAttributeString = [attributeString mutableCopy];
-                [strikedAttributeString addAttribute:NSStrikethroughStyleAttributeName value:@2 range:NSMakeRange(0, [attributeString length])];
-                
-                if (@available(iOS 13.0, *)){
-                    imageOfName = useShortenedLabel ? [delegate respondsToSelector:@selector(keyboardType)]?attributeString:strikedAttributeString : [delegate respondsToSelector:@selector(keyboardType)]?[@"number.circle.fill" attributedString]:[@"number.circle" attributedString];
-                    if (!useShortenedLabel) image = [DXHelper imageForName:imageOfName.string  withSystemColor:NO completion:nil];
-                }else{
-                    imageOfName =  useShortenedLabel ? [delegate respondsToSelector:@selector(keyboardType)]?attributeString:strikedAttributeString : [delegate respondsToSelector:@selector(keyboardType)]?[@"reachable_full" attributedString]:[@"dictation_keyboard_dark" attributedString];
-                    if (!useShortenedLabel) image = [DXHelper imageForName:imageOfName.string  withSystemColor:NO completion:nil];
-                }
-                if (useShortenedLabel){
-                    [self.typex.keyboardInputTypeCell.btn setImage:nil forState:UIControlStateNormal];
-                    [self.typex.keyboardInputTypeCell.btn setAttributedTitle:imageOfName forState:UIControlStateNormal];
-                }else{
-                    [self.typex.keyboardInputTypeCell.btn setAttributedTitle:nil forState:UIControlStateNormal];
-                    [self.typex.keyboardInputTypeCell.btn setImage:image forState:UIControlStateNormal];
-                }
-            }
-            
-            
             [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handBiasChanged) name:@"handBiasChanged" object:nil];
             [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(toggleTypeX:) name:@"toggleTypeX" object:nil];
             
             [self handBiasChanged];
             
-            // Ensure the top accessory is installed for the current first responder
-            // when the dock view first appears, not just on UITextField/UITextView hooks.
-            DXRefreshActiveTopAccessory();
+            // The keyboard can finish creating its private subviews after UIKeyboardImpl's
+            // first layout pass. Refresh once the dock has joined the hierarchy as well.
+            DXRefreshActiveTopToolbar();
         });
         
     }
@@ -514,7 +467,7 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
         self.typex.alpha = 0.0f;
         [UIView animateWithDuration:0.2 animations:^{ self.typex.alpha = 1.0f; }];
     }
-    DXRefreshActiveTopAccessory();
+    DXRefreshActiveTopToolbar();
     [self layoutSubviews];
     
 }
@@ -701,10 +654,9 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
                 [self updateTypeXTint];
                 self.typex.hidden = NO;
                 
-                // Ensure the top accessory follows the current first responder
-                // every time the dock view lays out (search box, text field, web
-                // view, etc. all share the same keyboard dock).
-                DXRefreshActiveTopAccessory();
+                UIKeyboardImpl *keyboard = [objc_getClass("UIKeyboardImpl") activeInstance];
+                UIResponder *active = DXKeyboardInputDelegate(keyboard);
+                DXInstallTopAccessoryForResponder(active, NO);
                 
             }
             //lastReloadDate = [NSDate date];
@@ -713,40 +665,7 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
         }
         
         
-        if (self.typex.keyboardInputTypeCell){
-            //dispatch_async(dispatch_get_main_queue(), ^{
-            
-            //if (![[self.typex visibleCells] containsObject:self.typex.keyboardInputTypeCell]) return;
-            
-            kbImpl = [objc_getClass("UIKeyboardImpl") activeInstance];
-            delegate = DXKeyboardInputDelegate(kbImpl);
-            
-            UIImage *image;
-            NSMutableAttributedString *imageOfName = [[NSMutableAttributedString alloc] initWithString:@""];
-            
-            NSMutableAttributedString *attributeString = [[NSMutableAttributedString alloc] initWithString:@"Input"];
-            NSMutableAttributedString *strikedAttributeString = [attributeString mutableCopy];
-            [strikedAttributeString addAttribute:NSStrikethroughStyleAttributeName value:@2 range:NSMakeRange(0, [attributeString length])];
-            
-            if (@available(iOS 13.0, *)){
-                imageOfName = useShortenedLabel ? ([delegate respondsToSelector:@selector(keyboardType)]?attributeString:strikedAttributeString) : ([delegate respondsToSelector:@selector(keyboardType)]?[@"number.circle.fill" attributedString]:[@"number.circle" attributedString]);
-                if (!useShortenedLabel) image = [DXHelper imageForName:imageOfName.string  withSystemColor:NO completion:nil];
-            }else{
-                imageOfName = useShortenedLabel ? ([delegate respondsToSelector:@selector(keyboardType)]?attributeString:strikedAttributeString) : ([delegate respondsToSelector:@selector(keyboardType)]?[@"reachable_full" attributedString]:[@"dictation_keyboard_dark" attributedString]);
-                if (!useShortenedLabel) image = [DXHelper imageForName:imageOfName.string  withSystemColor:NO completion:nil];
-            }
-            
-            if (useShortenedLabel){
-                [self.typex.keyboardInputTypeCell.btn setImage:nil forState:UIControlStateNormal];
-                [self.typex.keyboardInputTypeCell.btn setAttributedTitle:imageOfName forState:UIControlStateNormal];
-            }else{
-                [self.typex.keyboardInputTypeCell.btn setAttributedTitle:nil forState:UIControlStateNormal];
-                [self.typex.keyboardInputTypeCell.btn setImage:image forState:UIControlStateNormal];
-                
-            }
-            
-            //});
-        }
+
         
     }else{
         // The dock view is not recreated when the main preference is disabled.
@@ -1136,7 +1055,7 @@ static void reloadPrefs(void) {
         [dockView.typex.collectionViewLayout invalidateLayout];
         [dockView.typex reloadData];
     }
-    DXRefreshActiveTopAccessory();
+    DXRefreshActiveTopToolbar();
     /*
      if (dockView){
      [UIView performWithoutAnimation:^{
@@ -1200,9 +1119,17 @@ static void sbDidLaunch(){
                     [tweakBundle load];
                     firstInit = YES;
                     reloadPrefs();
-                    shouldUpdateTrueKBType = YES;
                     shouldPerformBatchUpdate = YES;
                     %init(TypeX);
+                    topToolbarLifecycleObserver = [[DXTopToolbarLifecycleObserver alloc] init];
+                    [[NSNotificationCenter defaultCenter] addObserver:topToolbarLifecycleObserver
+                                                             selector:@selector(keyboardDidShow:)
+                                                                 name:UIKeyboardDidShowNotification
+                                                               object:nil];
+                    [[NSNotificationCenter defaultCenter] addObserver:topToolbarLifecycleObserver
+                                                             selector:@selector(keyboardWillHide:)
+                                                                 name:UIKeyboardWillHideNotification
+                                                               object:nil];
                     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, reloadPrefsNotificationCallback, (CFStringRef)kPrefsChangedIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)updateAutoCorrection, (CFStringRef)kAutoCorrectionChangedIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)updateAutoCapitalization, (CFStringRef)kAutoCapitalizationChangedIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
