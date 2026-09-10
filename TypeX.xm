@@ -36,6 +36,8 @@ DXStudlyCapsType spongebobEntropy;
 
 static const CGFloat kDXTopToolbarHeight = 41.5;
 static char kDXTopAccessoryContainerKey;
+static NSUInteger topToolbarPresentationGeneration;
+static __weak UIResponder *topToolbarCurrentResponder;
 
 @interface DXTopAccessoryContainer : UIView
 @property(nonatomic, strong) DXCollectionView *toolbar;
@@ -125,6 +127,31 @@ static void DXSetInputAccessoryView(UIResponder *responder, UIView *view) {
     }
 }
 
+static BOOL DXShouldDisplayTopAccessory(DXTopAccessoryContainer *container) {
+    BOOL enabled = preferencesBool(kEnabledkey, YES);
+    BOOL hasShortcuts = [container.toolbar.shortcuts[kbuttonsImages12] count] > 0;
+    return enabled && toggledOn && !isLandscape && !isDictating && hasShortcuts;
+}
+
+static UIView *DXAccessoryByWrappingReplacement(UIResponder *responder, UIView *replacement) {
+    DXTopAccessoryContainer *container = objc_getAssociatedObject(responder, &kDXTopAccessoryContainerKey);
+    if (!container || replacement == container || replacement == container.toolbar ||
+        !DXShouldDisplayTopAccessory(container)) {
+        return replacement;
+    }
+
+    if (container.originalAccessory != replacement) {
+        [container.originalAccessory removeFromSuperview];
+        container.originalAccessory = replacement;
+    }
+    if (replacement && replacement.superview != container) {
+        [container addSubview:replacement];
+    }
+    [container invalidateIntrinsicContentSize];
+    [container dxApplyBackgroundColor];
+    return container;
+}
+
 static void DXInstallTopAccessoryForResponder(UIResponder *responder, BOOL reloadConfiguration) {
     if (!responder || (!isApplication && !isSpringBoard) || !DXResponderSupportsInputAccessoryView(responder)) return;
 
@@ -151,8 +178,7 @@ static void DXInstallTopAccessoryForResponder(UIResponder *responder, BOOL reloa
         [container.toolbar reloadData];
     }
 
-    BOOL hasShortcuts = [container.toolbar.shortcuts[kbuttonsImages12] count] > 0;
-    BOOL shouldDisplay = enabled && toggledOn && !isLandscape && !isDictating && hasShortcuts;
+    BOOL shouldDisplay = DXShouldDisplayTopAccessory(container);
     if (!shouldDisplay) {
         container.toolbar.hidden = YES;
         if (currentAccessory == container) {
@@ -180,10 +206,31 @@ static void DXInstallTopAccessoryForResponder(UIResponder *responder, BOOL reloa
     }
 }
 
-static void DXRefreshActiveTopToolbar(void) {
-    UIKeyboardImpl *keyboard = [objc_getClass("UIKeyboardImpl") activeInstance];
+static UIResponder *DXTopToolbarResponder(UIKeyboardImpl *keyboard) {
+    if (topToolbarCurrentResponder.isFirstResponder &&
+        DXResponderSupportsInputAccessoryView(topToolbarCurrentResponder)) {
+        return topToolbarCurrentResponder;
+    }
+
     UIResponder *active = DXKeyboardInputDelegate(keyboard);
-    DXInstallTopAccessoryForResponder(active, YES);
+    if (DXResponderSupportsInputAccessoryView(active)) return active;
+
+    SEL selectableSelector = NSSelectorFromString(@"selectableInputDelegate");
+    if ([keyboard respondsToSelector:selectableSelector]) {
+        id (*sendObject)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
+        UIResponder *selectable = sendObject(keyboard, selectableSelector);
+        if (DXResponderSupportsInputAccessoryView(selectable)) return selectable;
+    }
+    return active;
+}
+
+static void DXRefreshActiveTopToolbarWithConfiguration(BOOL reloadConfiguration) {
+    UIKeyboardImpl *keyboard = [objc_getClass("UIKeyboardImpl") activeInstance];
+    DXInstallTopAccessoryForResponder(DXTopToolbarResponder(keyboard), reloadConfiguration);
+}
+
+static void DXRefreshActiveTopToolbar(void) {
+    DXRefreshActiveTopToolbarWithConfiguration(YES);
 }
 
 @interface DXTopToolbarLifecycleObserver : NSObject
@@ -193,13 +240,24 @@ static void DXRefreshActiveTopToolbar(void) {
 
 - (void)keyboardDidShow:(NSNotification *)notification {
     (void)notification;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        DXRefreshActiveTopToolbar();
-    });
+    NSUInteger generation = ++topToolbarPresentationGeneration;
+    DXRefreshActiveTopToolbar();
+
+    // Some keyboards install their own accessory asynchronously on their first
+    // presentation. Retry after that work completes and wrap the final view.
+    for (NSNumber *delay in @[@0.05, @0.20]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            if (generation == topToolbarPresentationGeneration) {
+                DXRefreshActiveTopToolbarWithConfiguration(NO);
+            }
+        });
+    }
 }
 
 - (void)keyboardWillHide:(NSNotification *)notification {
     (void)notification;
+    ++topToolbarPresentationGeneration;
 }
 
 @end
@@ -229,32 +287,84 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
 #pragma mark hook
 %group TypeX
 
+%hook UIKeyboardImpl
+
+- (void)layoutSubviews {
+    %orig;
+    // The first keyboard presentation can finish wiring its input delegate only
+    // after the responder's own becomeFirstResponder: has already returned.
+    DXRefreshActiveTopToolbarWithConfiguration(NO);
+}
+
+%end
+
 %hook UITextField
 
+- (void)didMoveToWindow {
+    %orig;
+    if (self.window) DXInstallTopAccessoryForResponder(self, NO);
+}
+
 - (BOOL)becomeFirstResponder {
+    // inputAccessoryView must be present before UIKit starts constructing the
+    // first keyboard for this responder. Installing after %orig is too late in
+    // Settings search fields and only takes effect on the next presentation.
+    topToolbarCurrentResponder = self;
+    DXInstallTopAccessoryForResponder(self, YES);
     BOOL result = %orig;
-    if (result) DXInstallTopAccessoryForResponder(self, YES);
+    if (result) {
+        DXInstallTopAccessoryForResponder(self, NO);
+    } else if (topToolbarCurrentResponder == self) {
+        topToolbarCurrentResponder = nil;
+    }
     return result;
+}
+
+- (void)setInputAccessoryView:(UIView *)inputAccessoryView {
+    UIView *effectiveAccessory = DXAccessoryByWrappingReplacement(self, inputAccessoryView);
+    %orig(effectiveAccessory);
 }
 
 - (void)layoutSubviews {
     %orig;
-    if (self.isFirstResponder) DXInstallTopAccessoryForResponder(self, NO);
+    if (self.isFirstResponder) {
+        topToolbarCurrentResponder = self;
+        DXInstallTopAccessoryForResponder(self, NO);
+    }
 }
 
 %end
 
 %hook UITextView
 
+- (void)didMoveToWindow {
+    %orig;
+    if (self.window) DXInstallTopAccessoryForResponder(self, NO);
+}
+
 - (BOOL)becomeFirstResponder {
+    topToolbarCurrentResponder = self;
+    DXInstallTopAccessoryForResponder(self, YES);
     BOOL result = %orig;
-    if (result) DXInstallTopAccessoryForResponder(self, YES);
+    if (result) {
+        DXInstallTopAccessoryForResponder(self, NO);
+    } else if (topToolbarCurrentResponder == self) {
+        topToolbarCurrentResponder = nil;
+    }
     return result;
+}
+
+- (void)setInputAccessoryView:(UIView *)inputAccessoryView {
+    UIView *effectiveAccessory = DXAccessoryByWrappingReplacement(self, inputAccessoryView);
+    %orig(effectiveAccessory);
 }
 
 - (void)layoutSubviews {
     %orig;
-    if (self.isFirstResponder) DXInstallTopAccessoryForResponder(self, NO);
+    if (self.isFirstResponder) {
+        topToolbarCurrentResponder = self;
+        DXInstallTopAccessoryForResponder(self, NO);
+    }
 }
 
 %end
@@ -655,7 +765,7 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
                 self.typex.hidden = NO;
                 
                 UIKeyboardImpl *keyboard = [objc_getClass("UIKeyboardImpl") activeInstance];
-                UIResponder *active = DXKeyboardInputDelegate(keyboard);
+                UIResponder *active = DXTopToolbarResponder(keyboard);
                 DXInstallTopAccessoryForResponder(active, NO);
                 
             }

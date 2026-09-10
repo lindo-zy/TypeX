@@ -1,7 +1,7 @@
 Package: com.lindo.typex
 Name: TypeX
 Depends: mobilesubstrate, preferenceloader, firmware(>=14.0)
-Version: 2.7.48
+Version: 2.7.50
 Architecture: iphoneos-arm64
 Description: Configurable shortcuts for the keyboard dock.
 Maintainer: lindo
