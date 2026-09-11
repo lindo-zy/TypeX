@@ -2067,11 +2067,24 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     [self autoPaginationControl];
     UIButton *button = (UIButton *)recognizer.view;
     NSString *selectorName = preferencesSelectorForIdentifierScoped(button.accessibilityIdentifier, 1, gestureType, @"", self.configuration);
-    if (selectorName.length > 0) {
-        self.hapticType = 2;
-        ((void(*)(id, SEL, id))objc_msgSend)(self, NSSelectorFromString(selectorName), nil);
-        [self shakeView:recognizer.view];
+    if (selectorName.length == 0) return;
+
+    SEL action = NSSelectorFromString(selectorName);
+    if (![self respondsToSelector:action]) {
+        HBLogWarn(@"TypeX ignoring unimplemented %@ for %@", selectorName, button.accessibilityIdentifier);
+        return;
     }
+
+    // Legacy selectors that have been hidden from the picker may still exist in
+    // old preferences. Do not dispatch them through the generic action path.
+    if (![DXShortcutsGenerator isVisibleShortcutSelector:selectorName]) {
+        HBLogWarn(@"TypeX ignoring legacy/hidden selector %@", selectorName);
+        return;
+    }
+
+    self.hapticType = 2;
+    ((void(*)(id, SEL, id))objc_msgSend)(self, action, nil);
+    [self shakeView:recognizer.view];
 }
 
 -(void)activateLPActions:(UIGestureRecognizer *)recognizer {
@@ -2087,9 +2100,15 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
     UIButton *button = (UIButton *)recognizer.view;
     NSString *selectorName = button.accessibilityIdentifier;
-    if (![DXShortcutsGenerator isAvailableShortcutSelector:selectorName]) return;
+    if (![DXShortcutsGenerator isVisibleShortcutSelector:selectorName]) return;
 
-    ((void(*)(id, SEL, id))objc_msgSend)(self, NSSelectorFromString(selectorName), button);
+    SEL action = NSSelectorFromString(selectorName);
+    if (![self respondsToSelector:action]) {
+        HBLogWarn(@"TypeX ignoring unimplemented single-tap %@", selectorName);
+        return;
+    }
+
+    ((void(*)(id, SEL, id))objc_msgSend)(self, action, button);
 }
 
 -(UIWindow *)keyWindow {
@@ -2185,7 +2204,14 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     singleTap.numberOfTapsRequired = 1;
     DXUIShortTapGestureRecognizer *doubleTap = [[DXUIShortTapGestureRecognizer alloc] initWithTarget:self action:@selector(activateDTActions:)];
     doubleTap.numberOfTapsRequired = 2;
-    [singleTap requireGestureRecognizerToFail:doubleTap];
+    // Only delay single-tap when the user has configured a double-tap action for
+    // this shortcut. Otherwise the single-tap should fire immediately to avoid
+    // holding onto a potentially stale input context while waiting for the
+    // double-tap failure timeout.
+    NSString *doubleTapSelector = preferencesSelectorForIdentifierScoped(selectorName, 1, 1, @"", self.configuration);
+    if (doubleTapSelector.length > 0) {
+        [singleTap requireGestureRecognizerToFail:doubleTap];
+    }
     cell.btn.gestureRecognizers = @[longPress, doubleTap, singleTap];
     
     //cell.btn.backgroundColor = [UIColor clearColor];
