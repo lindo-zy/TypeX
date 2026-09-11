@@ -23,8 +23,6 @@
 #define kIPCCenterToast @"com.lindo.typex.toast"
 #define kIPCCenterTypeX @"com.lindo.typex"
 #define kPrefsChangedIdentifier @"com.lindo.typex/prefschanged"
-#define kAutoCorrectionChangedIdentifier @"com.lindo.typex/autocorrectionchanged"
-#define kAutoCapitalizationChangedIdentifier @"com.lindo.typex/autocapitalizationchanged"
 #define kPrefsPath @"/var/mobile/Library/Preferences/com.lindo.typex.plist"
 
 #define kEnabledkey @"enabledBOOL"
@@ -66,7 +64,6 @@
 #define kHeightOffsetkey @"heightoffset"
 #define kBottomOffsetkey @"bottomoffset"
 #define kAttemptOffsetAutoAdjustInOneHandedkey @"rightinset"
-#define kEnabledSmartDeletekey @"smartdeleteBOOL"
 #define kEnabledSmartDeleteForwardkey @"smartdeleteforwardBOOL"
 #define kShortLabelEnabledKey @"shortLabelBOOL"
 #define kCellHeightkey @"shortcutheight"

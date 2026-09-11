@@ -16,13 +16,10 @@
 "SHORT_DISMISS_KEYBOARD" = "Dmiss";
 "SHORT_MOVE_CURSOR_LEFT" = "Left";
 "SHORT_MOVE_CURSOR_RIGHT" = "Right";
-"SHORT_AUTO_CORRECTION" = "ACrrtn";
-"SHORT_AUTO_CAPITALIZATION" = "ACap";
 "SHORT_MOVE_CURSOR_UP" = "Up";
 "SHORT_MOVE_CURSOR_DOWN" = "Down";
 "SHORT_DEFINE" = "Dfne";
 "SHORT_RUN_COMMAND" = "Cmd";
-"SHORT_INSERT_TEXT" = "Insrt";
 "SHORT_MOVE_CURSOR_PREVIOUS_WORD" = "Prev";
 "SHORT_MOVE_CURSOR_NEXT_WORD" = "Next";
 "SHORT_MOVE_CURSOR_START_OF_LINE" = "LStrt";
@@ -53,13 +50,10 @@
 "LONG_DISMISS_KEYBOARD" = "Dismiss Keyboard";
 "LONG_MOVE_CURSOR_LEFT" = "Cursor Left";
 "LONG_MOVE_CURSOR_RIGHT" = "Cursor Right";
-"LONG_AUTO_CORRECTION" = "Auto-Correction";
-"LONG_AUTO_CAPITALIZATION" = "Auto-Capitalization";
 "LONG_MOVE_CURSOR_UP" = "Cursor Up";
 "LONG_MOVE_CURSOR_DOWN" = "Cursor Down";
 "LONG_DEFINE" = "Define Word";
 "LONG_RUN_COMMAND" = "Shell Command";
-"LONG_INSERT_TEXT" = "Insert Text";
 "LONG_MOVE_CURSOR_PREVIOUS_WORD" = "Previous Word";
 "LONG_MOVE_CURSOR_NEXT_WORD" = "Next Word";
 "LONG_MOVE_CURSOR_START_OF_LINE" = "Line Start";
@@ -88,13 +82,10 @@
 "TOAST_DISMISS_KEYBOARD" = "Dismiss";
 "TOAST_MOVE_CURSOR_LEFT" = "Left";
 "TOAST_MOVE_CURSOR_RIGHT" = "Right";
-"TOAST_AUTO_CORRECTION" = "Auto-Correction";
-"TOAST_AUTO_CAPITALIZATION" = "Auto-Capitalization";
 "TOAST_MOVE_CURSOR_UP" = "Up";
 "TOAST_MOVE_CURSOR_DOWN" = "Down";
 "TOAST_DEFINE" = "Define";
 "TOAST_RUN_COMMAND" = "Command";
-"TOAST_INSERT_TEXT" = "Insert";
 "TOAST_MOVE_CURSOR_PREVIOUS_WORD" = "Previous";
 "TOAST_MOVE_CURSOR_NEXT_WORD" = "Next";
 "TOAST_MOVE_CURSOR_START_OF_LINE" = "Start of Line";
@@ -108,8 +99,6 @@
 "TOAST_SELECT_SENTENCE" = "Select Sentence";
 "TOAST_DELETE_FORWARD" = "Delete";
 "TOAST_SPONGEBOB" = "sPoNge";
-"TOAST_ON" = "On";
-"TOAST_OFF" = "Off";
 
 //=====================Manage Shortcuts=====================
 //Title

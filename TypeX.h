@@ -243,46 +243,6 @@ static inline UIResponder *DXKeyboardInputDelegate(UIKeyboardImpl *keyboard) {
 @end
 
 
-@interface PSRootController : UIViewController
-- (instancetype)initWithTitle:(NSString *)title identifier:(NSString *)identifier;
-@end
-
-@interface PSListController : UIViewController
-- (instancetype)initForContentSize:(CGSize)contentSize;
-@property (nonatomic, retain) PSRootController *rootController;
-@property (nonatomic, retain) UIViewController *parentController;
-@end
-
-typedef enum PSCellType {
-    PSGroupCell,
-    PSLinkCell,
-    PSLinkListCell,
-    PSListItemCell,
-    PSTitleValueCell,
-    PSSliderCell,
-    PSSwitchCell,
-    PSStaticTextCell,
-    PSEditTextCell,
-    PSSegmentCell,
-    PSGiantIconCell,
-    PSGiantCell,
-    PSSecureEditTextCell,
-    PSButtonCell,
-    PSEditTextViewCell,
-} PSCellType;
-
-@interface PSSpecifier : NSObject
-@property (nonatomic, retain) NSString *identifier;
-+ (instancetype)preferenceSpecifierNamed:(NSString *)name target:(id)target set:(SEL)setter get:(SEL)getter detail:(Class)detailClass cell:(PSCellType)cellType edit:(Class)editClass;
-@end
-
-@interface KeyboardController : PSListController
--(id)init;
--(id)specifierByName:(id)arg1 ;
--(NSArray *)loadAllKeyboardPreferences;
--(void)setKeyboardPreferenceValue:(id)arg1 forSpecifier:(id)arg2 ;
-@end
-
 @interface WKContentView : NSObject
 -(void)executeEditCommandWithCallback:(id)arg1;
 -(void)_defineForWebView:(id)arg1 ;

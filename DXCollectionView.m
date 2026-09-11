@@ -4,7 +4,6 @@
 #import "DXToastWindowController.h"
 #import "DXHelper.h"
 #import "DXUIShortTapGestureRecognizer.h"
-#import "DXLoremIpsum.h"
 
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -141,10 +140,8 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
         self.firstCellVisible = YES;
         
         self.commandTitle = @"";
-        self.insertTextActionType = 0;
         self.isWordSender = NO;
         self.moveCursorWithSelect = NO;
-        //self.autoCorrectionEnabled = [self isAutoCorrectionEnabled];    //self.firstInit = YES;
         
         
         self.backgroundColor = [UIColor clearColor];
@@ -162,8 +159,6 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardRotated:) name:UIDeviceOrientationDidChangeNotification object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(scrollBackward:) name:@"scrollBackward" object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(scrollForward:) name:@"scrollForward" object:nil];
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateAutoCorrection:) name:@"updateAutoCorrection" object:nil];
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateAutoCapitalization:) name:@"updateAutoCapitalization" object:nil];
         
     }
     
@@ -187,8 +182,6 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     [[NSNotificationCenter defaultCenter] removeObserver:self name:UIDeviceOrientationDidChangeNotification object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:@"scrollBackward" object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:@"scrollForward" object:nil];
-    [[NSNotificationCenter defaultCenter] removeObserver:self name:@"updateAutoCorrection" object:nil];
-    [[NSNotificationCenter defaultCenter] removeObserver:self name:@"updateAutoCapitalization" object:nil];
     //[[NSNotificationCenter defaultCenter] removeObserver:self name:UITextFieldTextDidBeginEditingNotification object:nil];
     
 }
@@ -783,24 +776,6 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 }
 
 -(NSString *)getImageNameForActionName:(NSString *)actionname{
-    
-    //actionname = [actionname stringByReplacingOccurrencesOfString:@"LP:" withString:@":"];
-    
-    if ([actionname isEqualToString:@"autoCorrectionAction:"]){
-        if (@available(iOS 13.0, *)){
-            return  !self.autoCorrectionEnabled?@"checkmark.circle.fill":@"checkmark.circle";
-        }else{
-            return  !self.autoCorrectionEnabled?@"UIAccessoryButtonCheckmark":@"UIAccessoryButtonX";
-        }
-    }else if ([actionname isEqualToString:@"autoCapitalizationAction:"]){
-        if (@available(iOS 13.0, *)){
-            return  !self.autoCapitalizationEnabled?@"shift.fill":@"shift";
-        }else{
-            return  !self.autoCapitalizationEnabled?@"shift_on_portrait":@"shift_portrait";
-        }
-    }
-    
-    
     NSPredicate *predicate = [NSPredicate predicateWithFormat:@"SELF contains[cd] %@", actionname];
     NSUInteger idx = [self.fullshortcuts[2]  indexOfObjectPassingTest:^(id obj, NSUInteger idx, BOOL *stop) {
         return [predicate evaluateWithObject:obj];
@@ -874,47 +849,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
             //tw = tw + 15;
             //}
             selname = @"runCommandAction:";
-        }else if ([selname isEqualToString:@"autoCorrectionAction:"]){
-            actionName = !self.autoCorrectionEnabled?LOCALIZED(@"TOAST_ON"):LOCALIZED(@"TOAST_OFF");
-        }else if ([selname isEqualToString:@"autoCapitalizationAction:"]){
-            actionName = !self.autoCapitalizationEnabled?LOCALIZED(@"TOAST_ON"):LOCALIZED(@"TOAST_OFF");
         }
-        /*
-         else if ([selname isEqualToString:@"insertTextAction:"]){
-         actionName = @"Insert";
-         }else if ([selname isEqualToString:@"deleteForwardAction:"]){
-         actionName = @"Delete";
-         }else{
-         actionName = [selname stringByReplacingOccurrencesOfString:@"Action:" withString:@""];
-         
-         if ([selname isEqualToString:@"moveCursorPreviousWordAction:"] || [selname isEqualToString:@"selectSentenceAction:"]){
-         if (preferencesInt(kDisplayTypekey, 0) == 1){
-         tw = tw + 30;
-         }
-         }
-         
-         if ([selname isEqualToString:@"moveCursorStartOfParagraphAction:"] || [selname isEqualToString:@"moveCursorEndOfParagraphAction:"] || [selname isEqualToString:@"moveCursorStartOfSentenceAction:"] || [selname isEqualToString:@"moveCursorEndOfSentenceAction:"] || [selname isEqualToString:@"selectParagraphAction:"]){
-         if (preferencesInt(kDisplayTypekey, 0) == 1){
-         tw = tw + 60;
-         }
-         }
-         
-         actionName = [actionName stringByReplacingOccurrencesOfString:@"Keyboard" withString:@""];
-         actionName = [actionName stringByReplacingOccurrencesOfString:@"moveCursor" withString:@""];
-         actionName = [actionName stringByReplacingOccurrencesOfString:@"autoCorrection" withString:!self.autoCorrectionEnabled?@"On":@"Off"];
-         actionName = [actionName stringByReplacingOccurrencesOfString:@"autoCapitalization" withString:!self.autoCapitalizationEnabled?@"On":@"Off"];
-         NSRegularExpression *regexp = [NSRegularExpression
-         regularExpressionWithPattern:@"([a-z])([A-Z])"
-         options:0
-         error:NULL];
-         actionName = [regexp
-         stringByReplacingMatchesInString:actionName
-         options:0
-         range:NSMakeRange(0, actionName.length)
-         withTemplate:@"$1 $2"];
-         actionName = [actionName capitalizedString];
-         }
-         */
         
         if (preferencesInt(kDisplayTypekey, 0) == 1){
             tw = (int)([self widthOfString:actionName withFont:[UIFont systemFontOfSize:18]] + 0.5f) + 25;
@@ -1179,34 +1114,11 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 -(void)deleteAction:(UIButton*)sender{
     [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:10  toastHeightOffset:0];
-    NSString *selectedString = [delegate textInRange:[delegate selectedTextRange]];
-    BOOL smartDelete = preferencesBool(kEnabledSmartDeletekey, NO);
-    if (!selectedString.length) {
-        UITextRange *textRange = [self selectedWordTextRangeWithDelegate:delegate direction:UITextStorageDirectionBackward];
-        
-        if (!textRange) return;
-        
-        UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
-        
-        tempDelegate.selectedTextRange = textRange;
-        //[kbImpl deleteFromInput];
-        [kbImpl deleteFromInput];
-        if (smartDelete) [kbImpl insertText:@" "];
-        //[tempDelegate  _moveRight:NO withHistory:nil];
-        
-        [kbImpl clearTransientState];
-        [kbImpl clearAnimations];
-        [kbImpl setCaretBlinks:YES];
-        
-    }else{
-        [kbImpl deleteBackward];
-        if (smartDelete) [kbImpl insertText:@" "];
-        [kbImpl clearTransientState];
-        [kbImpl clearAnimations];
-        [kbImpl setCaretBlinks:YES];
-    }
+    [kbImpl deleteBackward];
+    [kbImpl clearTransientState];
+    [kbImpl clearAnimations];
+    [kbImpl setCaretBlinks:YES];
     [self autoPaginationControl];
-    
 }
 
 -(void)deleteForwardAction:(UIButton*)sender{
@@ -1586,197 +1498,6 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     [self moveCursorWithDelegate:delegate offset:offset];
 }
 
--(CPDistributedMessagingCenter *)IPCCenterNamed:(NSString *)centerName{
-    return nil;
-}
-
--(BOOL)isAutoCorrectionEnabled{
-    UIKeyboardPreferencesController *preferencesController = [UIKeyboardPreferencesController sharedPreferencesController];
-    [preferencesController synchronizePreferences];
-    return [preferencesController boolForKey:7];
-}
-
--(void)setAutoCorrection:(BOOL)enabled{
-    UIKeyboardPreferencesController *preferencesController = [UIKeyboardPreferencesController sharedPreferencesController];
-    [preferencesController setValue:[NSNumber numberWithBool:enabled] forKey:7];
-    [preferencesController synchronizePreferences];
-    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), CFSTR("AppleKeyboardsSettingsChangedNotification"), NULL, NULL, YES);
-}
-
--(void)updateAutoCorrection:(NSNotification*)notification{
-    if (!self.isSameProcess && !self.autoCorrectionCell.hidden){
-        if (!self.asyncUpdated) self.autoCorrectionEnabled = [self isAutoCorrectionEnabled];
-        NSMutableAttributedString *imageOfName = [[NSMutableAttributedString alloc] initWithString:@""];
-        
-        UIImage *image;
-        
-        NSMutableAttributedString *attributeString = [[NSMutableAttributedString alloc] initWithString:[DXHelper localizedStringForActionNamed:@"autoCorrectionAction:" shortName:YES bundle:tweakBundle]];
-        NSMutableAttributedString *strikedAttributeString = [attributeString mutableCopy];
-        [strikedAttributeString addAttribute:NSStrikethroughStyleAttributeName value:@2 range:NSMakeRange(0, [attributeString length])];
-        
-        if (@available(iOS 13.0, *)){
-            if (useShortenedLabel){
-                imageOfName = self.autoCorrectionEnabled?attributeString:strikedAttributeString;
-            }else{
-                image = [UIImage systemImageNamed:self.autoCorrectionEnabled?@"checkmark.circle.fill":@"checkmark.circle"];
-            }
-        }else{
-            if (@available(iOS 13.0, *)){
-                if (useShortenedLabel){
-                    imageOfName = self.autoCorrectionEnabled?attributeString:strikedAttributeString;
-                }else{
-                    image = [UIImage imageNamed:self.autoCorrectionEnabled?@"UIAccessoryButtonCheckmark":@"UIAccessoryButtonX" inBundle:[NSBundle bundleWithPath:@"/System/Library/PrivateFrameworks/UIKitCore.framework/Artwork.bundle"] compatibleWithTraitCollection:NULL];
-                }
-            }
-        }
-        if (useShortenedLabel){
-            [self.autoCorrectionCell.btn setImage:nil forState:UIControlStateNormal];
-            [self.autoCorrectionCell.btn setAttributedTitle:imageOfName forState:UIControlStateNormal];
-        }else{
-            [self.autoCorrectionCell.btn setAttributedTitle:nil forState:UIControlStateNormal];
-            [self.autoCorrectionCell.btn setImage:image forState:UIControlStateNormal];
-        }
-    }
-    self.asyncUpdated = NO;
-    self.isSameProcess = NO;
-}
-
--(void)autoCorrectionAction:(UIButton*)sender{
-    [self autoPaginationControl];
-    self.autoCorrectionEnabled = [self isAutoCorrectionEnabled];
-    [self setAutoCorrection:!self.autoCorrectionEnabled];
-    self.isSameProcess = YES;
-    [self triggerImpactAndAnimationWithButton:sender selectorName:NSStringFromSelector(_cmd) toastWidthOffset:0 toastHeightOffset:0];
-    
-    
-    //sender.highlighted = !autoCorrectionEnabled;
-    //sender.selected = !autoCorrectionEnabled;
-    NSMutableAttributedString *imageOfName = [[NSMutableAttributedString alloc] initWithString:@""];
-    
-    UIImage *image;
-    
-    NSMutableAttributedString *attributeString = [[NSMutableAttributedString alloc] initWithString:[DXHelper localizedStringForActionNamed:@"autoCorrectionAction:" shortName:YES bundle:tweakBundle]];
-    NSMutableAttributedString *strikedAttributeString = [attributeString mutableCopy];
-    [strikedAttributeString addAttribute:NSStrikethroughStyleAttributeName value:@2 range:NSMakeRange(0, [attributeString length])];
-    
-    if (@available(iOS 13.0, *)){
-        if (useShortenedLabel){
-            imageOfName = !self.autoCorrectionEnabled?attributeString:strikedAttributeString;
-        }else{
-            image = [UIImage systemImageNamed:(!self.autoCorrectionEnabled)?@"checkmark.circle.fill":@"checkmark.circle"];
-        }
-    }else{
-        if (useShortenedLabel){
-            imageOfName = !self.autoCorrectionEnabled?attributeString:strikedAttributeString;
-        }else{
-            image = [UIImage imageNamed:(!self.autoCorrectionEnabled)?@"UIAccessoryButtonCheckmark":@"UIAccessoryButtonX" inBundle:[NSBundle bundleWithPath:@"/System/Library/PrivateFrameworks/UIKitCore.framework/Artwork.bundle"] compatibleWithTraitCollection:NULL];
-        }
-    }
-    if (useShortenedLabel){
-        [sender setImage:nil forState:UIControlStateNormal];
-        [sender setAttributedTitle:imageOfName forState:UIControlStateNormal];
-    }else{
-        [sender setAttributedTitle:nil forState:UIControlStateNormal];
-        [sender setImage:image forState:UIControlStateNormal];
-    }
-    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), (CFStringRef)kAutoCorrectionChangedIdentifier, NULL, NULL, YES);
-    [self autoPaginationControl];
-}
-
--(BOOL)isAutoCapitalizationEnabled{
-    UIKeyboardPreferencesController *preferencesController = [UIKeyboardPreferencesController sharedPreferencesController];
-    [preferencesController synchronizePreferences];
-    return [preferencesController boolForKey:8];
-}
-
--(void)setAutoCapitalization:(BOOL)enabled{
-    UIKeyboardPreferencesController *preferencesController = [UIKeyboardPreferencesController sharedPreferencesController];
-    [preferencesController setValue:[NSNumber numberWithBool:enabled] forKey:8];
-    [preferencesController synchronizePreferences];
-    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), CFSTR("AppleKeyboardsSettingsChangedNotification"), NULL, NULL, YES);
-}
-
--(void)updateAutoCapitalization:(NSNotification*)notification{
-    if (!self.isSameProcess && !self.autoCapitalizationCell.hidden){
-        if (!self.asyncUpdated) self.autoCapitalizationEnabled = [self isAutoCapitalizationEnabled];
-        
-        NSMutableAttributedString *imageOfName = [[NSMutableAttributedString alloc] initWithString:@""];
-        
-        UIImage *image;
-        
-        NSMutableAttributedString *attributeString = [[NSMutableAttributedString alloc] initWithString:[DXHelper localizedStringForActionNamed:@"autoCapitalizationAction:" shortName:YES bundle:tweakBundle]];
-        NSMutableAttributedString *strikedAttributeString = [attributeString mutableCopy];
-        [strikedAttributeString addAttribute:NSStrikethroughStyleAttributeName value:@2 range:NSMakeRange(0, [attributeString length])];
-        
-        if (@available(iOS 13.0, *)){
-            if (useShortenedLabel){
-                imageOfName = self.autoCapitalizationEnabled?attributeString:strikedAttributeString;
-            }else{
-                image = [UIImage systemImageNamed:self.autoCapitalizationEnabled?@"shift.fill":@"shift"];
-            }
-        }else{
-            if (useShortenedLabel){
-                imageOfName = self.autoCapitalizationEnabled?attributeString:strikedAttributeString;
-            }else{
-                image = [UIImage imageNamed:self.autoCapitalizationEnabled?@"shift_on_portrait":@"shift_portrait" inBundle:[NSBundle bundleWithPath:@"/System/Library/PrivateFrameworks/UIKitCore.framework/Artwork.bundle"] compatibleWithTraitCollection:NULL];
-            }
-        }
-        if (useShortenedLabel){
-            [self.autoCapitalizationCell.btn setImage:nil forState:UIControlStateNormal];
-            [self.autoCapitalizationCell.btn setAttributedTitle:imageOfName forState:UIControlStateNormal];
-        }else{
-            [self.autoCapitalizationCell.btn setAttributedTitle:nil forState:UIControlStateNormal];
-            [self.autoCapitalizationCell.btn setImage:image forState:UIControlStateNormal];
-        }
-    }
-    self.asyncUpdated = NO;
-    self.isSameProcess = NO;
-}
-
--(void)autoCapitalizationAction:(UIButton*)sender{
-    [self autoPaginationControl];
-    self.autoCapitalizationEnabled = [self isAutoCapitalizationEnabled];
-    [self setAutoCapitalization:!self.autoCapitalizationEnabled];
-    self.isSameProcess = YES;
-    [self triggerImpactAndAnimationWithButton:sender selectorName:NSStringFromSelector(_cmd) toastWidthOffset:0 toastHeightOffset:0];
-    
-    
-    //sender.highlighted = !autoCorrectionEnabled;
-    //sender.selected = !autoCorrectionEnabled;
-    NSMutableAttributedString *imageOfName = [[NSMutableAttributedString alloc] initWithString:@""];
-    
-    UIImage *image;
-    
-    NSMutableAttributedString *attributeString = [[NSMutableAttributedString alloc] initWithString:[DXHelper localizedStringForActionNamed:@"autoCapitalizationAction:" shortName:YES bundle:tweakBundle]];
-    NSMutableAttributedString *strikedAttributeString = [attributeString mutableCopy];
-    [strikedAttributeString addAttribute:NSStrikethroughStyleAttributeName value:@2 range:NSMakeRange(0, [attributeString length])];
-    
-    if (@available(iOS 13.0, *)){
-        if (useShortenedLabel){
-            imageOfName = !self.autoCapitalizationEnabled?attributeString:strikedAttributeString;
-        }else{
-            image = [UIImage systemImageNamed:(!self.autoCapitalizationEnabled)?@"shift.fill":@"shift"];
-        }
-    }else{
-        if (useShortenedLabel){
-            imageOfName = !self.autoCapitalizationEnabled?attributeString:strikedAttributeString;
-        }else{
-            image = [UIImage imageNamed:(!self.autoCapitalizationEnabled)?@"shift_on_portrait":@"shift_portrait" inBundle:[NSBundle bundleWithPath:@"/System/Library/PrivateFrameworks/UIKitCore.framework/Artwork.bundle"] compatibleWithTraitCollection:NULL];
-        }
-    }
-    if (useShortenedLabel){
-        [sender setImage:nil forState:UIControlStateNormal];
-        [sender setAttributedTitle:imageOfName forState:UIControlStateNormal];
-    }else{
-        [sender setAttributedTitle:nil forState:UIControlStateNormal];
-        [sender setImage:image forState:UIControlStateNormal];
-    }
-    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), (CFStringRef)kAutoCapitalizationChangedIdentifier, NULL, NULL, YES);
-    [self autoPaginationControl];
-}
-
-
-
 -(void)defineAction:(UIButton*)sender{
     [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
@@ -1831,74 +1552,6 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     }
     [self autoPaginationControl];
 }
-
--(void)insertTextAction:(UIButton*)sender{
-    [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
-    
-    if ([delegate respondsToSelector:@selector(insertText:)]) {
-        NSDictionary *snippet = [self getItemWithID:NSStringFromSelector(_cmd) forKey:@"inserts" identifierKey:@"entryID"];
-        
-        
-        int insertType;
-        if (self.insertTextActionType == 0){
-            insertType = snippet[@"type"] ? [snippet[@"type"] intValue] : 0;
-        }else{
-            insertType = snippet[@"typeLP"] ? [snippet[@"typeLP"] intValue] : 0;
-        }
-        //NSLocale* currentLocale = [NSLocale currentLocale];
-        NSDate *now = [NSDate date];
-        NSDateFormatter *df = [[NSDateFormatter alloc] init];
-        NSString *insertStrings = @"";
-        
-        switch (insertType) {
-            case 0:
-                if (self.insertTextActionType == 0){
-                    insertStrings = snippet[@"text"];
-                }else{
-                    insertStrings = snippet[@"textLP"];
-                }
-                if ([insertStrings length] == 0){
-                    insertStrings = [DXLoremIpsum getQuote];
-                }
-                [kbImpl insertText:insertStrings];
-                break;
-            case 1: //“11/23/37” or “3:30 PM”
-                [df setDateStyle:NSDateFormatterShortStyle];
-                [kbImpl insertText:[df stringFromDate:now]];
-                //[kbImpl insertText:[[NSDate date] descriptionWithLocale:currentLocale]];
-                break;
-            case 2: //“Nov 23, 1937” or “3:30:32 PM”
-                [df setDateStyle:NSDateFormatterMediumStyle];
-                [kbImpl insertText:[df stringFromDate:now]];
-                break;
-            case 3: //“11/23/37” or “3:30 PM”
-                [df setTimeStyle:NSDateFormatterShortStyle];
-                [kbImpl insertText:[df stringFromDate:now]];
-                break;
-            case 4: //“Nov 23, 1937” or “3:30:32 PM”
-                [df setTimeStyle:NSDateFormatterMediumStyle];
-                [kbImpl insertText:[df stringFromDate:now]];
-                break;
-            case 5: //“Nov 23, 1937” or “3:30:32 PM”
-                [df setDateStyle:NSDateFormatterMediumStyle];
-                [df setTimeStyle:NSDateFormatterMediumStyle];
-                [kbImpl insertText:[df stringFromDate:now]];
-                break;
-            default:
-                break;
-        }
-        
-        [kbImpl clearTransientState];
-        [kbImpl clearAnimations];
-        [kbImpl setCaretBlinks:YES];
-        self.insertTextActionType = 0;
-        
-    }
-    [self autoPaginationControl];
-}
-
-
 
 -(BOOL)boolWithProbability:(double)probability{
     return rand() <  probability * ((double)RAND_MAX + 1.0);
@@ -2129,64 +1782,18 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     NSAttributedString *imageOfName = [[NSMutableAttributedString alloc] initWithString:@""];
     
     
-    if ([selectorName isEqualToString:@"autoCorrectionAction:"]){
-        self.autoCorrectionCell = cell;
-        
-        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-            self.autoCorrectionEnabled = [self isAutoCorrectionEnabled];
-            dispatch_sync(dispatch_get_main_queue(), ^{
-                self.isSameProcess = NO;
-                self.asyncUpdated = YES;
-                [self updateAutoCorrection:nil];
-            });
-        });
-        
-        
-        NSMutableAttributedString *attributeString = [[NSMutableAttributedString alloc] initWithString:[DXHelper localizedStringForActionNamed:selectorName shortName:YES bundle:tweakBundle]];
-        NSMutableAttributedString *strikedAttributeString = [attributeString mutableCopy];
-        [strikedAttributeString addAttribute:NSStrikethroughStyleAttributeName value:@2 range:NSMakeRange(0, [attributeString length])];
-        
-        if (@available(iOS 13.0, *)){
-            imageOfName = useShortenedLabel ? self.autoCorrectionEnabled?attributeString:strikedAttributeString : self.autoCorrectionEnabled?[@"checkmark.circle.fill" attributedString]:[@"checkmark.circle" attributedString];
-        }else{
-            imageOfName = useShortenedLabel ? self.autoCorrectionEnabled?attributeString:strikedAttributeString : self.autoCorrectionEnabled?[@"UIAccessoryButtonCheckmark" attributedString]:[@"UIAccessoryButtonX" attributedString];
-        }
-        if (!useShortenedLabel) image = [DXHelper imageForName:imageOfName.string  withSystemColor:NO completion:nil];
-    }else if ([selectorName isEqualToString:@"autoCapitalizationAction:"]){
-        self.autoCapitalizationCell = cell;
-        
-        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-            self.autoCapitalizationEnabled = [self isAutoCapitalizationEnabled];
-            dispatch_sync(dispatch_get_main_queue(), ^{
-                self.isSameProcess = NO;
-                self.asyncUpdated = YES;
-                [self updateAutoCapitalization:nil];
-            });
-        });
-        
-        NSMutableAttributedString *attributeString = [[NSMutableAttributedString alloc] initWithString:[DXHelper localizedStringForActionNamed:selectorName shortName:YES bundle:tweakBundle]];
-        NSMutableAttributedString *strikedAttributeString = [attributeString mutableCopy];
-        [strikedAttributeString addAttribute:NSStrikethroughStyleAttributeName value:@2 range:NSMakeRange(0, [attributeString length])];
-        
-        if (@available(iOS 13.0, *)){
-            imageOfName = useShortenedLabel ? self.autoCapitalizationEnabled?attributeString:strikedAttributeString : self.autoCapitalizationEnabled?[@"shift.fill" attributedString]:[@"shift" attributedString];
-        }else{
-            imageOfName = useShortenedLabel ? self.autoCapitalizationEnabled?attributeString:strikedAttributeString : self.autoCapitalizationEnabled?[@"shift_on_portrait" attributedString]:[@"shift_portrait" attributedString];
-        }
-        if (!useShortenedLabel) image = [DXHelper imageForName:imageOfName.string  withSystemColor:NO completion:nil];
+    if (@available(iOS 13.0, *)){
+        imageOfName = useShortenedLabel
+            ? [[DXHelper localizedStringForActionNamed:selectorName shortName:YES bundle:tweakBundle] attributedString]
+            : [((NSArray *)_shortcuts[kbuttonsImages13])[cellIndex] attributedString];
     }else{
-        
-        if (@available(iOS 13.0, *)){
-            
-            imageOfName = useShortenedLabel ? [[DXHelper localizedStringForActionNamed:selectorName shortName:YES bundle:tweakBundle] attributedString] : [((NSArray *)_shortcuts[kbuttonsImages13])[cellIndex] attributedString];
-            //imageOfName = useShortenedLabel ? [((NSArray *)_shortcuts[kshortLabel])[cellIndex] attributedString] : [((NSArray *)_shortcuts[kbuttonsImages13])[cellIndex] attributedString];
-        }else{
-            imageOfName = useShortenedLabel ? [[DXHelper localizedStringForActionNamed:selectorName shortName:YES bundle:tweakBundle] attributedString]: [((NSArray *)_shortcuts[kbuttonsImages12])[cellIndex] attributedString];
-        }
-        if (!useShortenedLabel) image = [DXHelper imageForName:imageOfName.string  withSystemColor:NO completion:nil];
+        imageOfName = useShortenedLabel
+            ? [[DXHelper localizedStringForActionNamed:selectorName shortName:YES bundle:tweakBundle] attributedString]
+            : [((NSArray *)_shortcuts[kbuttonsImages12])[cellIndex] attributedString];
     }
-    
-    
+    if (!useShortenedLabel) {
+        image = [DXHelper imageForName:imageOfName.string withSystemColor:NO completion:nil];
+    }
     if (useShortenedLabel){
         [cell.btn setImage:nil forState:UIControlStateNormal];
         [cell.btn setAttributedTitle:imageOfName forState:UIControlStateNormal];

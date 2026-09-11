@@ -24,7 +24,6 @@ BOOL singleTapGlobeEnabled = NO;
 BOOL isSpringBoard = YES;
 BOOL isApplication = NO;
 BOOL isSafari = NO;
-KeyboardController *kbController;
 BOOL shouldPerformBatchUpdate = YES;
 //BOOL shouldSendScrollExecution = YES;
 UIKeyboardDockView *dockV;
@@ -1059,16 +1058,6 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
 %end
 
 
-static void updateAutoCorrection() {
-    //HBLogDebug(@"received: %@", dockView.typex);
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"updateAutoCorrection" object:nil];
-}
-
-static void updateAutoCapitalization() {
-    //HBLogDebug(@"received: %@", dockView.typex);
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"updateAutoCapitalization" object:nil];
-}
-
 static void reloadPrefs(void) {
     prefs = [[[DXPrefsManager sharedInstance] readPrefsFromSandbox:[DXPrefsManager isRunningInSandbox]] mutableCopy];
     
@@ -1241,8 +1230,6 @@ static void sbDidLaunch(){
                                                                  name:UIKeyboardWillHideNotification
                                                                object:nil];
                     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, reloadPrefsNotificationCallback, (CFStringRef)kPrefsChangedIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
-                    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)updateAutoCorrection, (CFStringRef)kAutoCorrectionChangedIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
-                    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)updateAutoCapitalization, (CFStringRef)kAutoCapitalizationChangedIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                 }
                 if (isSpringBoard){
                     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)sbDidLaunch, (CFStringRef)@"SBSpringBoardDidLaunchNotification", NULL, CFNotificationSuspensionBehaviorDeliverImmediately);

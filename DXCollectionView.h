@@ -15,15 +15,10 @@ typedef NS_ENUM(NSInteger, direction) {
 @property (strong, nonatomic) NSArray *shortcuts;
 @property (strong, nonatomic) NSArray *fullshortcuts;
 @property (nonatomic, assign) NSInteger hapticType;
-@property (nonatomic, assign) BOOL isSameProcess;
-@property (strong, nonatomic) DXCell *autoCorrectionCell;
-@property (strong, nonatomic) DXCell *autoCapitalizationCell;
 
 @property (nonatomic, assign) BOOL refreshView;
 @property (nonatomic, assign) BOOL firstCellVisible;
 @property (nonatomic, assign) BOOL firstInit;
-@property (nonatomic, assign) BOOL autoCorrectionEnabled;
-@property (nonatomic, assign) BOOL autoCapitalizationEnabled;
 @property (nonatomic, strong) dispatch_block_t retestDispatchBlock;
 @property (nonatomic, strong) dispatch_block_t autoPaginationDispatchBlock;
 @property (nonatomic, assign) NSTimer *cursorTimer;
@@ -34,14 +29,11 @@ typedef NS_ENUM(NSInteger, direction) {
 @property (strong, nonatomic) NSArray *indexArray;
 @property (strong, nonatomic) NSArray *sectionOffsetForwardArray;
 @property (strong, nonatomic) NSArray *sectionOffsetBackwardArray;
-@property (strong, nonatomic) CPDistributedMessagingCenter *typexCenter;
 @property (strong, nonatomic) CPDistributedMessagingCenter *toastCenter;
 @property (strong, nonatomic) NSString *commandTitle;
-@property (nonatomic, assign) NSInteger insertTextActionType;
 
 @property (nonatomic, assign) BOOL moveCursorWithSelect;
 @property (nonatomic, assign) BOOL isWordSender;
-@property (nonatomic, assign) BOOL asyncUpdated;
 @property (strong, nonatomic) DXShortcutsGenerator *shortcutsGenerator;
 
 /// Rebuilds the active shortcut/keyboard-type data from the current preference domain.
@@ -69,7 +61,6 @@ typedef NS_ENUM(NSInteger, direction) {
 -(void)moveCursorDownAction:(UIButton*)sender;
 -(void)defineAction:(UIButton*)sender;
 -(void)runCommandAction:(UIButton*)sender;
--(void)insertTextAction:(UIButton*)sender;
 
 -(void)selectLineAction:(UIButton*)sender;
 -(void)selectParagraphAction:(UIButton*)sender;
@@ -105,13 +96,6 @@ typedef NS_ENUM(NSInteger, direction) {
 -(void)moveCursorSingleWordWithDelegate:(id <UITextInput, UITextInputTokenizer>)delegate direction:(UITextStorageDirection)direction;
 -(void)moveCursorToLineExtremityWithDelegate:(id <UITextInput, UITextInputTokenizer>)delegate direction:(UITextLayoutDirection)direction;
 
--(CPDistributedMessagingCenter *)IPCCenterNamed:(NSString *)centerName;
--(BOOL)isAutoCorrectionEnabled;
--(void)setAutoCorrection:(BOOL)enabled;
--(void)updateAutoCorrection:(NSNotification*)notification;
--(BOOL)isAutoCapitalizationEnabled;
--(void)setAutoCapitalization:(BOOL)enabled;
--(void)updateAutoCapitalization:(NSNotification*)notification;
 -(NSDictionary *)getItemWithID:(NSString *)snippetID forKey:(NSString *)keyName identifierKey:(NSString *)identifier;
 -(void)runCommand:(NSString *)cmd;
 -(BOOL)isValidURL:(NSString *)urlString;

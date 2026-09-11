@@ -22,7 +22,6 @@ extern BOOL isTrackPadMode;
 extern BOOL isSpringBoard;
 extern BOOL isApplication;
 extern BOOL isSafari;
-extern KeyboardController *kbController;
 extern BOOL shouldPerformBatchUpdate;
 //extern BOOL shouldSendScrollExecution;
 extern NSString *key;
