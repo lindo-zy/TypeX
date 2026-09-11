@@ -1,18 +1,34 @@
 #import "DXPManageShortcutsController.h"
-#import "DXPCustomActionViewController.h"
-#import "DXPInsertTextEntryController.h"
-#import "DXPCursorMoveAndSelectEntryController.h"
 #import "../DXShortcutsGenerator.h"
 #import "../DXHelper.h"
 #import "DXPGesturePickerController.h"
-#import "DXPDeleteOptions.h"
-#import "DXPPasteOptions.h"
 
 static UISearchController *searchController;
 static NSBundle *tweakBundle;
 
 static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     return ![DXShortcutsGenerator isVisibleShortcutSelector:selector];
+}
+
+static void DXAppendUniqueShortcuts(NSArray *shortcuts,
+                                    NSMutableArray *destination,
+                                    NSMutableSet *seenSelectors,
+                                    NSUInteger limit) {
+    for (id object in shortcuts) {
+        if (destination.count >= limit) break;
+        if (![object isKindOfClass:[NSDictionary class]]) continue;
+
+        NSDictionary *shortcut = (NSDictionary *)object;
+        NSString *selector = shortcut[@"selector"];
+        if (![selector isKindOfClass:[NSString class]] ||
+            DXIsHiddenShortcutSelector(selector) ||
+            [seenSelectors containsObject:selector]) {
+            continue;
+        }
+
+        [destination addObject:shortcut];
+        [seenSelectors addObject:selector];
+    }
 }
 
 
@@ -23,7 +39,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 3;
+    return 2;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
@@ -33,7 +49,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         case 1:
             return LOCALIZED(@"DISABLED_SHORTCUTS");
         default:
-            return LOCALIZED(@"EXTRAS");
+            return nil;
     }
 }
 
@@ -43,25 +59,17 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
             return [self.currentOrder[0] count];
         case 1:
             return [self.currentOrder[1] count];
-        case 2:
-            return [self.extrasOptions count];
         default:
             return 0;
     }
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section{
-    NSString *footerTextForSectionOne = @"";
     switch (section) {
         case 0:
             return LOCALIZED(@"FOOTER_TEXT_FOR_ENABLED_SHORTCUTS");
         case 1:
             return @"";
-        case 2:
-            footerTextForSectionOne = LOCALIZED(@"FOOTER_TEXT_FOR_EXTRAS");
-            footerTextForSectionOne = [footerTextForSectionOne stringByAppendingString:@"\n\n"];
-            footerTextForSectionOne = [footerTextForSectionOne stringByAppendingString:LOCALIZED(@"FOOTER_TEXT_FOR_DEFAULT_LONG_PRESS_GESTURES")];
-            return footerTextForSectionOne;
         default:
             return @"";
             
@@ -146,28 +154,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
             }
             break;
         }
-        case 2: {
-            if (self.extrasOptions == nil || [self.extrasOptions count] <= indexPath.row)
-                return nil;
-            if (indexPath.row >= [self.extrasOptions count]){
-                [self setCompatibiltyWarning];
-                cell.textLabel.text = LOCALIZED(@"INCOMPATIBLE_RESET");
-                cell.imageView.image = nil;
-                self.tableView.userInteractionEnabled = NO;
-                return cell;
-            }
-            label = [DXHelper labelFromArray:self.extrasOptions atIndex:indexPath.row];
-            image = [DXHelper imageFromArray:self.extrasOptions atIndex:indexPath.row withSystemColor:YES completion:^(BOOL thirteen, BOOL customPath){
-                isThirteen = thirteen;
-                isCustomImagePath = customPath;
-                dispatch_semaphore_signal(smp);
-            }];
-            dispatch_semaphore_wait(smp, DISPATCH_TIME_FOREVER);
-            if (!isThirteen && isCustomImagePath){
-                [cell.imageView setTintColor:[UIColor blackColor]];
-            }
-            break;
-        }
     }
     cell.textLabel.text = label;
     cell.imageView.image = image;
@@ -175,106 +161,17 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath{
-    
-    if (indexPath.section < 2){
-        
-        DXPGesturePickerController *gesturePickerController = [[DXPGesturePickerController alloc] init];
-        
-        gesturePickerController.fullOrder = self.fullOrder;
-        gesturePickerController.identifier = self.currentOrder[indexPath.section][indexPath.row][@"selector"];
-        gesturePickerController.configuration = self.topConfiguration ? @"top" : @"bottom";
-        gesturePickerController.title = [DXHelper localizedStringForActionNamed:self.currentOrder[indexPath.section][indexPath.row][@"selector"] shortName:NO bundle:tweakBundle];
-        
-        [gesturePickerController setRootController: [self rootController]];
-        [gesturePickerController setParentController: [self parentController]];
-        [self pushController:gesturePickerController];
-        
-    }else{
-        if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"insertText"]){
-            DXPInsertTextEntryController *insertTextController = [[DXPInsertTextEntryController alloc] init];
-            insertTextController.entryID = @"insertTextAction:";
-            insertTextController.configuration = self.topConfiguration ? @"top" : @"bottom";
-            [insertTextController setRootController: [self rootController]];
-            [insertTextController setParentController: [self parentController]];
-            [self pushController:insertTextController];
-        }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"prevWord"]){
-            DXPCursorMoveAndSelectEntryController *cursorMoveAndSelectController = [[DXPCursorMoveAndSelectEntryController alloc] init];
-            cursorMoveAndSelectController.entryID = @"moveCursorPreviousWordAction:";
-            cursorMoveAndSelectController.configuration = self.topConfiguration ? @"top" : @"bottom";
-            [cursorMoveAndSelectController setRootController: [self rootController]];
-            [cursorMoveAndSelectController setParentController: [self parentController]];
-            [self pushController:cursorMoveAndSelectController];
-        }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"nextWord"]){
-            DXPCursorMoveAndSelectEntryController *cursorMoveAndSelectController = [[DXPCursorMoveAndSelectEntryController alloc] init];
-            cursorMoveAndSelectController.entryID = @"moveCursorNextWordAction:";
-            cursorMoveAndSelectController.configuration = self.topConfiguration ? @"top" : @"bottom";
-            [cursorMoveAndSelectController setRootController: [self rootController]];
-            [cursorMoveAndSelectController setParentController: [self parentController]];
-            [self pushController:cursorMoveAndSelectController];
-        }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"lineStart"]){
-            DXPCursorMoveAndSelectEntryController *cursorMoveAndSelectController = [[DXPCursorMoveAndSelectEntryController alloc] init];
-            cursorMoveAndSelectController.entryID = @"moveCursorStartOfLineAction:";
-            cursorMoveAndSelectController.configuration = self.topConfiguration ? @"top" : @"bottom";
-            [cursorMoveAndSelectController setRootController: [self rootController]];
-            [cursorMoveAndSelectController setParentController: [self parentController]];
-            [self pushController:cursorMoveAndSelectController];
-        }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"lineEnd"]){
-            DXPCursorMoveAndSelectEntryController *cursorMoveAndSelectController = [[DXPCursorMoveAndSelectEntryController alloc] init];
-            cursorMoveAndSelectController.entryID = @"moveCursorEndOfLineAction:";
-            cursorMoveAndSelectController.configuration = self.topConfiguration ? @"top" : @"bottom";
-            [cursorMoveAndSelectController setRootController: [self rootController]];
-            [cursorMoveAndSelectController setParentController: [self parentController]];
-            [self pushController:cursorMoveAndSelectController];
-        }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"startOfParagraph"]){
-            DXPCursorMoveAndSelectEntryController *cursorMoveAndSelectController = [[DXPCursorMoveAndSelectEntryController alloc] init];
-            cursorMoveAndSelectController.entryID = @"moveCursorStartOfParagraphAction:";
-            cursorMoveAndSelectController.configuration = self.topConfiguration ? @"top" : @"bottom";
-            [cursorMoveAndSelectController setRootController: [self rootController]];
-            [cursorMoveAndSelectController setParentController: [self parentController]];
-            [self pushController:cursorMoveAndSelectController];
-        }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"endOfParagraph"]){
-            DXPCursorMoveAndSelectEntryController *cursorMoveAndSelectController = [[DXPCursorMoveAndSelectEntryController alloc] init];
-            cursorMoveAndSelectController.entryID = @"moveCursorEndOfParagraphAction:";
-            cursorMoveAndSelectController.configuration = self.topConfiguration ? @"top" : @"bottom";
-            [cursorMoveAndSelectController setRootController: [self rootController]];
-            [cursorMoveAndSelectController setParentController: [self parentController]];
-            [self pushController:cursorMoveAndSelectController];
-        }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"startOfSentence"]){
-            DXPCursorMoveAndSelectEntryController *cursorMoveAndSelectController = [[DXPCursorMoveAndSelectEntryController alloc] init];
-            cursorMoveAndSelectController.entryID = @"moveCursorStartOfSentenceAction:";
-            cursorMoveAndSelectController.configuration = self.topConfiguration ? @"top" : @"bottom";
-            [cursorMoveAndSelectController setRootController: [self rootController]];
-            [cursorMoveAndSelectController setParentController: [self parentController]];
-            [self pushController:cursorMoveAndSelectController];
-        }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"endOfSentence"]){
-            DXPCursorMoveAndSelectEntryController *cursorMoveAndSelectController = [[DXPCursorMoveAndSelectEntryController alloc] init];
-            cursorMoveAndSelectController.entryID = @"moveCursorEndOfSentenceAction:";
-            cursorMoveAndSelectController.configuration = self.topConfiguration ? @"top" : @"bottom";
-            [cursorMoveAndSelectController setRootController: [self rootController]];
-            [cursorMoveAndSelectController setParentController: [self parentController]];
-            [self pushController:cursorMoveAndSelectController];
-        }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"delete"]){
-            DXPDeleteOptions *deleteOptions = [[DXPDeleteOptions alloc] init];
-            deleteOptions.entryID = @"deleteAction::";
-            deleteOptions.configuration = self.topConfiguration ? @"top" : @"bottom";
-            [deleteOptions setRootController: [self rootController]];
-            [deleteOptions setParentController: [self parentController]];
-            [self pushController:deleteOptions];
-        }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"deleteForward"]){
-            DXPDeleteOptions *deleteOptions = [[DXPDeleteOptions alloc] init];
-            deleteOptions.entryID = @"deleteForwardAction::";
-            deleteOptions.configuration = self.topConfiguration ? @"top" : @"bottom";
-            [deleteOptions setRootController: [self rootController]];
-            [deleteOptions setParentController: [self parentController]];
-            [self pushController:deleteOptions];
-        }else if ([self.extrasOptions[indexPath.row][@"identifier"] isEqualToString:@"paste"]){
-            DXPPasteOptions *pasteOptions = [[DXPPasteOptions alloc] init];
-            pasteOptions.configuration = self.topConfiguration ? @"top" : @"bottom";
-            [pasteOptions setRootController: [self rootController]];
-            [pasteOptions setParentController: [self parentController]];
-            [self pushController:pasteOptions];
-        }
-    }
+    DXPGesturePickerController *gesturePickerController = [[DXPGesturePickerController alloc] init];
+
+    gesturePickerController.fullOrder = self.fullOrder;
+    gesturePickerController.identifier = self.currentOrder[indexPath.section][indexPath.row][@"selector"];
+    gesturePickerController.configuration = self.topConfiguration ? @"top" : @"bottom";
+    gesturePickerController.title = [DXHelper localizedStringForActionNamed:self.currentOrder[indexPath.section][indexPath.row][@"selector"] shortName:NO bundle:tweakBundle];
+
+    [gesturePickerController setRootController: [self rootController]];
+    [gesturePickerController setParentController: [self parentController]];
+    [self pushController:gesturePickerController];
+
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
 }
 
@@ -428,112 +325,45 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         prefs[customActionsKey] = @[];
         prefs[customActionsDTKey] = @[];
         [prefs removeObjectForKey:cacheKey];
-        //[prefs removeObjectForKey:kCustomActionskey];
-        [[DXPrefsManager sharedInstance] writePrefs:prefs];
-        
+
         //Remove all caches
         NSFileManager *fm = [NSFileManager defaultManager];
         for (NSString *cacheFile in [fm contentsOfDirectoryAtPath:TypeXCachePath error:nil]) {
             [fm removeItemAtPath:[NSString stringWithFormat:@"%@/%@", TypeXCachePath, cacheFile] error:nil];
         }
     }
-    
-    //NSArray *defaultOrder = @[@"Select All", @"Copy", @"Paste", @"Cut", @"Undo", @"Redo"];
-    BOOL newShortcutsAvailable = YES;
-    self.currentOrder = [NSMutableArray array];
-    self.currentOrder[0] = [NSMutableArray array];
-    self.currentOrder[1] = [NSMutableArray array];
-    if (prefs[shortcutsKey][0]  && ([prefs[shortcutsKey][0] firstObject] != nil) && !reset){
-        NSMutableArray *currentOrderDefault = [prefs[shortcutsKey][0] mutableCopy];
-        for (NSInteger i = 0; i < [currentOrderDefault count] && [self.currentOrder[0] count] < maxshortcutpersection; i++){
-            if (DXIsHiddenShortcutSelector(currentOrderDefault[i][@"selector"])) continue;
-            [self.currentOrder[0] addObject:[currentOrderDefault objectAtIndex:i]];
-        }
-    }else{
-        self.currentOrder[0] = [NSMutableArray array];
-        NSMutableArray *defaultOrderDict = [[NSMutableArray alloc] init];
-        
-        for (int i = 0 ; i < maxdefaultshortcuts ; i++) {
-            if (DXIsHiddenShortcutSelector(defaultOrderSelector[i])) continue;
-            [defaultOrderDict addObject: @{
-                @"label" : defaultOrderLabel[i],
-                @"images12" : defaultOrder12[i],
-                @"images13" : defaultOrder13[i],
-                @"selector" : defaultOrderSelector[i]
-                //@"slabel" : shortLabel[i]
-            }];
-        }
-        self.currentOrder[0] = defaultOrderDict;
+
+    id storedOrder = prefs[shortcutsKey];
+    BOOL hasStoredOrder = !reset && [storedOrder isKindOfClass:[NSArray class]] && [storedOrder count] >= 2;
+    NSArray *storedEnabled = hasStoredOrder && [storedOrder[0] isKindOfClass:[NSArray class]] ? storedOrder[0] : @[];
+    NSArray *storedDisabled = hasStoredOrder && [storedOrder[1] isKindOfClass:[NSArray class]] ? storedOrder[1] : @[];
+
+    NSMutableArray *enabled = [NSMutableArray array];
+    NSMutableArray *disabled = [NSMutableArray array];
+    NSMutableSet *seenSelectors = [NSMutableSet set];
+
+    if (hasStoredOrder) {
+        DXAppendUniqueShortcuts(storedEnabled, enabled, seenSelectors, maxshortcutpersection);
     }
-    if (prefs[shortcutsKey][1]  && ([prefs[shortcutsKey][1] firstObject] != nil) && !reset){
-        NSMutableArray *currentOrderDefault = [prefs[shortcutsKey][1] mutableCopy];
-        for (NSInteger i = 0; i < [currentOrderDefault count]; i++){
-            if (DXIsHiddenShortcutSelector(currentOrderDefault[i][@"selector"])) continue;
-            [self.currentOrder[1] addObject:[currentOrderDefault objectAtIndex:i]];
-        }
-        if (newShortcutsAvailable){
-            NSMutableArray *fullOrderDict = [[NSMutableArray alloc] init];
-            for (int i = 0 ; i < [defaultOrderLabel count] ; i++) {
-                if (DXIsHiddenShortcutSelector(defaultOrderSelector[i])) continue;
-                [fullOrderDict addObject: @{
-                    @"label" : defaultOrderLabel[i],
-                    @"images12" : defaultOrder12[i],
-                    @"images13" : defaultOrder13[i],
-                    @"selector" : defaultOrderSelector[i]
-                    //@"slabel" : shortLabel[i]
-                }];
-            }
-            NSMutableArray *newShortcuts = [NSMutableArray arrayWithArray:fullOrderDict];
-            [newShortcuts removeObjectsInArray:self.currentOrder[0]];
-            [newShortcuts removeObjectsInArray:self.currentOrder[1]];
-            for (NSInteger i = 0; i < [newShortcuts count]; i++){
-                [self.currentOrder[1] addObject:[newShortcuts objectAtIndex:i]];
-            }
-            [[DXPrefsManager sharedInstance] writePrefs:prefs];
-            
-            /*
-             //[prefs writeToFile:kPrefsPath atomically:NO];
-             if ([NSHomeDirectory() isEqualToString:@"/var/mobile"]) {
-             CFPreferencesSetMultiple((__bridge CFDictionaryRef)prefs, nil, (CFStringRef)kIdentifier, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
-             CFPreferencesSynchronize((CFStringRef)kIdentifier, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
-             } else {
-             [prefs writeToFile:kPrefsPath atomically:NO];
-             }
-             */
-        }
-    }else if ([prefs[shortcutsKey][0] count] != defaultOrderLabel.count || reset){
-        self.currentOrder[1] = [NSMutableArray array];
-        NSMutableArray *defaultOrderDict = [[NSMutableArray alloc] init];
-        
-        for (int i = maxdefaultshortcuts ; i < [defaultOrderLabel count] ; i++) {
-            if (DXIsHiddenShortcutSelector(defaultOrderSelector[i])) continue;
-            [defaultOrderDict addObject: @{
-                @"label" : defaultOrderLabel[i],
-                @"images12" : defaultOrder12[i],
-                @"images13" : defaultOrder13[i],
-                @"selector" : defaultOrderSelector[i]
-                //@"slabel" : shortLabel[i]
-            }];
-        }
-        self.currentOrder[1] = defaultOrderDict;
+    if (enabled.count == 0) {
+        DXAppendUniqueShortcuts(fullOrderDict, enabled, seenSelectors, maxdefaultshortcuts);
     }
-    
-    NSArray *extrasOptionsLabel = @[ LOCALIZED(@"EXTRAS_INSERT_TEXT_CONTENT"), LOCALIZED(@"EXTRAS_PREVIOUS_WORD_BEHAVIOUR"), LOCALIZED(@"EXTRAS_NEXT_WORD_BEHAVIOUR"), LOCALIZED(@"EXTRAS_LINE_START_BEHAVIOUR"), LOCALIZED(@"EXTRAS_LINE_END_BEHAVIOUR"), LOCALIZED(@"EXTRAS_START_OF_PARAGRAPH_BEHAVIOUR"), LOCALIZED(@"EXTRAS_END_OF_PARAGRAPH_BEHAVIOUR"), LOCALIZED(@"EXTRAS_START_OF_SENTENCE_BEHAVIOUR"), LOCALIZED(@"EXTRAS_END_OF_SENTENCE_BEHAVIOUR"), LOCALIZED(@"EXTRAS_DELETE_BEHAVIOUR"), LOCALIZED(@"EXTRAS_DELETE_FORWARD_BEHAVIOUR"), LOCALIZED(@"EXTRAS_PASTE_BEHAVIOUR")];
-    NSArray *extrasOptionsID = @[ @"insertText", @"prevWord", @"nextWord", @"lineStart", @"lineEnd", @"startOfParagraph", @"endOfParagraph", @"startOfSentence", @"endOfSentence", @"delete", @"deleteForward", @"paste"];
-    NSArray *extrasOptions12 = @[ @"messages_writeboard", @"UICalloutBarPreviousArrow", @"UICalloutBarNextArrow", @"KeyGlyph-rtlTab-larg", @"KeyGlyph-tab-large", @"KeyGlyph-return-large", @"KeyGlyph-rtlReturn-large", @"UIMovieScrubberEditingGlassLeft", @"UIMovieScrubberEditingGlassRight", @"delete_portrait", @"delete_portrait", @"UIButtonBarKeyboardPaste"];
-    NSArray *extrasOptions13 = @[ @"text.bubble", @"arrow.left.circle.fill", @"arrow.right.circle.fill", @"arrow.left.to.line", @"arrow.right.to.line", @"text.insert", @"text.append", @"decrease.quotelevel", @"increase.quotelevel", @"delete.left", @"delete.right", @"doc.on.clipboard"];
-    
-    NSMutableArray *extrasOptionsDict = [[NSMutableArray alloc] init];
-    
-    for (int i = 0; i < [extrasOptionsLabel count]; i++){
-        [extrasOptionsDict addObject: @{
-            @"label" : extrasOptionsLabel[i],
-            @"images12" : extrasOptions12[i],
-            @"images13" : extrasOptions13[i],
-            @"identifier" : extrasOptionsID[i],
-        }];
+
+    if (hasStoredOrder) {
+        DXAppendUniqueShortcuts(storedDisabled, disabled, seenSelectors, NSUIntegerMax);
     }
-    self.extrasOptions = extrasOptionsDict;
+    // Compare shortcut identity by selector.  Stored entries from older versions
+    // may contain obsolete metadata (for example selectorlp), so dictionary
+    // equality would incorrectly append a second copy of the same action.
+    DXAppendUniqueShortcuts(fullOrderDict, disabled, seenSelectors, NSUIntegerMax);
+
+    self.currentOrder = [NSMutableArray arrayWithObjects:enabled, disabled, nil];
+
+    NSArray *normalizedOrder = @[[enabled copy], [disabled copy]];
+    if (reset || ![storedOrder isEqual:normalizedOrder]) {
+        prefs[shortcutsKey] = normalizedOrder;
+        [[DXPrefsManager sharedInstance] writePrefs:prefs];
+    }
     
 }
 
@@ -547,7 +377,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         self.tableView.tableHeaderView = nil;
         self.tableView.userInteractionEnabled = YES;
         [self.tableView reloadData];
-        [self writeToFile];
     }];
     UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:LOCALIZED(@"RESET_NO") style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) {
         [self dismissViewControllerAnimated:YES completion:nil];

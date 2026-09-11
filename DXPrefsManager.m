@@ -89,11 +89,25 @@ static NSString *DXSharedPrefsPath(void) {
 - (NSDictionary *)readPrefsFromSandbox:(BOOL)isSandbox {
     if (isSandbox) {
         NSDictionary *shared = [self readSharedPrefs];
-        if ([shared isKindOfClass:[NSDictionary class]] && shared.count > 0) {
-            return shared;
+
+        // The shared plist is only a fallback cache.  It may survive an upgrade
+        // with a partial/old preference snapshot, in which case merely checking
+        // that it is non-empty makes every sandboxed keyboard host miss the
+        // user's shortcuts/topshortcuts and render the six default actions.
+        // Ask SpringBoard for the authoritative domain first and use the shared
+        // file only while the IPC server is unavailable (for example during
+        // SpringBoard start-up).
+        NSDictionary *authoritative = [[self messagingCenter]
+            sendMessageAndReceiveReplyName:@"typeXFetchPrefs"
+                                  userInfo:nil];
+        if ([authoritative isKindOfClass:[NSDictionary class]]) {
+            if (![authoritative isEqualToDictionary:shared]) {
+                [self writeSharedPrefs:authoritative];
+            }
+            return authoritative;
         }
-        // Fallback to IPC if shared file is missing/stale.
-        return [[self messagingCenter] sendMessageAndReceiveReplyName:@"typeXFetchPrefs" userInfo:nil] ?: @{};
+
+        return [shared isKindOfClass:[NSDictionary class]] ? shared : @{};
     }
     return [self readPrefs];
 }
@@ -191,7 +205,7 @@ static NSString *DXSharedPrefsPath(void) {
 
 - (id)getValueForKey:(NSString *)key fromSandbox:(BOOL)isSandbox {
     if (isSandbox) {
-        return [self readSharedPrefs][key];
+        return [self readPrefsFromSandbox:YES][key];
     }
     return [self getValueForKey:key];
 }

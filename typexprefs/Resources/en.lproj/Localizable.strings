@@ -112,26 +112,9 @@
 "TOAST_OFF" = "Off";
 
 //=====================Manage Shortcuts=====================
-//Extras
-"EXTRAS_SHELL_COMMANDS" = "Shell Commands";
-"EXTRAS_INSERT_TEXT_CONTENT" = "Insert Text Content";
-"EXTRAS_PREVIOUS_WORD_BEHAVIOUR" = "Previous Word Behaviour";
-"EXTRAS_NEXT_WORD_BEHAVIOUR" = "Next Word Behaviour";
-"EXTRAS_LINE_START_BEHAVIOUR" = "Line Start Behaviour";
-"EXTRAS_LINE_END_BEHAVIOUR" = "Line End Behaviour";
-"EXTRAS_START_OF_PARAGRAPH_BEHAVIOUR" = "Start of Paragraph Behaviour";
-"EXTRAS_END_OF_PARAGRAPH_BEHAVIOUR" = "End of Paragraph Behaviour";
-"EXTRAS_START_OF_SENTENCE_BEHAVIOUR" = "Start of Sentence Behaviour";
-"EXTRAS_END_OF_SENTENCE_BEHAVIOUR" = "End of Sentence Behaviour";
-"EXTRAS_DELETE_BEHAVIOUR" = "Delete Behaviour";
-"EXTRAS_DELETE_FORWARD_BEHAVIOUR" = "Delete Forward Behaviour";
-"EXTRAS_PASTE_BEHAVIOUR" = "Paste Behaviour";
-"EXTRAS_SPONGEBOB_BEHAVIOUR" = "sPonGeBob teXt Behaviour";
-
 //Title
 "ENABLED_SHORTCUTS" = "Enabled Shorcuts";
 "DISABLED_SHORTCUTS" = "Disabled Shorcuts";
-"EXTRAS" = "Extras";
 "SHORTCUTS" = "Shortcuts";
 
 //Error
@@ -147,11 +130,6 @@
 "FOOTER_TEXT_FOR_ENABLED_SHORTCUTS" = "Add as many shortcuts as you wish! Tap any shortcut to customize its gesture actions.
 
 NOTE: If you experiencing any issue or shortcuts not showing correctly, please reset.";
-
-"FOOTER_TEXT_FOR_EXTRAS" = "Tap item to customize.";
-
-"FOOTER_TEXT_FOR_DEFAULT_LONG_PRESS_GESTURES" = "Set a long-press or double-tap action for each shortcut below. Leaving an action blank means the gesture does nothing.";
-
 
 //=====================CUSTOM ACTIONS PAGE=====================
 "ACTION" = "Action";
@@ -180,50 +158,19 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "FOOTER_ENABLED" = "Enabled input will be cycled when shorcut is tapped. \"Default\" type will be skipped if it is same as \"Original\". Set a minimum of 2 items, including Original.\n\nNOTE: Some input doesn't support changing input type, TypeX indicates it by changing the current icon to hollow/grey/strikethrough.";
 "RESET_TO_DEFAULT_MESSAGE" = "Reset to default?";
 
-//=====================CURSOR BEHAVIOR=====================
-"CURSOR_BEHAVIOR_WHOLE_PARA" = "Whole Paragraph";
-"CURSOR_BEHAVIOR_FROM_CURRENT_POS" = "From Current Position";
-"CURSOR_BEHAVIOR_WHOLE_LINE" = "Whole Line";
-"CURSOR_BEHAVIOR_WHOLE_SENTENCE" = "Whole Sentence";
-"CURSOR_BEHAVIOR_SINGLE_WORD" = "Single Word Only";
-"CURSOR_BEHAVIOR_CONTINUOUSLY" = "Continuously";
-"CURSOR_BEHAVIOR_NODE_TITLE" = "Default Long Press Behaviour";
-"FOOTER_CURSOR_BEHAVIOR" = "Choose the selection behaviour for default long press gesture.";
-
 //=====================GESTURES PAGE=====================
 "GESTURES" = "Gestures";
+"SINGLE_TAP" = "Single Tap";
 "LONG_PRESS" = "Long Press";
 "DOUBLE_TAP" = "Double Tap";
 
-//=====================INSERT TEXT BEHAVIOR=====================
-"SINGLE_TAP" = "Single Tap";
-"FOOTER_SINGLE_TAP" = "Set the text to be inserted when shortcut tapped.";
-"FOOTER_LONG_PRESS" = "Set the text to be inserted when shortcut is long pressed.\n\nNOTE: When custom long press gesture is set in previous section, this will be ignored.";
 "TEXT" = "Text";
-"ABBREV_SHORT_DATE" = "S. Date";
-"ABBREV_MEDIUM_DATE" = "M. Date";
-"ABBREV_SHORT_TIME" = "S. Time";
-"ABBREV_MEDIUM_TIME" = "M. Time";
-"ABBREV_FULL_DATE" = "F. Date";
 
 //=====================SHELL COMMAND BEHAVIOR=====================
 "SHELL_TITLE" = "Title";
 "SHELL_COMMAND" = "Command";
 "FOOTER_SHELL_SINGLE_TAP" = "Set the shell command to be executed when shortcut tapped.";
 "FOOTER_SHELL_LONG_PRESS" = "Set the shell command to be executed when shortcut long pressed.\n\nNOTE: When custom long press gesture is set in previous section, this will be ignored.";
-
-//=====================DELETE BEHAVIOR=====================
-"SMART_DELETE" = "Smart Delete";
-"FOOTER_DELETE" = "Smart delete will insert a space after deletion.\n\nNOTE: If no word is selected, closest word/punctuation will be selected for delete.";
-
-//=====================GLOBE BEHAVIOR=====================
-
-//=====================PASTE BEHAVIOR=====================
-"SAFARI" = "Safari";
-"FOOTER_SAFARI" = "Select content type to be pasted as \"Paste and Go\" in Safari's navigation bar.";
-"PASTE_AND_GO_DISABLED" = "Disabled";
-"PASTE_AND_GO_URL_ONLY" = "URL Only";
-"PASTE_AND_GO_EVERYTHING" = "Everything";
 
 //=====================SPONGEBOB BEHAVIOR=====================
 "SPONGEBOB_ENTROPY" = "Randomness of Spongebob Text";
@@ -251,9 +198,6 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "BOTTOM_INSET" = "Bottom Inset";
 "LEFT_INSET" = "Left Inset";
 "RIGHT_INSET" = "Right Inset";
-"PASTE_AND_GO" = "Paste and Go";
-"INSERT_TYPE" = "Insert Type";
-"SELECTION_TYPE" = "Selection Type";
 "DESCRIPTION" = "Description";
 "ICON_TYPE" = "Icon Type";
 "ICON_PATH" = "Icon Path";

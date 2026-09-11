@@ -114,25 +114,9 @@
 "TOAST_OFF" = "关闭";
 
 //=====================Manage Shortcuts=====================
-//Extras
-"EXTRAS_SHELL_COMMANDS" = "命令行";
-"EXTRAS_INSERT_TEXT_CONTENT" = "插入文本内容";
-"EXTRAS_PREVIOUS_WORD_BEHAVIOUR" = "上一个词行为";
-"EXTRAS_NEXT_WORD_BEHAVIOUR" = "下一个词行为";
-"EXTRAS_LINE_START_BEHAVIOUR" = "行首行为";
-"EXTRAS_LINE_END_BEHAVIOUR" = "行尾行为";
-"EXTRAS_START_OF_PARAGRAPH_BEHAVIOUR" = "段首行为";
-"EXTRAS_END_OF_PARAGRAPH_BEHAVIOUR" = "段尾行为";
-"EXTRAS_START_OF_SENTENCE_BEHAVIOUR" = "句首行为";
-"EXTRAS_END_OF_SENTENCE_BEHAVIOUR" = "句尾行为";
-"EXTRAS_DELETE_BEHAVIOUR" = "删除行为";
-"EXTRAS_DELETE_FORWARD_BEHAVIOUR" = "向后删除行为";
-"EXTRAS_PASTE_BEHAVIOUR" = "粘贴行为";
-
 //Title
 "ENABLED_SHORTCUTS" = "已启用的快捷方式";
 "DISABLED_SHORTCUTS" = "已禁用的快捷方式";
-"EXTRAS" = "附加功能";
 "SHORTCUTS" = "快捷方式";
 
 //Error
@@ -148,11 +132,6 @@
 "FOOTER_TEXT_FOR_ENABLED_SHORTCUTS" = "您可以添加任意数量的快捷方式！点击任意快捷方式即可自定义其手势操作。
 
 注意：如果遇到问题或快捷方式显示不正确，请尝试重置。";
-
-"FOOTER_TEXT_FOR_EXTRAS" = "点击项目进行自定义。";
-
-"FOOTER_TEXT_FOR_DEFAULT_LONG_PRESS_GESTURES" = "你可以在快捷方式列表中为每个按钮单独设置长按或双击动作。如果某个动作留空，则对应手势不会触发任何操作。";
-
 
 //=====================CUSTOM ACTIONS PAGE=====================
 "ACTION" = "动作";
@@ -181,50 +160,19 @@
 "FOOTER_ENABLED" = "启用后，点击快捷方式即可循环切换输入法。如果“默认”与“原始”相同，将跳过“默认”。请至少选择两个项目，并包含“原始”。\n\n注意：某些输入法不支持切换输入类型，TypeX 会将当前图标显示为空心、灰色或带删除线，以表示该状态。";
 "RESET_TO_DEFAULT_MESSAGE" = "恢复为默认设置？";
 
-//=====================CURSOR BEHAVIOR=====================
-"CURSOR_BEHAVIOR_WHOLE_PARA" = "整段";
-"CURSOR_BEHAVIOR_FROM_CURRENT_POS" = "从当前位置";
-"CURSOR_BEHAVIOR_WHOLE_LINE" = "整行";
-"CURSOR_BEHAVIOR_WHOLE_SENTENCE" = "整句";
-"CURSOR_BEHAVIOR_SINGLE_WORD" = "仅当前词";
-"CURSOR_BEHAVIOR_CONTINUOUSLY" = "连续";
-"CURSOR_BEHAVIOR_NODE_TITLE" = "默认长按行为";
-"FOOTER_CURSOR_BEHAVIOR" = "选择默认长按手势的选择行为。";
-
 //=====================GESTURES PAGE=====================
 "GESTURES" = "手势";
+"SINGLE_TAP" = "单击";
 "LONG_PRESS" = "长按";
 "DOUBLE_TAP" = "双击";
 
-//=====================INSERT TEXT BEHAVIOR=====================
-"SINGLE_TAP" = "单击";
-"FOOTER_SINGLE_TAP" = "设置单击快捷方式时要插入的文本。";
-"FOOTER_LONG_PRESS" = "设置长按快捷方式时要插入的文本。\n\n注意：如果在上方设置了自定义长按手势，此项将被忽略。";
 "TEXT" = "文本";
-"ABBREV_SHORT_DATE" = "简短日期";
-"ABBREV_MEDIUM_DATE" = "中等日期";
-"ABBREV_SHORT_TIME" = "简短时间";
-"ABBREV_MEDIUM_TIME" = "中等时间";
-"ABBREV_FULL_DATE" = "完整日期和时间";
 
 //=====================SHELL COMMAND BEHAVIOR=====================
 "SHELL_TITLE" = "命令标题";
 "SHELL_COMMAND" = "命令";
 "FOOTER_SHELL_SINGLE_TAP" = "单击快捷方式时执行设置的命令。";
 "FOOTER_SHELL_LONG_PRESS" = "长按快捷方式时执行设置的命令。\n\n注意：如果在上方设置了自定义长按手势，此项将被忽略。";
-
-//=====================DELETE BEHAVIOR=====================
-"SMART_DELETE" = "智能删除";
-"FOOTER_DELETE" = "智能删除会在删除后插入一个空格。\n\n注意：如果未选择任何词语，将选择最近的词语或标点符号进行删除。";
-
-//=====================GLOBE BEHAVIOR=====================
-
-//=====================PASTE BEHAVIOR=====================
-"SAFARI" = "Safari";
-"FOOTER_SAFARI" = "选择在 Safari 地址栏中使用“粘贴并前往”的内容类型。";
-"PASTE_AND_GO_DISABLED" = "已停用";
-"PASTE_AND_GO_URL_ONLY" = "仅网址";
-"PASTE_AND_GO_EVERYTHING" = "所有文本";
 
 //=====================MISC=====================
 "SEARCHBAR_PLACEHOLDER" = "搜索设置";
@@ -233,7 +181,6 @@
 "DEFAULT" = "默认";
 "ANSWER_YES" = "是";
 "ANSWER_NO" = "否";
-"EXTRAS_SPONGEBOB_BEHAVIOUR" = "海绵宝宝文本行为";
 "FOOTER_SPONGEBOB_ENTROPY" = "选择生成文本的随机程度。";
 "SPONGEBOB_ENTROPY" = "海绵宝宝文本随机程度";
 "SPONGEBOB_RANDOM" = "随机";
@@ -251,9 +198,6 @@
 "BOTTOM_INSET" = "底部内缩";
 "LEFT_INSET" = "左侧内缩";
 "RIGHT_INSET" = "右侧内缩";
-"PASTE_AND_GO" = "粘贴并前往";
-"INSERT_TYPE" = "插入类型";
-"SELECTION_TYPE" = "选择方式";
 "DESCRIPTION" = "描述";
 "ICON_TYPE" = "图标类型";
 "ICON_PATH" = "图标路径";
