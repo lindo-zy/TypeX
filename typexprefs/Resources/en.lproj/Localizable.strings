@@ -154,9 +154,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 
 
 //=====================CUSTOM ACTIONS PAGE=====================
-"FIRST_ACTION" = "First Action";
-"SECOND_ACTION" = "Second Action";
-"FOOTER_FIRST_ACTION" = "This action is performed before the second action below. Leave blank to disable the gesture.";
+"ACTION" = "Action";
 
 //=====================ADVANCED SETTINGS PAGE=====================
 //Shortcuts

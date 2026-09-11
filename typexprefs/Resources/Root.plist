@@ -11,6 +11,8 @@
 			<string>TWEAK</string>
 		</dict>
 		<dict>
+			<key>PostNotification</key>
+			<string>com.lindo.typex/prefschanged</string>
 			<key>cell</key>
 			<string>PSSwitchCell</string>
 			<key>default</key>
@@ -21,8 +23,6 @@
 			<string>enabledBOOL</string>
 			<key>label</key>
 			<string>ENABLED</string>
-			<key>PostNotification</key>
-			<string>com.lindo.typex/prefschanged</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -33,38 +33,26 @@
 		<dict>
 			<key>cell</key>
 			<string>PSLinkCell</string>
+			<key>configuration</key>
+			<string>top</string>
 			<key>detail</key>
 			<string>DXPManageShortcutsController</string>
 			<key>label</key>
 			<string>顶部设置</string>
-			<key>configuration</key>
-			<string>top</string>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSLinkCell</string>
+			<key>configuration</key>
+			<string>bottom</string>
 			<key>detail</key>
 			<string>DXPManageShortcutsController</string>
 			<key>label</key>
 			<string>底部设置</string>
-			<key>configuration</key>
-			<string>bottom</string>
 		</dict>
 		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>default</key>
-			<false/>
-			<key>defaults</key>
-			<string>com.lindo.typex</string>
-			<key>key</key>
-			<string>doubletapBOOL</string>
-			<key>label</key>
-			<string>DOUBLE_TAP</string>
 			<key>PostNotification</key>
 			<string>com.lindo.typex/prefschanged</string>
-		</dict>
-		<dict>
 			<key>cell</key>
 			<string>PSSwitchCell</string>
 			<key>default</key>
@@ -75,10 +63,10 @@
 			<string>hapticBOOL</string>
 			<key>label</key>
 			<string>HAPTIC</string>
-			<key>PostNotification</key>
-			<string>com.lindo.typex/prefschanged</string>
 		</dict>
 		<dict>
+			<key>PostNotification</key>
+			<string>com.lindo.typex/prefschanged</string>
 			<key>cell</key>
 			<string>PSSwitchCell</string>
 			<key>default</key>
@@ -89,10 +77,10 @@
 			<string>shakeBOOL</string>
 			<key>label</key>
 			<string>SHAKE_SHORTCUT</string>
-			<key>PostNotification</key>
-			<string>com.lindo.typex/prefschanged</string>
 		</dict>
 		<dict>
+			<key>PostNotification</key>
+			<string>com.lindo.typex/prefschanged</string>
 			<key>cell</key>
 			<string>PSSwitchCell</string>
 			<key>default</key>
@@ -103,31 +91,30 @@
 			<string>toastBOOL</string>
 			<key>label</key>
 			<string>SHOW_TOAST</string>
-			<key>PostNotification</key>
-			<string>com.lindo.typex/prefschanged</string>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
-			<key>label</key>
-			<string>顶部快捷数量</string>
 			<key>footerText</key>
 			<string>FOOTER_SHORTCUT_NUM</string>
+			<key>label</key>
+			<string>顶部快捷数量</string>
 		</dict>
 		<dict>
+			<key>PostNotification</key>
+			<string>com.lindo.typex/prefschanged</string>
 			<key>cell</key>
 			<string>PSSegmentCell</string>
+			<key>default</key>
+			<string>6</string>
+			<key>defaults</key>
+			<string>com.lindo.typex</string>
 			<key>detail</key>
 			<string>PSSegmentCell</string>
-			<key>validValues</key>
-			<array>
-				<string>1</string>
-				<string>2</string>
-				<string>3</string>
-				<string>4</string>
-				<string>5</string>
-				<string>6</string>
-			</array>
+			<key>id</key>
+			<string>topmodeselection</string>
+			<key>key</key>
+			<string>topshortcutsnum</string>
 			<key>validTitles</key>
 			<array>
 				<string>1</string>
@@ -137,16 +124,15 @@
 				<string>5</string>
 				<string>6</string>
 			</array>
-			<key>key</key>
-			<string>topshortcutsnum</string>
-			<key>defaults</key>
-			<string>com.lindo.typex</string>
-			<key>default</key>
-			<string>6</string>
-			<key>PostNotification</key>
-			<string>com.lindo.typex/prefschanged</string>
-			<key>id</key>
-			<string>topmodeselection</string>
+			<key>validValues</key>
+			<array>
+				<string>1</string>
+				<string>2</string>
+				<string>3</string>
+				<string>4</string>
+				<string>5</string>
+				<string>6</string>
+			</array>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -155,19 +141,20 @@
 			<string>底部快捷数量</string>
 		</dict>
 		<dict>
+			<key>PostNotification</key>
+			<string>com.lindo.typex/prefschanged</string>
 			<key>cell</key>
 			<string>PSSegmentCell</string>
+			<key>default</key>
+			<string>6</string>
+			<key>defaults</key>
+			<string>com.lindo.typex</string>
 			<key>detail</key>
 			<string>PSSegmentCell</string>
-			<key>validValues</key>
-			<array>
-				<string>1</string>
-				<string>2</string>
-				<string>3</string>
-				<string>4</string>
-				<string>5</string>
-				<string>6</string>
-			</array>
+			<key>id</key>
+			<string>modeselection</string>
+			<key>key</key>
+			<string>shortcutsnum</string>
 			<key>validTitles</key>
 			<array>
 				<string>1</string>
@@ -177,16 +164,15 @@
 				<string>5</string>
 				<string>6</string>
 			</array>
-			<key>key</key>
-			<string>shortcutsnum</string>
-			<key>defaults</key>
-			<string>com.lindo.typex</string>
-			<key>default</key>
-			<string>6</string>
-			<key>PostNotification</key>
-			<string>com.lindo.typex/prefschanged</string>
-			<key>id</key>
-			<string>modeselection</string>
+			<key>validValues</key>
+			<array>
+				<string>1</string>
+				<string>2</string>
+				<string>3</string>
+				<string>4</string>
+				<string>5</string>
+				<string>6</string>
+			</array>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -195,28 +181,28 @@
 			<string>FOOTER_DISPLAY_STYLE</string>
 		</dict>
 		<dict>
+			<key>PostNotification</key>
+			<string>com.lindo.typex/prefschanged</string>
 			<key>cell</key>
 			<string>PSSegmentCell</string>
+			<key>default</key>
+			<string>0</string>
+			<key>defaults</key>
+			<string>com.lindo.typex</string>
 			<key>detail</key>
 			<string>PSSegmentCell</string>
-			<key>validValues</key>
-			<array>
-				<integer>0</integer>
-				<integer>1</integer>
-			</array>
+			<key>key</key>
+			<string>shortLabelBOOL</string>
 			<key>validTitles</key>
 			<array>
 				<string>ICON</string>
 				<string>TEXT</string>
 			</array>
-			<key>key</key>
-			<string>shortLabelBOOL</string>
-			<key>defaults</key>
-			<string>com.lindo.typex</string>
-			<key>default</key>
-			<string>0</string>
-			<key>PostNotification</key>
-			<string>com.lindo.typex/prefschanged</string>
+			<key>validValues</key>
+			<array>
+				<integer>0</integer>
+				<integer>1</integer>
+			</array>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -225,17 +211,20 @@
 			<string>FOOTER_DOCK_MODE</string>
 		</dict>
 		<dict>
+			<key>PostNotification</key>
+			<string>com.lindo.typex/prefschanged</string>
 			<key>cell</key>
 			<string>PSSegmentCell</string>
+			<key>default</key>
+			<string>0</string>
+			<key>defaults</key>
+			<string>com.lindo.typex</string>
 			<key>detail</key>
 			<string>PSSegmentCell</string>
-			<key>validValues</key>
-			<array>
-				<string>0</string>
-				<string>1</string>
-				<string>2</string>
-				<string>3</string>
-			</array>
+			<key>id</key>
+			<string>dockmodeselection</string>
+			<key>key</key>
+			<string>dockmode</string>
 			<key>validTitles</key>
 			<array>
 				<string>DEFAULT</string>
@@ -243,26 +232,25 @@
 				<string>GLOBE_ONLY</string>
 				<string>NONE</string>
 			</array>
-			<key>key</key>
-			<string>dockmode</string>
-			<key>defaults</key>
-			<string>com.lindo.typex</string>
-			<key>default</key>
-			<string>0</string>
-			<key>PostNotification</key>
-			<string>com.lindo.typex/prefschanged</string>
-			<key>id</key>
-			<string>dockmodeselection</string>
+			<key>validValues</key>
+			<array>
+				<string>0</string>
+				<string>1</string>
+				<string>2</string>
+				<string>3</string>
+			</array>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
-			<key>label</key>
-			<string>PAGING</string>
 			<key>footerText</key>
 			<string>FOOTER_PAGING</string>
+			<key>label</key>
+			<string>PAGING</string>
 		</dict>
 		<dict>
+			<key>PostNotification</key>
+			<string>com.lindo.typex/prefschanged</string>
 			<key>cell</key>
 			<string>PSSwitchCell</string>
 			<key>default</key>
@@ -273,8 +261,6 @@
 			<string>pagingBOOL</string>
 			<key>label</key>
 			<string>PAGING</string>
-			<key>PostNotification</key>
-			<string>com.lindo.typex/prefschanged</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -301,10 +287,10 @@
 			<string>DEVELOPMENT</string>
 		</dict>
 		<dict>
-			<key>cell</key>
-			<string>PSButtonCell</string>
 			<key>action</key>
 			<string>donation</string>
+			<key>cell</key>
+			<string>PSButtonCell</string>
 			<key>icon</key>
 			<string>donate.png</string>
 			<key>label</key>
@@ -317,20 +303,20 @@
 			<string>CONTACT</string>
 		</dict>
 		<dict>
-			<key>cell</key>
-			<string>PSButtonCell</string>
 			<key>action</key>
 			<string>twitter</string>
+			<key>cell</key>
+			<string>PSButtonCell</string>
 			<key>icon</key>
 			<string>Twitter.png</string>
 			<key>label</key>
 			<string>TWITTER</string>
 		</dict>
 		<dict>
-			<key>cell</key>
-			<string>PSButtonCell</string>
 			<key>action</key>
 			<string>reddit</string>
+			<key>cell</key>
+			<string>PSButtonCell</string>
 			<key>icon</key>
 			<string>Reddit.png</string>
 			<key>label</key>

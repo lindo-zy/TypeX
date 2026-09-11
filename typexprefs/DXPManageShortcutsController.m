@@ -12,7 +12,7 @@ static UISearchController *searchController;
 static NSBundle *tweakBundle;
 
 static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
-    return ![DXShortcutsGenerator isAvailableShortcutSelector:selector];
+    return ![DXShortcutsGenerator isVisibleShortcutSelector:selector];
 }
 
 
@@ -180,7 +180,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         
         DXPGesturePickerController *gesturePickerController = [[DXPGesturePickerController alloc] init];
         
-        gesturePickerController.fullOrder = @[self.firstOrder, self.fullOrder];
+        gesturePickerController.fullOrder = self.fullOrder;
         gesturePickerController.identifier = self.currentOrder[indexPath.section][indexPath.row][@"selector"];
         gesturePickerController.configuration = self.topConfiguration ? @"top" : @"bottom";
         gesturePickerController.title = [DXHelper localizedStringForActionNamed:self.currentOrder[indexPath.section][indexPath.row][@"selector"] shortName:NO bundle:tweakBundle];
@@ -386,7 +386,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     NSString *shortcutsKey = self.shortcutsPreferenceKey ?: kShortcutskey;
     NSString *customActionsKey = [self scopedKey:kCustomActionskey topKey:kTopCustomActionskey];
     NSString *customActionsDTKey = [self scopedKey:kCustomActionsDTkey topKey:kTopCustomActionsDTkey];
-    NSString *customActionsSTKey = [self scopedKey:kCustomActionsSTkey topKey:kTopCustomActionsSTkey];
     NSString *cacheKey = [self scopedKey:kCachekey topKey:kTopCachekey];
     
     //BOOL newShortcutsAvailable = ([tweakVersion compare:prefs[@"version"] options:NSNumericSearch] == NSOrderedDescending);
@@ -400,44 +399,27 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     //NSMutableDictionary *currentOrderDefault = [[NSMutableDictionary alloc] init];
     DXShortcutsGenerator *shortcutsGenerator = [DXShortcutsGenerator sharedInstance];
     NSMutableArray *defaultOrderLabel = [[shortcutsGenerator labelName] mutableCopy];
-    NSMutableArray *defaultOrderSelector = [[shortcutsGenerator selectorNameForLongPress:NO] mutableCopy];
-    NSMutableArray *defaultOrderSelectorLP = [[shortcutsGenerator selectorNameForLongPress:YES] mutableCopy];
+    NSMutableArray *defaultOrderSelector = [[shortcutsGenerator selectorNames] mutableCopy];
     NSMutableArray *defaultOrder12 = [[shortcutsGenerator imageNameArrayForiOS:0] mutableCopy];
     NSMutableArray *defaultOrder13 = [[shortcutsGenerator imageNameArrayForiOS:1] mutableCopy];
     //NSMutableArray *shortLabel = [[shortcutsGenerator shortenedlabelName] mutableCopy];
     
 
-    //self.fullOrder = @[defaultOrderLabel, defaultOrderSelector, defaultOrderSelectorLP, defaultOrder12, defaultOrder13];
-    
-    
     NSMutableArray *fullOrderDict = [[NSMutableArray alloc] init];
-    NSMutableArray *firstOrderDict = [[NSMutableArray alloc] init];
     
     for (int i = 0; i < [defaultOrderLabel count]; i++){
         if (DXIsHiddenShortcutSelector(defaultOrderSelector[i])) {
             continue;
-        }
-        if ([@[@"selectAllAction:", @"selectAction:", @"selectLineAction:", @"selectParagraphAction:", @"selectSentenceAction:"] containsObject:defaultOrderSelector[i]]){
-            [firstOrderDict addObject: @{
-                @"label" : defaultOrderLabel[i],
-                @"images12" : defaultOrder12[i],
-                @"images13" : defaultOrder13[i],
-                @"selector" : defaultOrderSelector[i],
-                @"selectorlp" : defaultOrderSelectorLP[i]
-                //@"slabel" : shortLabel[i]
-            }];
         }
         [fullOrderDict addObject: @{
             @"label" : defaultOrderLabel[i],
             @"images12" : defaultOrder12[i],
             @"images13" : defaultOrder13[i],
             @"selector" : defaultOrderSelector[i],
-            @"selectorlp" : defaultOrderSelectorLP[i]
             //@"slabel" : shortLabel[i]
         }];
     }
     
-    self.firstOrder = firstOrderDict;
     self.fullOrder = fullOrderDict;
     
     
@@ -445,7 +427,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     if (reset){
         prefs[customActionsKey] = @[];
         prefs[customActionsDTKey] = @[];
-        prefs[customActionsSTKey] = @[];
         [prefs removeObjectForKey:cacheKey];
         //[prefs removeObjectForKey:kCustomActionskey];
         [[DXPrefsManager sharedInstance] writePrefs:prefs];
@@ -478,8 +459,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
                 @"label" : defaultOrderLabel[i],
                 @"images12" : defaultOrder12[i],
                 @"images13" : defaultOrder13[i],
-                @"selector" : defaultOrderSelector[i],
-                @"selectorlp" : defaultOrderSelectorLP[i]
+                @"selector" : defaultOrderSelector[i]
                 //@"slabel" : shortLabel[i]
             }];
         }
@@ -499,8 +479,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
                     @"label" : defaultOrderLabel[i],
                     @"images12" : defaultOrder12[i],
                     @"images13" : defaultOrder13[i],
-                    @"selector" : defaultOrderSelector[i],
-                    @"selectorlp" : defaultOrderSelectorLP[i]
+                    @"selector" : defaultOrderSelector[i]
                     //@"slabel" : shortLabel[i]
                 }];
             }
@@ -532,8 +511,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
                 @"label" : defaultOrderLabel[i],
                 @"images12" : defaultOrder12[i],
                 @"images13" : defaultOrder13[i],
-                @"selector" : defaultOrderSelector[i],
-                @"selectorlp" : defaultOrderSelectorLP[i]
+                @"selector" : defaultOrderSelector[i]
                 //@"slabel" : shortLabel[i]
             }];
         }

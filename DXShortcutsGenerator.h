@@ -9,10 +9,11 @@
 @interface DXShortcutsGenerator : NSObject
 +(void)load;
 +(BOOL)isAvailableShortcutSelector:(NSString *)selector;
++(BOOL)isVisibleShortcutSelector:(NSString *)selector;
 +(instancetype)sharedInstance;
 -(instancetype)init;
 -(NSArray *)imageNameArrayForiOS:(NSInteger)iosVersion;
--(NSArray *)selectorNameForLongPress:(BOOL)longPress;
+-(NSArray *)selectorNames;
 -(NSArray *)labelName;
 -(NSArray *)shortenedlabelName;
 @end

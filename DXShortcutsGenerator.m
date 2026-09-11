@@ -10,12 +10,22 @@ static const NSBundle *tweakBundle;
     static NSSet *selectors;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        NSMutableSet *available = [NSMutableSet setWithArray:[[self sharedInstance] selectorNameForLongPress:NO]];
-        [available removeObject:@"runCommandAction:"];
-        [available removeObject:@"spongebobAction:"];
-        selectors = [available copy];
+        selectors = [NSSet setWithArray:[[self sharedInstance] selectorNames]];
     });
     return [selectors containsObject:selector];
+}
+
++(BOOL)isVisibleShortcutSelector:(NSString *)selector {
+    if (![self isAvailableShortcutSelector:selector]) return NO;
+
+    // These actions remain executable for existing preferences, but stay out of
+    // the shortcut/action picker for new configurations.
+    static NSSet *legacyHiddenSelectors;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        legacyHiddenSelectors = [NSSet setWithArray:@[@"runCommandAction:", @"spongebobAction:"]];
+    });
+    return ![legacyHiddenSelectors containsObject:selector];
 }
 
 +(void)load{
@@ -69,17 +79,8 @@ static const NSBundle *tweakBundle;
     return array;
 }
 
--(NSArray *)selectorNameForLongPress:(BOOL)longPress{
-    NSArray *array = @[@"selectAllAction:",@"copyAction:",@"pasteAction:",@"cutAction:",@"undoAction:",@"redoAction:", @"selectAction:", @"beginningAction:", @"endingAction:", @"deleteAction:", @"dismissKeyboardAction:", @"moveCursorLeftAction:", @"moveCursorRightAction:", @"autoCorrectionAction:", @"autoCapitalizationAction:", @"moveCursorUpAction:", @"moveCursorDownAction:", @"defineAction:", @"runCommandAction:", @"insertTextAction:", @"moveCursorPreviousWordAction:", @"moveCursorNextWordAction:", @"moveCursorStartOfLineAction:", @"moveCursorEndOfLineAction:", @"moveCursorStartOfParagraphAction:", @"moveCursorEndOfParagraphAction:", @"moveCursorStartOfSentenceAction:", @"moveCursorEndOfSentenceAction:", @"selectLineAction:", @"selectParagraphAction:", @"selectSentenceAction:", @"deleteForwardAction:", @"spongebobAction:"];
-    
-    if (longPress){
-        NSMutableArray *longPressArray = [[NSMutableArray alloc] init];
-        for (NSString *selName in array){
-            [longPressArray addObject:[selName stringByReplacingOccurrencesOfString:@":" withString:@"LP:"]];
-        }
-        array = longPressArray;
-    }
-    return array;
+-(NSArray *)selectorNames{
+    return @[@"selectAllAction:",@"copyAction:",@"pasteAction:",@"cutAction:",@"undoAction:",@"redoAction:", @"selectAction:", @"beginningAction:", @"endingAction:", @"deleteAction:", @"dismissKeyboardAction:", @"moveCursorLeftAction:", @"moveCursorRightAction:", @"autoCorrectionAction:", @"autoCapitalizationAction:", @"moveCursorUpAction:", @"moveCursorDownAction:", @"defineAction:", @"runCommandAction:", @"insertTextAction:", @"moveCursorPreviousWordAction:", @"moveCursorNextWordAction:", @"moveCursorStartOfLineAction:", @"moveCursorEndOfLineAction:", @"moveCursorStartOfParagraphAction:", @"moveCursorEndOfParagraphAction:", @"moveCursorStartOfSentenceAction:", @"moveCursorEndOfSentenceAction:", @"selectLineAction:", @"selectParagraphAction:", @"selectSentenceAction:", @"deleteForwardAction:", @"spongebobAction:"];
 }
 
 -(NSArray *)labelName{

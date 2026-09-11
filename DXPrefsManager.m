@@ -13,11 +13,10 @@ static void reloadPrefs(CFNotificationCenterRef center, void *observer, CFString
         NSArray *args = [[NSClassFromString(@"NSProcessInfo") processInfo] arguments];
         if (args.count == 0) return;
 
-        NSString *executablePath = args[0];
-        NSString *processName = executablePath.lastPathComponent;
-        BOOL isSpringBoardProcess = [processName isEqualToString:@"SpringBoard"];
-        BOOL isApplicationProcess = [executablePath rangeOfString:@"/Application"].location != NSNotFound;
-        if (isSpringBoardProcess || isApplicationProcess) [DXPrefsManager sharedInstance];
+        // This class is linked only into TypeX targets.  Initialise it in every
+        // host that loads TypeX so app extensions follow the same non-SpringBoard
+        // sandbox policy as +isRunningInSandbox.
+        [DXPrefsManager sharedInstance];
     }
 }
 
@@ -227,6 +226,7 @@ static NSString *DXSharedPrefsPath(void) {
     [dictionary removeObjectForKey:key];
     [dictionary writeToFile:kPrefsPath atomically:YES];
     self.prefs = [dictionary copy];
+    [self writeSharedPrefs:dictionary];
     if (notify) [self postChangedNotification];
 }
 

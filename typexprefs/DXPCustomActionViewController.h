@@ -7,7 +7,6 @@
 @property (nonatomic,readwrite) NSString *keyID;
 @property (nonatomic, strong) NSArray *fullOrder;
 @property (nonatomic, strong) NSIndexPath *selectedIndexPath;
-@property (nonatomic, strong) NSIndexPath *selectedIndexPath2;
 @property (nonatomic, strong) NSMutableDictionary *prefs;
 @property(nonatomic, retain) UIBarButtonItem *defaultBtn;
 @property (nonatomic, copy) NSString *configuration;

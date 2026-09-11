@@ -155,9 +155,7 @@
 
 
 //=====================CUSTOM ACTIONS PAGE=====================
-"FIRST_ACTION" = "第一个动作";
-"SECOND_ACTION" = "第二个动作";
-"FOOTER_FIRST_ACTION" = "此动作会在下方第二个动作之前执行。如果留空，则该手势不会触发任何操作。";
+"ACTION" = "动作";
 
 //=====================ADVANCED SETTINGS PAGE=====================
 //Shortcuts

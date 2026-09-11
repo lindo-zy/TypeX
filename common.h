@@ -47,6 +47,8 @@
 #define kGestureTypekey @"gesturetype"
 #define kCustomActionskey @"customactions"
 #define kTopCustomActionskey @"topcustomactions"
+#define kCustomActionsDTkey @"customactionsdt"
+#define kTopCustomActionsDTkey @"topcustomactionsdt"
 #define kPagingkey @"pagingBOOL"
 #define kShortcutsTintEnabled @"shortcutstintBOOL"
 #define kShortcutsBackgroundTintEnabled @"shortcutsbackgroundtintBOOL"
@@ -55,11 +57,6 @@
 #define kTopToolbarBackgroundTintKey @"toptoolbarbackgroundtint"
 #define kTopToolbarBackgroundTintEnabledKey @"toptoolbarbackgroundtintBOOL"
 #define kPasteAndGoEnabledkey @"pasteandgo"
-#define kCustomActionsDTkey @"customactionsdt"
-#define kCustomActionsSTkey @"customactionsst"
-#define kTopCustomActionsDTkey @"topcustomactionsdt"
-#define kTopCustomActionsSTkey @"topcustomactionsst"
-#define kEnabledDoubleTapkey @"doubletapBOOL"
 #define kTopInsetkey @"topinset"
 #define kBottomInsetkey @"bottominset"
 #define kLeftInsetkey @"leftinset"
@@ -92,7 +89,6 @@
 #define kbuttonsImages12 0
 #define kbuttonsImages13 1
 #define kselectors 2
-#define kselectorsLP 3
 #define kshortLabel 4
 
 #define tweakVersion @"1.3.1"

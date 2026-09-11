@@ -10,13 +10,13 @@
 #import <objc/message.h>
 
 static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
-    return ![DXShortcutsGenerator isAvailableShortcutSelector:selector];
+    return ![DXShortcutsGenerator isVisibleShortcutSelector:selector];
 }
 
 static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     NSArray *fullGroups = cache[@"fullshortcuts"];
     if (![fullGroups isKindOfClass:[NSArray class]] || fullGroups.count < 3 ||
-        ![fullGroups[2] isEqual:[[DXShortcutsGenerator sharedInstance] selectorNameForLongPress:NO]]) return YES;
+        ![fullGroups[2] isEqual:[[DXShortcutsGenerator sharedInstance] selectorNames]]) return YES;
     NSArray *shortcutGroups = cache[@"shortcuts"];
     if (![shortcutGroups isKindOfClass:[NSArray class]] || shortcutGroups.count < 3) {
         return NO;
@@ -85,14 +85,12 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
             
             NSMutableArray *currentOrderDefault12 = [[self.shortcutsGenerator imageNameArrayForiOS:0] mutableCopy];
             NSMutableArray *currentOrderDefault13 =  [[self.shortcutsGenerator imageNameArrayForiOS:1] mutableCopy];
-            NSMutableArray *selectorsDefault = [[self.shortcutsGenerator selectorNameForLongPress:NO] mutableCopy];
-            NSMutableArray *selectorsLPDefault = [[self.shortcutsGenerator selectorNameForLongPress:YES] mutableCopy];
+            NSMutableArray *selectorsDefault = [[self.shortcutsGenerator selectorNames] mutableCopy];
             //NSMutableArray *shortLabelDefault = [[self.shortcutsGenerator shortenedlabelName] mutableCopy];
             
             NSMutableArray *currentOrder12 = [[NSMutableArray alloc] init];
             NSMutableArray *currentOrder13 = [[NSMutableArray alloc] init];
             NSMutableArray *selectors = [[NSMutableArray alloc] init];
-            NSMutableArray *selectorsLP = [[NSMutableArray alloc] init];
             //NSMutableArray *shortLabel = [[NSMutableArray alloc] init];
             
             if (prefs[shortcutsKey]){
@@ -105,7 +103,6 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
                     [currentOrder12 addObject:item[@"images12"]];
                     [currentOrder13 addObject:item[@"images13"]];
                     [selectors addObject:item[@"selector"]];
-                    [selectorsLP addObject:item[@"selectorlp"]];
                     //if (item[@"slabel"]){
                     //[shortLabel addObject:item[@"slabel"]];
                     //}else{
@@ -117,22 +114,18 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
                     [currentOrder12 addObject:[currentOrderDefault12 objectAtIndex:i]];
                     [currentOrder13 addObject:[currentOrderDefault13 objectAtIndex:i]];
                     [selectors addObject:[selectorsDefault objectAtIndex:i]];
-                    [selectorsLP addObject:[selectorsLPDefault objectAtIndex:i]];
                     //[shortLabel addObject:[shortLabelDefault objectAtIndex:i]];
                 }
                 //currentOrder12 = [[currentOrderDefault12 subarrayWithRange:NSMakeRange(0, 6)] mutableCopy];
                 //currentOrder12 = [[currentOrderDefault13 subarrayWithRange:NSMakeRange(0, 6)] mutableCopy];
                 //selectors = [[selectorsDefault subarrayWithRange:NSMakeRange(0, 6)] mutableCopy];
-                //selectorsLP = [[selectorsLPDefault subarrayWithRange:NSMakeRange(0, 6)] mutableCopy];
-                
             }
             
             //self.buttonsImages12 = currentOrder12;
             //self.buttonsImages13 = currentOrder13;
             //self.buttonSelectors = selectors;
-            //self.buttonLongPressSelectors = selectorsLP;
-            self.shortcuts = @[currentOrder12, currentOrder13, selectors, selectorsLP];
-            self.fullshortcuts = @[currentOrderDefault12, currentOrderDefault13, selectorsDefault, selectorsLPDefault];
+            self.shortcuts = @[currentOrder12, currentOrder13, selectors];
+            self.fullshortcuts = @[currentOrderDefault12, currentOrderDefault13, selectorsDefault];
             cache[@"shortcuts"] = self.shortcuts;
             cache[@"fullshortcuts"] = self.fullshortcuts;
             
@@ -566,13 +559,11 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     //HBLogDebug(@"reloadShortcutConfiguration configuration=%@ shortcutsPerSection=%d scopedKey=%@", self.configuration, [self shortcutsPerSection], [self scopedPreferenceKey:kShortcutskey]);
     NSMutableArray *defaultImages12 = [[self.shortcutsGenerator imageNameArrayForiOS:0] mutableCopy];
     NSMutableArray *defaultImages13 = [[self.shortcutsGenerator imageNameArrayForiOS:1] mutableCopy];
-    NSMutableArray *defaultSelectors = [[self.shortcutsGenerator selectorNameForLongPress:NO] mutableCopy];
-    NSMutableArray *defaultSelectorsLP = [[self.shortcutsGenerator selectorNameForLongPress:YES] mutableCopy];
+    NSMutableArray *defaultSelectors = [[self.shortcutsGenerator selectorNames] mutableCopy];
 
     NSMutableArray *images12 = [NSMutableArray array];
     NSMutableArray *images13 = [NSMutableArray array];
     NSMutableArray *selectors = [NSMutableArray array];
-    NSMutableArray *selectorsLP = [NSMutableArray array];
     NSString *shortcutsKey = [self scopedPreferenceKey:kShortcutskey];
     NSArray *configuredShortcuts = currentPrefs[shortcutsKey];
 
@@ -591,25 +582,22 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
                 [images12 addObject:item[@"images12"]];
                 [images13 addObject:item[@"images13"]];
                 [selectors addObject:selector];
-                [selectorsLP addObject:item[@"selectorlp"] ?: @""];
             }
         }
     } else {
         NSUInteger count = MIN((NSUInteger)[self shortcutsPerSection],
                                MIN(defaultImages12.count,
-                                   MIN(defaultImages13.count,
-                                       MIN(defaultSelectors.count, defaultSelectorsLP.count))));
+                                   MIN(defaultImages13.count, defaultSelectors.count)));
         for (NSUInteger index = 0; index < count; index++) {
             [images12 addObject:defaultImages12[index]];
             [images13 addObject:defaultImages13[index]];
             [selectors addObject:defaultSelectors[index]];
-            [selectorsLP addObject:defaultSelectorsLP[index]];
         }
     }
 
-    self.shortcuts = @[images12, images13, selectors, selectorsLP];
+    self.shortcuts = @[images12, images13, selectors];
     //HBLogDebug(@"reloadShortcutConfiguration built shortcuts count=%lu for scope=%@", (unsigned long)images12.count, self.configuration);
-    self.fullshortcuts = @[defaultImages12, defaultImages13, defaultSelectors, defaultSelectorsLP];
+    self.fullshortcuts = @[defaultImages12, defaultImages13, defaultSelectors];
     self.pagingEnabled = preferencesBool([self scopedPreferenceKey:kPagingkey], preferencesBool(kPagingkey, YES));
     self.indexArray = nil;
     self.sectionOffsetForwardArray = nil;
@@ -740,13 +728,6 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)shakeButton:(UIButton *)sender{
     if (preferencesBool(kShakeShortcutkey,YES)){
-        BOOL doubleTapEnabled = preferencesBool([self scopedPreferenceKey:kEnabledDoubleTapkey], preferencesBool(kEnabledDoubleTapkey, NO));
-        if (doubleTapEnabled){
-            if ([sender respondsToSelector:@selector(view)]){
-                [self shakeView:((UIGestureRecognizer *)sender).view];
-                return;
-            }
-        }
         self.refreshView = NO;
         CABasicAnimation *shake = [CABasicAnimation animationWithKeyPath:@"position"];
         [shake setDuration:0.05];
@@ -2024,724 +2005,6 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     [self autoPaginationControl];
 }
 
-#pragma mark longpress actions
--(void)selectAllActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 2;
-        [self selectAction:nil];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)selectLineActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 2;
-        [self selectAllAction:nil];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)selectParagraphActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 2;
-        [self selectAllAction:nil];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
-
--(void)selectSentenceActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 2;
-        [self selectAllAction:nil];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)copyActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 0;
-        [self selectAllAction:nil];
-        self.hapticType = 2;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(secondActionDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self copyAction:nil];
-        });
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)pasteActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 0;
-        [self selectAllAction:nil];
-        self.hapticType = 2;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(secondActionDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self pasteAction:nil];
-        });
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)cutActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 2;
-        [self deleteAction:nil];
-        
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)undoActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 2;
-        [self beginningAction:nil];
-        
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)redoActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 2;
-        [self endingAction:nil];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-    
-}
-
--(void)selectActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 2;
-        [self selectAllAction:nil];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)beginningActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 2;
-        [self undoAction:nil];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
-
-
--(void)endingActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 2;
-        [self redoAction:nil];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
-
-
-
--(void)deleteActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 2;
-        [self deleteAllAction:nil];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)deleteForwardActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 2;
-        [self deleteAllAction:nil];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
-
-
-
--(void)dismissKeyboardActionLP:(UILongPressGestureRecognizer *)recognizer{
-}
-
--(void)retestGestureStatusForMovingCursor:(NSTimer *)timer{
-    UILongPressGestureRecognizer *recognizer = [[timer userInfo] objectForKey:@"recognizer"];
-    if (recognizer.state == UIGestureRecognizerStatePossible || recognizer.state == UIGestureRecognizerStateEnded){
-        
-        if (!self.retestDispatchBlock){
-            //HBLogDebug(@"cursorTimerRetest: %ld, dispatch: %@", recognizer.state, self.retestDispatchBlock);
-            self.retestDispatchBlock = dispatch_block_create(0, ^{
-                if (recognizer.state == UIGestureRecognizerStatePossible || recognizer.state == UIGestureRecognizerStateEnded){
-                    [self.cursorTimer invalidate];
-                    self.cursorTimer = nil;
-                    self.cursorTimerSpeed = 0.0;
-                    self.cursorMovingFactor = 0;
-                    self.t = 0.0;
-                    [self.cursorTimerRetest invalidate];
-                    self.cursorTimerRetest = nil;
-                }
-                self.retestDispatchBlock = nil;
-            });
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), self.retestDispatchBlock);
-        }
-    }
-    
-}
-
--(void)moveCursorTimer{
-    //if (labs(self.cursorMovingFactor) < 300){
-    //self.cursorMovingFactor = 2* self.cursorMovingFactor;
-    //}
-    //if (self.cursorTimerSpeed > 0){
-    self.t = self.t + 0.01;
-    self.cursorTimerSpeed = 0.2*exp(-5.0*self.t);
-    //self.cursorTimerSpeed = self.cursorTimerSpeed - 0.01;
-    //}
-    NSString *actionName;
-    switch (self.cursorMovingFactor) {
-        case -1:
-            actionName = @"moveCursorLeftAction:";
-            break;
-        case 1:
-            actionName = @"moveCursorRightAction:";
-            break;
-        case 2:
-            actionName = @"moveCursorUpAction:";
-            break;
-        case 3:
-            actionName = @"moveCursorDownAction:";
-            break;
-        default:
-            break;
-    }
-    //HBLogDebug(@"%f", (float)(self.cursorTimerSpeed));
-    if (self.hapticType == 2){
-        [self triggerImpactAndAnimationWithButton:nil selectorName:actionName toastWidthOffset:0 toastHeightOffset:0];
-    }
-    if (self.cursorMovingFactor < 2){
-        [self moveCursorContinuoslyWithDelegate:delegate offset:self.cursorMovingFactor];
-    }else{
-        if (self.cursorMovingFactor == 2){
-            [self moveCursorVerticalWithDelegate:delegate direction:UITextLayoutDirectionUp];
-        }else if (self.cursorMovingFactor == 3){
-            [self moveCursorVerticalWithDelegate:delegate direction:UITextLayoutDirectionDown];
-        }
-    }
-    //self.cursorTimer = nil;
-    self.cursorTimer = [NSTimer scheduledTimerWithTimeInterval:self.cursorTimerSpeed target:self selector:@selector(moveCursorTimer) userInfo:nil repeats:NO];
-}
-
--(void)moveCursorLeftActionLP:(UILongPressGestureRecognizer*)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 0;
-        [self moveCursorLeftAction:nil];
-        self.cursorMovingFactor = -1;
-        self.hapticType = 2;
-        self.cursorTimerSpeed = 0.2;
-        self.t =0.0;
-        self.cursorTimer = [NSTimer scheduledTimerWithTimeInterval:self.cursorTimerSpeed target:self selector:@selector(moveCursorTimer) userInfo:nil repeats:NO];
-        self.cursorTimerRetest = [NSTimer scheduledTimerWithTimeInterval:0.2 target:self selector:@selector(retestGestureStatusForMovingCursor:) userInfo:@{@"recognizer":recognizer} repeats:YES];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self.cursorTimer invalidate];
-        self.cursorTimer = nil;
-        self.cursorTimerSpeed = 0.0;
-        self.cursorMovingFactor = 0;
-        self.t = 0.0;
-        [self.cursorTimer invalidate];
-        self.cursorTimer = nil;
-        self.retestDispatchBlock = nil;
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)moveCursorRightActionLP:(UILongPressGestureRecognizer*)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 0;
-        [self moveCursorRightAction:nil];
-        self.cursorMovingFactor = 1;
-        self.hapticType = 2;
-        self.cursorTimerSpeed = 0.2;
-        self.t =0.0;
-        self.cursorTimer = [NSTimer scheduledTimerWithTimeInterval:self.cursorTimerSpeed target:self selector:@selector(moveCursorTimer) userInfo:nil repeats:NO];
-        self.cursorTimerRetest = [NSTimer scheduledTimerWithTimeInterval:0.2 target:self selector:@selector(retestGestureStatusForMovingCursor:) userInfo:@{@"recognizer":recognizer} repeats:YES];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self.cursorTimer invalidate];
-        self.cursorTimer = nil;
-        self.cursorTimerSpeed = 0.0;
-        self.cursorMovingFactor = 0;
-        self.t =0.0;
-        [self.cursorTimer invalidate];
-        self.cursorTimer = nil;
-        self.retestDispatchBlock = nil;
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)moveCursorPreviousWordActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        NSDictionary *snippet = [self getItemWithID:@"moveCursorPreviousWordAction:" forKey:@"cursormoevandselect" identifierKey:@"entryID"];
-        int selectionType = snippet[@"type"] ? [snippet[@"type"] intValue] : 0;
-        if (selectionType > 0){
-            self.hapticType = 2;
-            self.moveCursorWithSelect = YES;
-            self.isWordSender = YES;
-            [self moveCursorPreviousWordAction:nil];
-        }else{
-            self.hapticType = 0;
-            self.isWordSender = YES;
-            [self moveCursorPreviousWordAction:nil];
-            self.hapticType = 2;
-            [self selectAction:nil];
-        }
-        [self triggerImpactAndAnimationWithButton:nil selectorName:@"selectAction:" toastWidthOffset:0 toastHeightOffset:0];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)moveCursorNextWordActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        NSDictionary *snippet = [self getItemWithID:@"moveCursorNextWordAction:" forKey:@"cursormoevandselect" identifierKey:@"entryID"];
-        int selectionType = snippet[@"type"] ? [snippet[@"type"] intValue] : 0;
-        if (selectionType > 0){
-            self.hapticType = 2;
-            self.moveCursorWithSelect = YES;
-            self.isWordSender = YES;
-            [self moveCursorNextWordAction:nil];
-        }else{
-            self.hapticType = 0;
-            self.isWordSender = YES;
-            [self moveCursorNextWordAction:nil];
-            self.hapticType = 2;
-            [self selectAction:nil];
-        }
-        [self triggerImpactAndAnimationWithButton:nil selectorName:@"selectAction:" toastWidthOffset:0 toastHeightOffset:0];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)moveCursorStartOfLineActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        NSDictionary *snippet = [self getItemWithID:@"moveCursorStartOfLineAction:" forKey:@"cursormoevandselect" identifierKey:@"entryID"];
-        int selectionType = snippet[@"type"] ? [snippet[@"type"] intValue] : 0;
-        if (selectionType > 0){
-            self.hapticType = 0;
-            self.moveCursorWithSelect = YES;
-            [self moveCursorStartOfLineAction:nil];
-        }else{
-            kbImpl = [objc_getClass("UIKeyboardImpl") activeInstance];
-            delegate = DXKeyboardInputDelegate(kbImpl);
-            UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
-            self.hapticType = 0;
-            [self triggerImpactAndAnimationWithButton:nil selectorName:@"moveCursorStartOfLineAction:" toastWidthOffset:0 toastHeightOffset:0];
-            /*
-             UITextPosition *startPosition = tempDelegate.selectedTextRange.start;
-             [self moveCursorStartOfLineAction:nil];
-             UITextPosition *endPosition = tempDelegate.selectedTextRange.start;
-             UITextRange *textRange = [delegate textRangeFromPosition:startPosition toPosition:endPosition];
-             [delegate setSelectedTextRange:textRange];
-             */
-            UITextPosition *startPositionTemp = tempDelegate.selectedTextRange.start;
-            self.moveCursorWithSelect = NO;
-            [self moveCursorPreviousWordAction:nil];
-            UITextPosition *startPositionMovedTemp = tempDelegate.selectedTextRange.start;
-            if (((UITextRange * )[delegate _rangeOfLineEnclosingPosition:startPositionMovedTemp]).start == ((UITextRange * )[delegate _rangeOfLineEnclosingPosition:startPositionTemp]).start){
-                [self moveCursorPreviousWordAction:nil];
-                
-                //[delegate _moveToStartOfLine:NO withHistory:nil];
-                
-                
-            }
-            [delegate _moveToEndOfLine:NO withHistory:nil];
-            [delegate _moveToStartOfLine:YES withHistory:nil];
-        }
-        self.hapticType = 2;
-        [self triggerImpactAndAnimationWithButton:nil selectorName:@"selectAction:" toastWidthOffset:0 toastHeightOffset:0];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)moveCursorEndOfLineActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        NSDictionary *snippet = [self getItemWithID:@"moveCursorEndOfLineAction:" forKey:@"cursormoevandselect" identifierKey:@"entryID"];
-        int selectionType = snippet[@"type"] ? [snippet[@"type"] intValue] : 0;
-        if (selectionType > 0){
-            self.hapticType = 0;
-            self.moveCursorWithSelect = YES;
-            [self moveCursorEndOfLineAction:nil];
-        }else{
-            kbImpl = [objc_getClass("UIKeyboardImpl") activeInstance];
-            delegate = DXKeyboardInputDelegate(kbImpl);
-            UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
-            self.hapticType = 0;
-            [self triggerImpactAndAnimationWithButton:nil selectorName:@"moveCursorEndOfLineAction:" toastWidthOffset:0 toastHeightOffset:0];
-            /*
-             UITextPosition *startPosition = tempDelegate.selectedTextRange.start;
-             [self moveCursorEndOfLineAction:nil];
-             UITextPosition *endPosition = tempDelegate.selectedTextRange.start;
-             UITextRange *textRange = [delegate textRangeFromPosition:startPosition toPosition:endPosition];
-             [delegate setSelectedTextRange:textRange];
-             */
-            UITextPosition *startPositionTemp = tempDelegate.selectedTextRange.end;
-            self.moveCursorWithSelect = NO;
-            [self moveCursorNextWordAction:nil];
-            UITextPosition *startPositionMovedTemp = tempDelegate.selectedTextRange.end;
-            if (((UITextRange * )[delegate _rangeOfLineEnclosingPosition:startPositionMovedTemp]).end == ((UITextRange * )[delegate _rangeOfLineEnclosingPosition:startPositionTemp]).end){
-                [self moveCursorNextWordAction:nil];
-                
-                [delegate _moveToEndOfLine:NO withHistory:nil];
-                
-            }
-            [delegate _moveToStartOfLine:NO withHistory:nil];
-            [delegate _moveToEndOfLine:YES withHistory:nil];
-        }
-        self.hapticType = 2;
-        [self triggerImpactAndAnimationWithButton:nil selectorName:@"selectAction:" toastWidthOffset:0 toastHeightOffset:0];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)moveCursorStartOfParagraphActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        NSDictionary *snippet = [self getItemWithID:@"moveCursorStartOfParagraphAction:" forKey:@"cursormoevandselect" identifierKey:@"entryID"];
-        int selectionType = snippet[@"type"] ? [snippet[@"type"] intValue] : 0;
-        if (selectionType > 0){
-            self.hapticType = 0;
-            self.moveCursorWithSelect = YES;
-            [self moveCursorStartOfParagraphAction:nil];
-        }else{
-            kbImpl = [objc_getClass("UIKeyboardImpl") activeInstance];
-            delegate = DXKeyboardInputDelegate(kbImpl);
-            UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
-            self.hapticType = 0;
-            [self triggerImpactAndAnimationWithButton:nil selectorName:@"moveCursorStartOfParagraphAction:" toastWidthOffset:0 toastHeightOffset:0];
-            /*
-             self.hapticType = 0;
-             UITextPosition *startPositionTemp = tempDelegate.selectedTextRange.start;
-             if (startPositionTemp == ((UITextRange * )[delegate _rangeOfParagraphEnclosingPosition:startPositionTemp]).start){
-             self.moveCursorWithSelect = NO;
-             self.triggerImpact = YES;
-             [self moveCursorPreviousWordAction:nil];
-             startPositionTemp = tempDelegate.selectedTextRange.start;
-             }
-             UITextPosition *paragraphStartPosition = ((UITextRange * )[delegate _rangeOfParagraphEnclosingPosition:startPositionTemp]).start;
-             UITextPosition *paragraphEndPosition = ((UITextRange * )[delegate _rangeOfParagraphEnclosingPosition:startPositionTemp]).end;
-             UITextRange *textRange = [delegate textRangeFromPosition:paragraphStartPosition toPosition:paragraphEndPosition];
-             BOOL isWKContentView = [tempDelegate isKindOfClass:objc_getClass("WKContentView")];
-             if (isWKContentView){
-             */
-            UITextPosition *startPositionTemp = tempDelegate.selectedTextRange.start;
-            self.moveCursorWithSelect = NO;
-            [self moveCursorPreviousWordAction:nil];
-            UITextPosition *startPositionMovedTemp = tempDelegate.selectedTextRange.start;
-            if (((UITextRange * )[delegate _rangeOfParagraphEnclosingPosition:startPositionMovedTemp]).start == ((UITextRange * )[delegate _rangeOfParagraphEnclosingPosition:startPositionTemp]).start){
-                [delegate _moveToStartOfParagraph:NO withHistory:nil];
-                
-                //[self moveCursorPreviousWordAction:nil];
-                
-            }
-            [delegate _moveToEndOfParagraph:NO withHistory:nil];
-            [delegate _moveToStartOfParagraph:YES withHistory:nil];
-            /*
-             }else{
-             [delegate setSelectedTextRange:textRange];
-             }
-             */
-        }
-        self.hapticType = 2;
-        [self triggerImpactAndAnimationWithButton:nil selectorName:@"selectAction:" toastWidthOffset:0 toastHeightOffset:0];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)moveCursorEndOfParagraphActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        NSDictionary *snippet = [self getItemWithID:@"moveCursorEndOfParagraphAction:" forKey:@"cursormoevandselect" identifierKey:@"entryID"];
-        int selectionType = snippet[@"type"] ? [snippet[@"type"] intValue] : 0;
-        if (selectionType > 0){
-            self.hapticType = 0;
-            self.moveCursorWithSelect = YES;
-            [self moveCursorEndOfParagraphAction:nil];
-        }else{
-            kbImpl = [objc_getClass("UIKeyboardImpl") activeInstance];
-            delegate = DXKeyboardInputDelegate(kbImpl);
-            UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
-            self.hapticType = 0;
-            [self triggerImpactAndAnimationWithButton:nil selectorName:@"moveCursorEndOfParagraphAction:" toastWidthOffset:0 toastHeightOffset:0];
-            
-            /*
-             UITextPosition *endPositionTemp = tempDelegate.selectedTextRange.end;
-             if (endPositionTemp == ((UITextRange * )[delegate _rangeOfParagraphEnclosingPosition:endPositionTemp]).end){
-             self.moveCursorWithSelect = NO;
-             self.triggerImpact = YES;
-             [self moveCursorNextWordAction:nil];
-             endPositionTemp = tempDelegate.selectedTextRange.end;
-             }
-             UITextPosition *paragraphStartPosition = ((UITextRange * )[delegate _rangeOfParagraphEnclosingPosition:endPositionTemp]).start;
-             UITextPosition *paragraphEndPosition = ((UITextRange * )[delegate _rangeOfParagraphEnclosingPosition:endPositionTemp]).end;
-             UITextRange *textRange = [delegate textRangeFromPosition:paragraphStartPosition toPosition:paragraphEndPosition];
-             [delegate setSelectedTextRange:textRange];
-             */
-            UITextPosition *startPositionTemp = tempDelegate.selectedTextRange.end;
-            self.moveCursorWithSelect = NO;
-            [self moveCursorNextWordAction:nil];
-            UITextPosition *startPositionMovedTemp = tempDelegate.selectedTextRange.end;
-            if (((UITextRange * )[delegate _rangeOfParagraphEnclosingPosition:startPositionMovedTemp]).end == ((UITextRange * )[delegate _rangeOfParagraphEnclosingPosition:startPositionTemp]).end){
-                [self moveCursorNextWordAction:nil];
-                
-                [delegate _moveToEndOfParagraph:NO withHistory:nil];
-                
-            }
-            [delegate _moveToStartOfParagraph:NO withHistory:nil];
-            [delegate _moveToEndOfParagraph:YES withHistory:nil];
-        }
-        self.hapticType = 2;
-        [self triggerImpactAndAnimationWithButton:nil selectorName:@"selectAction:" toastWidthOffset:0 toastHeightOffset:0];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)moveCursorStartOfSentenceActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        NSDictionary *snippet = [self getItemWithID:@"moveCursorStartOfSentenceAction:" forKey:@"cursormoevandselect" identifierKey:@"entryID"];
-        int selectionType = snippet[@"type"] ? [snippet[@"type"] intValue] : 0;
-        
-        [self beginUpdateDelegate];
-        UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput, UITextInputTokenizer> *)delegate;
-        
-        BOOL isWKContentView = [tempDelegate isKindOfClass:objc_getClass("WKContentView")];
-        self.hapticType = 0;
-        
-        UITextPosition *startPositionTemp = tempDelegate.selectedTextRange.start;
-        //HBLogDebug(@"startPositionTemp: %@", startPositionTemp);
-        UITextPosition *startPositionSentence = ((UITextRange * )[tempDelegate _rangeOfSentenceEnclosingPosition:startPositionTemp]).start;
-        //HBLogDebug(@"startPositionSentence: %@", startPositionSentence);
-        UITextPosition *endPositionSentence = ((UITextRange * )[tempDelegate _rangeOfSentenceEnclosingPosition:startPositionTemp]).end;
-        //HBLogDebug(@"endPositionSentence: %@", endPositionSentence);
-        
-        if (selectionType > 0){
-            
-            if (isWKContentView){
-                self.hapticType = 2;
-                [self selectAllAction:nil];
-                return;
-                /*
-                 NSString *js = [NSString stringWithFormat:@"document.activeElement.selectionStart = %ld", [tempDelegate offsetFromPosition:tempDelegate.beginningOfDocument toPosition:startPositionSentence]];
-                 //HBLogDebug(@"-----------js: %@", js);
-                 //NSString *js = @"var textarea = document.getElementsByTagName('textarea')[0]; textarea.focus(); textarea.selectionStart = 0";
-                 
-                 WKWebView *webView = [tempDelegate webView];
-                 
-                 [webView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
-                 //HBLogDebug(@"XXXXX-result: %@", result);
-                 //HBLogDebug(@"XXXXX-error: %@", error);
-                 
-                 
-                 }];
-                 */
-            }else{
-                
-                UITextRange *textRange = [tempDelegate textRangeFromPosition:startPositionTemp toPosition:startPositionSentence];
-                [tempDelegate setSelectedTextRange:textRange];
-            }
-        }else{
-            if (isWKContentView){
-                self.hapticType = 2;
-                [self selectAllAction:nil];
-                return;
-            }else{
-                UITextRange *textRange = [tempDelegate textRangeFromPosition:startPositionSentence toPosition:endPositionSentence];
-                [tempDelegate setSelectedTextRange:textRange];
-            }
-        }
-        [self triggerImpactAndAnimationWithButton:nil selectorName:@"moveCursorStartOfSentenceAction:" toastWidthOffset:0 toastHeightOffset:0];
-        self.hapticType = 2;
-        [self triggerImpactAndAnimationWithButton:nil selectorName:@"selectAction:" toastWidthOffset:0 toastHeightOffset:0];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)moveCursorEndOfSentenceActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        NSDictionary *snippet = [self getItemWithID:@"moveCursorEndOfSentenceAction:" forKey:@"cursormoevandselect" identifierKey:@"entryID"];
-        int selectionType = snippet[@"type"] ? [snippet[@"type"] intValue] : 0;
-        
-        [self beginUpdateDelegate];
-        UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput, UITextInputTokenizer> *)delegate;
-        
-        BOOL isWKContentView = [tempDelegate isKindOfClass:objc_getClass("WKContentView")];
-        self.hapticType = 0;
-        
-        UITextPosition *startPositionTemp = tempDelegate.selectedTextRange.start;
-        //HBLogDebug(@"startPositionTemp: %@", startPositionTemp);
-        UITextPosition *startPositionSentence = ((UITextRange * )[tempDelegate _rangeOfSentenceEnclosingPosition:startPositionTemp]).start;
-        //HBLogDebug(@"startPositionSentence: %@", startPositionSentence);
-        UITextPosition *endPositionSentence = ((UITextRange * )[tempDelegate _rangeOfSentenceEnclosingPosition:startPositionTemp]).end;
-        //HBLogDebug(@"endPositionSentence: %@", endPositionSentence);
-        
-        if (selectionType > 0){
-            
-            if (isWKContentView){
-                self.hapticType = 2;
-                [self selectAllAction:nil];
-                return;
-                /*
-                 NSString *js = [NSString stringWithFormat:@"document.activeElement.selectionStart = %ld", [tempDelegate offsetFromPosition:tempDelegate.beginningOfDocument toPosition:startPositionSentence]];
-                 //HBLogDebug(@"-----------js: %@", js);
-                 //NSString *js = @"var textarea = document.getElementsByTagName('textarea')[0]; textarea.focus(); textarea.selectionStart = 0";
-                 
-                 WKWebView *webView = [tempDelegate webView];
-                 
-                 [webView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
-                 //HBLogDebug(@"XXXXX-result: %@", result);
-                 //HBLogDebug(@"XXXXX-error: %@", error);
-                 
-                 
-                 }];
-                 */
-            }else{
-                
-                UITextRange *textRange = [tempDelegate textRangeFromPosition:startPositionTemp toPosition:endPositionSentence];
-                [tempDelegate setSelectedTextRange:textRange];
-            }
-        }else{
-            if (isWKContentView){
-                self.hapticType = 2;
-                [self selectAllAction:nil];
-                return;
-            }else{
-                UITextRange *textRange = [tempDelegate textRangeFromPosition:startPositionSentence toPosition:endPositionSentence];
-                [tempDelegate setSelectedTextRange:textRange];
-            }
-        }
-        [self triggerImpactAndAnimationWithButton:nil selectorName:@"moveCursorEndOfSentenceAction:" toastWidthOffset:0 toastHeightOffset:0];
-        self.hapticType = 2;
-        [self triggerImpactAndAnimationWithButton:nil selectorName:@"selectAction:" toastWidthOffset:0 toastHeightOffset:0];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)moveCursorUpActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 0;
-        [self moveCursorUpAction:nil];
-        self.cursorMovingFactor = 2;
-        self.hapticType = 2;
-        self.cursorTimerSpeed = 0.2;
-        self.t =0.0;
-        self.cursorTimer = [NSTimer scheduledTimerWithTimeInterval:self.cursorTimerSpeed target:self selector:@selector(moveCursorTimer) userInfo:nil repeats:NO];
-        self.cursorTimerRetest = [NSTimer scheduledTimerWithTimeInterval:0.2 target:self selector:@selector(retestGestureStatusForMovingCursor:) userInfo:@{@"recognizer":recognizer} repeats:YES];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self.cursorTimer invalidate];
-        self.cursorTimer = nil;
-        self.cursorTimerSpeed = 0.0;
-        self.cursorMovingFactor = 0;
-        self.t = 0.0;
-        [self.cursorTimer invalidate];
-        self.cursorTimer = nil;
-        self.retestDispatchBlock = nil;
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)moveCursorDownActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 0;
-        [self moveCursorDownAction:nil];
-        self.cursorMovingFactor = 3;
-        self.hapticType = 2;
-        self.cursorTimerSpeed = 0.2;
-        self.t =0.0;
-        self.cursorTimer = [NSTimer scheduledTimerWithTimeInterval:self.cursorTimerSpeed target:self selector:@selector(moveCursorTimer) userInfo:nil repeats:NO];
-        self.cursorTimerRetest = [NSTimer scheduledTimerWithTimeInterval:0.2 target:self selector:@selector(retestGestureStatusForMovingCursor:) userInfo:@{@"recognizer":recognizer} repeats:YES];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self.cursorTimer invalidate];
-        self.cursorTimer = nil;
-        self.cursorTimerSpeed = 0.0;
-        self.cursorMovingFactor = 0;
-        self.t = 0.0;
-        [self.cursorTimer invalidate];
-        self.cursorTimer = nil;
-        self.retestDispatchBlock = nil;
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)autoCorrectionActionLP:(UILongPressGestureRecognizer *)recognizer{
-}
-
--(void)autoCapitalizationActionLP:(UILongPressGestureRecognizer *)recognizer{
-}
-
-
--(void)defineActionLP:(UILongPressGestureRecognizer *)recognizer{
-}
-
--(void)runCommandActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 2;
-        NSDictionary *snippet = [self getItemWithID:@"runCommandAction:" forKey:@"snippets" identifierKey:@"entryID"];
-        self.commandTitle = snippet[@"titleLP"] ? : @"Command";
-        [self triggerImpactAndAnimationWithButton:nil selectorName:NSStringFromSelector(_cmd) toastWidthOffset:0 toastHeightOffset:0];
-        [self runCommand:snippet[@"commandLP"]];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
--(void)insertTextActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 2;
-        self.insertTextActionType = 1;
-        [self insertTextAction:nil];
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-}
-
--(UIWindow*)keyWindow{
-    return DXKeyWindow();
-}
-
-
--(void)spongebobActionLP:(UILongPressGestureRecognizer *)recognizer{
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.hapticType = 0;
-        [self selectAllAction:nil];
-        self.hapticType = 2;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(secondActionDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self spongebobAction:nil];
-        });
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        [self shakeView:recognizer.view];
-    }
-    
-}
-/*
- -(NSInteger)numberOfSectionsInCollectionView:(UICollectionView *)collectionView
- {
- 
- return ceil(_buttons.count / 6);
- }
- */
-
 #pragma mark collectionview
 
 
@@ -2799,95 +2062,38 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     }
 }
 
-- (void)activateDTActions:(UITapGestureRecognizer *)recognizer {
-    if (recognizer.state == UIGestureRecognizerStateRecognized) {
-        self.isWordSender = YES;
-        [self activateLPActions:recognizer];
+-(void)activateCustomActions:(UIGestureRecognizer *)recognizer gestureType:(int)gestureType {
+    if (recognizer.state != UIGestureRecognizerStateBegan) return;
+    [self autoPaginationControl];
+    UIButton *button = (UIButton *)recognizer.view;
+    NSString *selectorName = preferencesSelectorForIdentifierScoped(button.accessibilityIdentifier, 1, gestureType, @"", self.configuration);
+    if (selectorName.length > 0) {
+        self.hapticType = 2;
+        ((void(*)(id, SEL, id))objc_msgSend)(self, NSSelectorFromString(selectorName), nil);
         [self shakeView:recognizer.view];
-        self.isWordSender = NO;
     }
 }
 
--(void)activateLPActions:(UIGestureRecognizer *)recognizer{
-    //HBLogDebug(@"recognizer: %@", recognizer);
-    BOOL isDoubleTap = [recognizer isKindOfClass:objc_getClass("UITapGestureRecognizer")];
-    __block BOOL didTriggerAction = NO;
-    
-    if (recognizer.state == UIGestureRecognizerStateBegan || (isDoubleTap && recognizer.state == UIGestureRecognizerStateEnded)) {
-        [self autoPaginationControl];
-        //HBLogDebug(@"########## REG: %@", NSStringFromCGPoint([recognizer locationInView:recognizer.view.window]));
-        
-        //HBLogDebug(@"recognizer: %@", recognizer);
-        UIButton *btn = (UIButton *)(recognizer.view);
-        BOOL doubleTapEnabled = preferencesBool([self scopedPreferenceKey:kEnabledDoubleTapkey], preferencesBool(kEnabledDoubleTapkey, NO));
-        NSArray *targetsForLongPressUsingGesture;
-        
-        if (doubleTapEnabled){
-            NSArray *gestures = btn.gestureRecognizers;
-            NSPredicate *resultPredicate = [NSPredicate
-                                            predicateWithFormat:@"SELF.numberOfTapsRequired == %@",
-                                            @1];
-            targetsForLongPressUsingGesture = [([[gestures filteredArrayUsingPredicate:resultPredicate] firstObject]) valueForKey:@"_targets"];
-        }
-        
-        id sets;
-        if (doubleTapEnabled){
-            sets = targetsForLongPressUsingGesture;
-        }else{
-            sets = btn.allTargets;
-        }
-        
-        for (id target in sets) {
-            NSArray *actions;
-            //HBLogDebug(@"00000000000000000000000000");
-            if (doubleTapEnabled){
-                actions = @[NSStringFromSelector([(UIGestureRecognizerTarget *)target action])];
-            }else{
-                actions = [btn actionsForTarget:target forControlEvent:UIControlEventTouchUpInside];
-            }
-            for (NSString *action in actions) {
-                //HBLogDebug(@"######## action: %@", action);
-                int gestureType = 0;
-                if (isDoubleTap) gestureType = 1;
-                NSString *selectorName1 = preferencesSelectorForIdentifierScoped(action, 1, gestureType, @"", self.configuration);
-                NSString *selectorName2 = preferencesSelectorForIdentifierScoped(action, 2, gestureType, @"", self.configuration);
-                //HBLogDebug(@"selectorName1: %@", selectorName1);
-                //HBLogDebug(@"selectorName2: %@", selectorName2);
-                
-                SEL action1 = NSSelectorFromString(selectorName1);
-                SEL action2 = NSSelectorFromString(selectorName2);
-                
-                if ( ([selectorName1 length] > 0) && ([selectorName2 length] > 0) ){
-                    //https://github.com/th-in-gs/THObserversAndBinders/blob/master/THObserversAndBinders/THObserver.m
-                    self.hapticType = 0;
-                    ((void(*)(id, SEL, id))objc_msgSend)(self, action1, nil);
-                    //[self performSelector:action1];
-                    self.hapticType = 2;
-                    //[self performSelector:action2];
-                    //((void(*)(id, SEL, id))objc_msgSend)(self, action2, nil);
-                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(secondActionDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                        ((void(*)(id, SEL, id))objc_msgSend)(self, action2, nil);
-                    });
-                    didTriggerAction = YES;
-                }else if ([selectorName1 length] > 0){
-                    self.hapticType = 2;
-                    ((void(*)(id, SEL, id))objc_msgSend)(self, action1, nil);
-                    didTriggerAction = YES;
-                }else if ([selectorName2 length] > 0){
-                    self.hapticType = 2;
-                    ((void(*)(id, SEL, id))objc_msgSend)(self, action2, nil);
-                    didTriggerAction = YES;
-                }else{
-                    // No custom action selected; do nothing.
-                }
-            }
-        }
-        
-    }else if (recognizer.state == UIGestureRecognizerStateEnded){
-        if (didTriggerAction) {
-            [self shakeView:recognizer.view];
-        }
-    }
+-(void)activateLPActions:(UIGestureRecognizer *)recognizer {
+    [self activateCustomActions:recognizer gestureType:0];
+}
+
+-(void)activateDTActions:(UIGestureRecognizer *)recognizer {
+    [self activateCustomActions:recognizer gestureType:1];
+}
+
+-(void)activateSingleTapAction:(UITapGestureRecognizer *)recognizer {
+    if (recognizer.state != UIGestureRecognizerStateEnded) return;
+
+    UIButton *button = (UIButton *)recognizer.view;
+    NSString *selectorName = button.accessibilityIdentifier;
+    if (![DXShortcutsGenerator isAvailableShortcutSelector:selectorName]) return;
+
+    ((void(*)(id, SEL, id))objc_msgSend)(self, NSSelectorFromString(selectorName), button);
+}
+
+-(UIWindow *)keyWindow {
+    return DXKeyWindow();
 }
 
 
@@ -2969,65 +2175,19 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
         [cell.btn setAttributedTitle:nil forState:UIControlStateNormal];
         [cell.btn setImage:image forState:UIControlStateNormal];
     }
-    SEL selector = NSSelectorFromString(selectorName);
+    cell.btn.accessibilityIdentifier = selectorName;
     [cell.btn removeTarget:nil action:NULL forControlEvents:UIControlEventAllEvents];
     
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(activateLPActions:)];
     longPress.minimumPressDuration = 0.5;
     
-    BOOL doubleTapEnabled = preferencesBool([self scopedPreferenceKey:kEnabledDoubleTapkey], preferencesBool(kEnabledDoubleTapkey, NO));
+    DXUIShortTapGestureRecognizer *singleTap = [[DXUIShortTapGestureRecognizer alloc] initWithTarget:self action:@selector(activateSingleTapAction:)];
+    singleTap.numberOfTapsRequired = 1;
+    DXUIShortTapGestureRecognizer *doubleTap = [[DXUIShortTapGestureRecognizer alloc] initWithTarget:self action:@selector(activateDTActions:)];
+    doubleTap.numberOfTapsRequired = 2;
+    [singleTap requireGestureRecognizerToFail:doubleTap];
+    cell.btn.gestureRecognizers = @[longPress, doubleTap, singleTap];
     
-    DXUIShortTapGestureRecognizer *singleTap;
-    DXUIShortTapGestureRecognizer *doubleTap;
-    if (doubleTapEnabled){
-        singleTap = [[DXUIShortTapGestureRecognizer alloc] initWithTarget:self action:selector];
-        singleTap.numberOfTapsRequired = 1;
-        doubleTap = [[DXUIShortTapGestureRecognizer alloc] initWithTarget:self action:@selector(activateDTActions:)];
-        doubleTap.numberOfTapsRequired = 2;
-        [singleTap requireGestureRecognizerToFail:doubleTap];
-        cell.btn.gestureRecognizers = @[longPress, doubleTap, singleTap];
-        //[tapGesture setCancelsTouchesInView:NO];
-    }else{
-        [cell.btn addTarget:self action:selector forControlEvents:UIControlEventTouchUpInside];
-        cell.btn.gestureRecognizers = @[longPress];
-    }
-    
-    //SEL selectorLP = NSSelectorFromString(((NSArray *)_shortcuts[kselectorsLP])[cellIndex]);
-    
-    
-    
-    /*
-     UILongPressGestureRecognizer *longPress;
-     
-     NSString *selectorName1 = preferencesSelectorForIdentifier(selectorName, 1, @"");
-     NSString *selectorName2 = preferencesSelectorForIdentifier(selectorName, 2, @"");
-     
-     if ( ([selectorName1 length] > 0) && ([selectorName2 length] > 0) ){
-     
-     //SEL selectorLP = NSSelectorFromString();
-     longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(activateDoubleActions:)];
-     longPress.minimumPressDuration = 0.5;
-     }else{
-     SEL selectorLP = NSSelectorFromString(((NSArray *)_shortcuts[kselectorsLP])[cellIndex]);
-     longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:selectorLP];
-     longPress.minimumPressDuration = 0.5;
-     }
-     */
-    
-    //cell.btn.gestureRecognizers?.removeAll();
-    
-    //while (cell.btn.gestureRecognizers.count) {
-    //[cell.btn removeGestureRecognizer:[cell.btn.gestureRecognizers objectAtIndex:0]];
-    //}
-    
-    //[cell.btn addGestureRecognizer:longPress];
-    //[cell.btn setContentMode:UIViewContentModeScaleAspectFit];
-    //if (useShortenedLabel){
-    //MKInfoCardThemeManager *kbTheme = [(UIKeyboardLayoutStar *)[[objc_getClass("UIKeyboardImpl") activeInstance] valueForKey:@"m_layout"] mk_theme];
-    //cell.btn.backgroundColor = kbTheme.tertiaryTextColor;
-    //cell.btn.layer.cornerRadius = 5; // this value vary as per your desire
-    //cell.btn.clipsToBounds = YES;
-    //}else{
     //cell.btn.backgroundColor = [UIColor clearColor];
     //cell.btn.layer.cornerRadius = 0; // this value vary as per your desire
     //cell.btn.clipsToBounds = NO;

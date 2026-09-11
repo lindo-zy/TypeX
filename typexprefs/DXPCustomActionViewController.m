@@ -7,37 +7,21 @@ static NSBundle *tweakBundle;
 @implementation DXPCustomActionViewController
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 2;
+    return 1;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    switch (section) {
-        case 0:
-            return LOCALIZED(@"FIRST_ACTION");
-        default:
-            return LOCALIZED(@"SECOND_ACTION");
-    }
+    return LOCALIZED(@"ACTION");
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section
 {
-    switch (section) {
-        case 0:
-            return LOCALIZED(@"FOOTER_FIRST_ACTION");
-        default:
-            return @"";
-            
-    }
+    return @"";
 }
 
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    switch (section) {
-        case 0:
-            return [self.fullOrder[0] count];
-        default:
-            return [self.fullOrder[1] count];
-    }
+    return self.fullOrder.count;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -54,50 +38,19 @@ static NSBundle *tweakBundle;
     __block BOOL isThirteen = NO;
     
     cell.accessoryType = UITableViewCellAccessoryNone;
-    switch(indexPath.section) {
-        case 0: {
-            if (self.fullOrder[0] == nil || [self.fullOrder[0] count] <= indexPath.row)
-                return nil;
-            
-            label = [DXHelper localizedStringForActionNamed:[DXHelper actionNameFromArray:self.fullOrder[0] atIndex:indexPath.row] shortName:NO bundle:tweakBundle];
-           // label = [DXHelper labelFromArray:self.fullOrder[0] atIndex:indexPath.row];
-            image = [DXHelper imageFromArray:self.fullOrder[0] atIndex:indexPath.row withSystemColor:YES completion:^(BOOL thirteen, BOOL customPath){
-                isThirteen = thirteen;
-                isCustomImagePath = customPath;
-                dispatch_semaphore_signal(smp);
-            }];
-            dispatch_semaphore_wait(smp, DISPATCH_TIME_FOREVER);
-            if (!isThirteen && isCustomImagePath){
-                [cell.imageView setTintColor:[UIColor blackColor]];
-            }
-            
-            if ([self.selectedIndexPath compare:indexPath] == NSOrderedSame  && self.selectedIndexPath != nil){
-                cell.accessoryType = UITableViewCellAccessoryCheckmark;
-            }
-            break;
-        }
-        case 1: {
-            if (self.fullOrder[1] == nil || [self.fullOrder[1] count] <= indexPath.row)
-                return nil;
-            
-            label = [DXHelper localizedStringForActionNamed:[DXHelper actionNameFromArray:self.fullOrder[1] atIndex:indexPath.row] shortName:NO bundle:tweakBundle];
-
-            //label = [DXHelper labelFromArray:self.fullOrder[1] atIndex:indexPath.row];
-            image = [DXHelper imageFromArray:self.fullOrder[1] atIndex:indexPath.row withSystemColor:YES completion:^(BOOL thirteen, BOOL customPath){
-                isThirteen = thirteen;
-                isCustomImagePath = customPath;
-                dispatch_semaphore_signal(smp);
-            }];
-            dispatch_semaphore_wait(smp, DISPATCH_TIME_FOREVER);
-            if (!isThirteen && isCustomImagePath){
-                [cell.imageView setTintColor:[UIColor blackColor]];
-            }
-            
-            if ([self.selectedIndexPath2 compare:indexPath] == NSOrderedSame  && self.selectedIndexPath2 != nil){
-                cell.accessoryType = UITableViewCellAccessoryCheckmark;
-            }
-            break;
-        }
+    if (indexPath.row >= self.fullOrder.count) return nil;
+    label = [DXHelper localizedStringForActionNamed:[DXHelper actionNameFromArray:self.fullOrder atIndex:indexPath.row] shortName:NO bundle:tweakBundle];
+    image = [DXHelper imageFromArray:self.fullOrder atIndex:indexPath.row withSystemColor:YES completion:^(BOOL thirteen, BOOL customPath){
+        isThirteen = thirteen;
+        isCustomImagePath = customPath;
+        dispatch_semaphore_signal(smp);
+    }];
+    dispatch_semaphore_wait(smp, DISPATCH_TIME_FOREVER);
+    if (!isThirteen && isCustomImagePath) {
+        [cell.imageView setTintColor:[UIColor blackColor]];
+    }
+    if ([self.selectedIndexPath compare:indexPath] == NSOrderedSame && self.selectedIndexPath != nil) {
+        cell.accessoryType = UITableViewCellAccessoryCheckmark;
     }
     cell.textLabel.text = label;
     cell.imageView.image = image;
@@ -126,55 +79,21 @@ static NSBundle *tweakBundle;
     
     UITableViewCell *oldCell;
     
-    switch(indexPath.section) {
-        case 0: {
-            oldCell =  [tableView cellForRowAtIndexPath:self.selectedIndexPath];
-            if (currentCell.accessoryType == UITableViewCellAccessoryNone){
-                currentCell.accessoryType = UITableViewCellAccessoryCheckmark;
-                [customActionsEntry setObject:self.fullOrder[0][indexPath.row][@"selector"] forKey:@"selector"];
-                //customActionsEntry[@"selector"] = self.fullOrder[0][indexPath.row][@"selector"];
-            }else{
-                currentCell.accessoryType = UITableViewCellAccessoryNone;
-                [customActionsEntry setObject:@"" forKey:@"selector"];
-                //customActionsEntry[@"selector"] = @"";
-                
-            }
-            if ([self.selectedIndexPath compare:indexPath] != NSOrderedSame && self.selectedIndexPath != nil){
-                if (oldCell.accessoryType == UITableViewCellAccessoryCheckmark ){
-                    oldCell.accessoryType = UITableViewCellAccessoryNone;
-                }
-            }
-            self.selectedIndexPath = indexPath;
-            break;
-        }
-        case 1:{
-            oldCell =  [tableView cellForRowAtIndexPath:self.selectedIndexPath2];
-            if (currentCell.accessoryType == UITableViewCellAccessoryNone){
-                currentCell.accessoryType = UITableViewCellAccessoryCheckmark;
-                [customActionsEntry setObject:self.fullOrder[1][indexPath.row][@"selector"] forKey:@"selector2"];
-                //customActionsEntry[@"selector2"] = self.fullOrder[1][indexPath.row][@"selector"];
-            }else{
-                currentCell.accessoryType = UITableViewCellAccessoryNone;
-                [customActionsEntry setObject:@"" forKey:@"selector2"];
-                //customActionsEntry[@"selector2"] = @"";
-                
-            }
-            if ([self.selectedIndexPath2 compare:indexPath] != NSOrderedSame && self.selectedIndexPath2 != nil){
-                if (oldCell.accessoryType == UITableViewCellAccessoryCheckmark ){
-                    oldCell.accessoryType = UITableViewCellAccessoryNone;
-                }
-            }
-            self.selectedIndexPath2 = indexPath;
-            break;
-        }
+    oldCell = [tableView cellForRowAtIndexPath:self.selectedIndexPath];
+    if (currentCell.accessoryType == UITableViewCellAccessoryNone) {
+        currentCell.accessoryType = UITableViewCellAccessoryCheckmark;
+        customActionsEntry[@"selector"] = self.fullOrder[indexPath.row][@"selector"];
+    } else {
+        currentCell.accessoryType = UITableViewCellAccessoryNone;
+        customActionsEntry[@"selector"] = @"";
     }
-    
-    if (!customActionsEntry[@"selector"]){
-        [customActionsEntry setObject:@"" forKey:@"selector"];
+    // Selecting or clearing an action upgrades an old two-action entry to the
+    // current single-action schema.
+    [customActionsEntry removeObjectForKey:@"selector2"];
+    if ([self.selectedIndexPath compare:indexPath] != NSOrderedSame && self.selectedIndexPath != nil && oldCell.accessoryType == UITableViewCellAccessoryCheckmark) {
+        oldCell.accessoryType = UITableViewCellAccessoryNone;
     }
-    if (!customActionsEntry[@"selector2"]){
-        [customActionsEntry setObject:@"" forKey:@"selector2"];
-    }
+    self.selectedIndexPath = indexPath;
     
     if (exist) {
         [customActionsArray replaceObjectAtIndex:index withObject:customActionsEntry];
@@ -202,7 +121,6 @@ static NSBundle *tweakBundle;
 
 -(void)resetToDefault{
     self.selectedIndexPath = nil;
-    self.selectedIndexPath2 = nil;
     
     NSMutableArray *customActionsArray = [[NSMutableArray alloc] init];
     NSMutableDictionary *customActionsEntry = [[NSMutableDictionary alloc] init];
@@ -249,12 +167,6 @@ static NSBundle *tweakBundle;
     self.tableView.allowsMultipleSelection = NO;
     //self.tableView.allowsSelectionDuringEditing=YES;
     
-    //((UIViewController *)self).title = @"Long Press Action";
-    //self.selectedIndexPath2 = self.selectedIndexPath2 ? : [NSIndexPath indexPathForRow:0 inSection:0];
-    //self.prefs = [self fetchPrefs];
-    
-    
-    //self.selectedIndexPath2 = [NSIndexPath indexPathForRow:0 inSection:0];
     if ( [self.prefs[self.keyID] count] > 0 ){
         NSArray* arrayWithID = [self.prefs[self.keyID] filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"%@ IN self.@allKeys" , @"identifier" ]];
         NSArray *IDList = [arrayWithID valueForKey:@"identifier"];
@@ -262,29 +174,21 @@ static NSBundle *tweakBundle;
         HBLogDebug(@"index of id: %ld", index);
         
         if (index != NSNotFound){
-            NSString *selectedAction = self.prefs[self.keyID][index][@"selector"];
-            NSString *selectedAction2 = self.prefs[self.keyID][index][@"selector2"];
+            NSDictionary *entry = self.prefs[self.keyID][index];
+            NSString *selectedAction = entry[@"selector2"] ?: entry[@"selector"];
             HBLogDebug(@"selectedAction: %@", selectedAction);
-            HBLogDebug(@"selectedAction2: %@", selectedAction2);
             
-            NSArray* arrayWithSelector = [self.fullOrder[0] filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"%@ IN self.@allKeys" , @"selector" ]];
-            NSArray* arrayWithSelector2 = [self.fullOrder[1] filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"%@ IN self.@allKeys" , @"selector" ]];
+            NSArray* arrayWithSelector = [self.fullOrder filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"%@ IN self.@allKeys" , @"selector" ]];
             NSArray *selectorList = [arrayWithSelector valueForKey:@"selector"];
-            NSArray *selectorList2 = [arrayWithSelector2 valueForKey:@"selector"];
             
             NSUInteger selectorindex = [selectorList indexOfObject:selectedAction];
-            NSUInteger selectorindex2 = [selectorList2 indexOfObject:selectedAction2];
             
             HBLogDebug(@"selectorindex: %ld",selectorindex);
-            HBLogDebug(@"selectorindex2: %ld",selectorindex2);
             
             if (selectorindex != NSNotFound){
                 self.selectedIndexPath = [NSIndexPath indexPathForRow:selectorindex inSection:0];
             }
             
-            if (selectorindex2 != NSNotFound){
-                self.selectedIndexPath2 = [NSIndexPath indexPathForRow:selectorindex2 inSection:1];
-            }
         }
     }
     self.view = self.tableView;
