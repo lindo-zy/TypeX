@@ -3,7 +3,6 @@
 #import "DXCollectionView.h"
 #import "DXToastWindowController.h"
 #import "DXHelper.h"
-#import "DXUIShortTapGestureRecognizer.h"
 
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -29,6 +28,27 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 }
 
 @implementation DXCollectionView
+
+// Resolves one configured shortcut entry into the parallel toolbar arrays.  The
+// iOS 13 image slot takes the custom SF Symbol when it validates, and custom
+// names/icons are keyed by selector for the short-label and toast paths.  iOS 12
+// has no SF Symbols, so images12 always keeps its default value.
+-(void)integrateShortcutItem:(NSDictionary *)item
+              intoImages12:(NSMutableArray *)images12
+               images13:(NSMutableArray *)images13
+               selectors:(NSMutableArray *)selectors
+                    names:(NSMutableDictionary *)names
+                    icons:(NSMutableDictionary *)icons {
+    NSString *selector = item[@"selector"];
+    [images12 addObject:item[@"images12"]];
+    [images13 addObject:[DXHelper resolvedIconNameForShortcutItem:item defaultName:item[@"images13"]]];
+    [selectors addObject:selector];
+
+    NSString *customName = [DXHelper customNameForShortcutItem:item];
+    if (customName) names[selector] = customName;
+    NSString *customIcon = [DXHelper customIconForShortcutItem:item];
+    if (customIcon) icons[selector] = customIcon;
+}
 
 - (NSString *)scopedPreferenceKey:(NSString *)key {
     return DXScopedPreferenceKey(key, self.configuration ?: @"bottom");
@@ -75,6 +95,10 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
             NSDictionary *cache = prefs[cacheKey];
             self.shortcuts = cache[@"shortcuts"];
             self.fullshortcuts = cache[@"fullshortcuts"];
+            // The cache branch only runs when no scoped shortcuts key exists, so
+            // per-shortcut overrides cannot be present here.
+            self.customNames = @{};
+            self.customIcons = @{};
             //HBLogDebug(@"Utilized cache");
         }else{
             //HBLogDebug(@"Update cache");
@@ -92,23 +116,26 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
             NSMutableArray *selectors = [[NSMutableArray alloc] init];
             //NSMutableArray *shortLabel = [[NSMutableArray alloc] init];
             
-            if (prefs[shortcutsKey]){
-                
-                for (NSDictionary *item in prefs[shortcutsKey][0]){
-                    if (currentOrder12.count >= [self shortcutsPerSection]) break;
-                    if (DXIsHiddenShortcutSelector(item[@"selector"])){ 
-                        continue;
-                    }
-                    [currentOrder12 addObject:item[@"images12"]];
-                    [currentOrder13 addObject:item[@"images13"]];
-                    [selectors addObject:item[@"selector"]];
-                    //if (item[@"slabel"]){
-                    //[shortLabel addObject:item[@"slabel"]];
-                    //}else{
-                    //useShortenedLabel = NO;
-                    //}
+        if (prefs[shortcutsKey]){
+
+            NSMutableDictionary *customNames = [[NSMutableDictionary alloc] init];
+            NSMutableDictionary *customIcons = [[NSMutableDictionary alloc] init];
+
+            for (NSDictionary *item in prefs[shortcutsKey][0]){
+                if (currentOrder12.count >= [self shortcutsPerSection]) break;
+                if (DXIsHiddenShortcutSelector(item[@"selector"])){
+                    continue;
                 }
-            }else{
+                [self integrateShortcutItem:item intoImages12:currentOrder12 images13:currentOrder13 selectors:selectors names:customNames icons:customIcons];
+                //if (item[@"slabel"]){
+                //[shortLabel addObject:item[@"slabel"]];
+                //}else{
+                //useShortenedLabel = NO;
+                //}
+            }
+            self.customNames = customNames;
+            self.customIcons = customIcons;
+        }else{
                 for (int i = 0; i < [self shortcutsPerSection]; i++ ){
                     [currentOrder12 addObject:[currentOrderDefault12 objectAtIndex:i]];
                     [currentOrder13 addObject:[currentOrderDefault13 objectAtIndex:i]];
@@ -566,17 +593,19 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     // The bottom configuration is never inherited by the top toolbar.
 
     if ([configuredShortcuts isKindOfClass:[NSArray class]] && configuredShortcuts.count > 0) {
+        NSMutableDictionary *customNames = [[NSMutableDictionary alloc] init];
+        NSMutableDictionary *customIcons = [[NSMutableDictionary alloc] init];
         for (NSDictionary *item in configuredShortcuts[0]) {
             if (images12.count >= [self shortcutsPerSection]) break;
             if (![item isKindOfClass:[NSDictionary class]]) continue;
             NSString *selector = item[@"selector"];
             if (DXIsHiddenShortcutSelector(selector)) continue;
             if (item[@"images12"] && item[@"images13"] && selector) {
-                [images12 addObject:item[@"images12"]];
-                [images13 addObject:item[@"images13"]];
-                [selectors addObject:selector];
+                [self integrateShortcutItem:item intoImages12:images12 images13:images13 selectors:selectors names:customNames icons:customIcons];
             }
         }
+        self.customNames = customNames;
+        self.customIcons = customIcons;
     } else {
         NSUInteger count = MIN((NSUInteger)[self shortcutsPerSection],
                                MIN(defaultImages12.count,
@@ -586,6 +615,8 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
             [images13 addObject:defaultImages13[index]];
             [selectors addObject:defaultSelectors[index]];
         }
+        self.customNames = @{};
+        self.customIcons = @{};
     }
 
     self.shortcuts = @[images12, images13, selectors];
@@ -776,6 +807,9 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 }
 
 -(NSString *)getImageNameForActionName:(NSString *)actionname{
+    NSString *customIcon = self.customIcons[actionname];
+    if (customIcon.length > 0) return customIcon;
+
     NSPredicate *predicate = [NSPredicate predicateWithFormat:@"SELF contains[cd] %@", actionname];
     NSUInteger idx = [self.fullshortcuts[2]  indexOfObjectPassingTest:^(id obj, NSUInteger idx, BOOL *stop) {
         return [predicate evaluateWithObject:obj];
@@ -850,7 +884,12 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
             //}
             selname = @"runCommandAction:";
         }
-        
+
+        // A per-shortcut custom name (设置里的"名称") overrides both the
+        // localized action label and the run-command title in the toast.
+        NSString *customToastName = self.customNames[selname];
+        if (customToastName.length > 0) actionName = customToastName;
+
         if (preferencesInt(kDisplayTypekey, 0) == 1){
             tw = (int)([self widthOfString:actionName withFont:[UIFont systemFontOfSize:18]] + 0.5f) + 25;
             //tw = 10*[actionName length] - 20;
@@ -1211,8 +1250,10 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     }
 
     // A selection is checked verbatim; otherwise scan the whole content for
-    // the first link (NSDataDetector also picks up scheme-less hosts such as
-    // "www.example.com").
+    // the first link. Text with an explicit scheme (https:// or an app scheme
+    // such as "myapp://...") is opened as-is — openURL routes http(s) to the
+    // browser and custom schemes to their app. Scheme-less hosts such as
+    // "www.example.com" fall back to NSDataDetector.
     NSString *text = [delegate textInRange:[delegate selectedTextRange]];
     if (text.length == 0) {
         text = [delegate textInRange:[delegate textRangeFromPosition:[delegate beginningOfDocument]
@@ -1221,12 +1262,18 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
     NSURL *url = nil;
     if (text.length > 0) {
-        if ([self isValidURL:text]) {
-            url = [NSURL URLWithString:text];
-        }else{
+        NSString *candidate = [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        NSRange schemeRange = [candidate rangeOfString:@"^[a-zA-Z][a-zA-Z0-9+.-]*://" options:NSRegularExpressionSearch];
+        if (schemeRange.location == 0) {
+            url = [NSURL URLWithString:candidate];
+        }
+        if (!url && [self isValidURL:candidate]) {
+            url = [NSURL URLWithString:candidate];
+        }
+        if (!url) {
             NSDataDetector *detector = [NSDataDetector dataDetectorWithTypes:NSTextCheckingTypeLink error:nil];
             if (detector) {
-                for (NSTextCheckingResult *match in [detector matchesInString:text options:0 range:NSMakeRange(0, text.length)]) {
+                for (NSTextCheckingResult *match in [detector matchesInString:candidate options:0 range:NSMakeRange(0, candidate.length)]) {
                     url = match.URL;
                     break;
                 }
@@ -1785,11 +1832,11 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     }
 }
 
--(void)activateCustomActions:(UIGestureRecognizer *)recognizer gestureType:(int)gestureType {
+-(void)activateLPActions:(UIGestureRecognizer *)recognizer {
     if (recognizer.state != UIGestureRecognizerStateBegan) return;
     [self autoPaginationControl];
     UIButton *button = (UIButton *)recognizer.view;
-    NSString *selectorName = preferencesSelectorForIdentifierScoped(button.accessibilityIdentifier, 1, gestureType, @"", self.configuration);
+    NSString *selectorName = preferencesSelectorForIdentifierScoped(button.accessibilityIdentifier, 1, 0, @"", self.configuration);
     if (selectorName.length == 0) return;
 
     SEL action = NSSelectorFromString(selectorName);
@@ -1808,14 +1855,6 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     self.hapticType = 2;
     ((void(*)(id, SEL, id))objc_msgSend)(self, action, nil);
     [self shakeView:recognizer.view];
-}
-
--(void)activateLPActions:(UIGestureRecognizer *)recognizer {
-    [self activateCustomActions:recognizer gestureType:0];
-}
-
--(void)activateDTActions:(UIGestureRecognizer *)recognizer {
-    [self activateCustomActions:recognizer gestureType:1];
 }
 
 -(void)cellButtonTouchUpInside:(UIButton *)sender {
@@ -1851,11 +1890,11 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     
     if (@available(iOS 13.0, *)){
         imageOfName = useShortenedLabel
-            ? [[DXHelper localizedStringForActionNamed:selectorName shortName:YES bundle:tweakBundle] attributedString]
+            ? [(self.customNames[selectorName] ?: [DXHelper localizedStringForActionNamed:selectorName shortName:YES bundle:tweakBundle]) attributedString]
             : [((NSArray *)_shortcuts[kbuttonsImages13])[cellIndex] attributedString];
     }else{
         imageOfName = useShortenedLabel
-            ? [[DXHelper localizedStringForActionNamed:selectorName shortName:YES bundle:tweakBundle] attributedString]
+            ? [(self.customNames[selectorName] ?: [DXHelper localizedStringForActionNamed:selectorName shortName:YES bundle:tweakBundle]) attributedString]
             : [((NSArray *)_shortcuts[kbuttonsImages12])[cellIndex] attributedString];
     }
     if (!useShortenedLabel) {
@@ -1875,20 +1914,11 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     longPress.minimumPressDuration = 0.5;
 
     // Single tap is the button's own TouchUpInside event: it fires on touch-up
-    // with no gesture window, so taps can be repeated as fast as the user likes.
-    // The double-tap recognizer is only mounted when a double-tap action is
-    // actually configured -- otherwise its recognition would cancel every other
-    // tap of a rapid burst.
-    DXUIShortTapGestureRecognizer *doubleTap = [[DXUIShortTapGestureRecognizer alloc] initWithTarget:self action:@selector(activateDTActions:)];
-    doubleTap.numberOfTapsRequired = 2;
-    NSString *doubleTapSelector = preferencesSelectorForIdentifierScoped(selectorName, 1, 1, @"", self.configuration);
-
+    // with no gesture-recognizer window, so taps can be repeated as fast as the
+    // user likes. Only the long-press recognizer is mounted; adding any tap
+    // recognizer would delay every touch-up until it fails.
     [cell.btn addTarget:self action:@selector(cellButtonTouchUpInside:) forControlEvents:UIControlEventTouchUpInside];
-    if (doubleTapSelector.length > 0) {
-        cell.btn.gestureRecognizers = @[longPress, doubleTap];
-    }else{
-        cell.btn.gestureRecognizers = @[longPress];
-    }
+    cell.btn.gestureRecognizers = @[longPress];
     
     //cell.btn.backgroundColor = [UIColor clearColor];
     //cell.btn.layer.cornerRadius = 0; // this value vary as per your desire

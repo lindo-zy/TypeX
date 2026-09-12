@@ -45,8 +45,6 @@
 #define kGestureTypekey @"gesturetype"
 #define kCustomActionskey @"customactions"
 #define kTopCustomActionskey @"topcustomactions"
-#define kCustomActionsDTkey @"customactionsdt"
-#define kTopCustomActionsDTkey @"topcustomactionsdt"
 #define kPagingkey @"pagingBOOL"
 #define kShortcutsTintEnabled @"shortcutstintBOOL"
 #define kShortcutsBackgroundTintEnabled @"shortcutsbackgroundtintBOOL"

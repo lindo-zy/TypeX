@@ -139,6 +139,29 @@
     return [tweakBundle localizedStringForKey:actionName value:@"" table:nil];
 }
 
+// Per-shortcut overrides live inside the shortcut dictionaries stored under the
+// shortcuts keys ("name" / "icon").  An empty or missing value means the built-in
+// label stays in effect.
++(NSString *)customNameForShortcutItem:(NSDictionary *)item{
+    NSString *name = item[@"name"];
+    return ([name isKindOfClass:[NSString class]] && name.length > 0) ? name : nil;
+}
+
+// Custom icons accept standard SF Symbol names only.  An unknown symbol fails
+// systemImageNamed: here, so every consumer falls back to the default icon.
++(NSString *)customIconForShortcutItem:(NSDictionary *)item{
+    NSString *icon = item[@"icon"];
+    if (![icon isKindOfClass:[NSString class]] || icon.length == 0) return nil;
+    if (@available(iOS 13.0, *)) {
+        return [UIImage systemImageNamed:icon] ? icon : nil;
+    }
+    return nil;
+}
+
++(NSString *)resolvedIconNameForShortcutItem:(NSDictionary *)item defaultName:(NSString *)defaultName{
+    return [self customIconForShortcutItem:item] ?: defaultName;
+}
+
 +(NSString *)localizedStringOfToastForActionNamed:(NSString *)actionName bundle:(NSBundle *)tweakBundle{
     actionName = [actionName stringByReplacingOccurrencesOfString:@"ActionLP:" withString:@""];
     actionName = [actionName stringByReplacingOccurrencesOfString:@"Action:" withString:@""];

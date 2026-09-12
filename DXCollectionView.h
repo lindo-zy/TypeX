@@ -14,6 +14,10 @@ typedef NS_ENUM(NSInteger, direction) {
 @property (nonatomic, copy) NSString *configuration;
 @property (strong, nonatomic) NSArray *shortcuts;
 @property (strong, nonatomic) NSArray *fullshortcuts;
+// selector -> custom display name / custom SF Symbol icon, resolved from the
+// shortcut dictionaries; empty when no shortcut carries overrides.
+@property (strong, nonatomic) NSDictionary *customNames;
+@property (strong, nonatomic) NSDictionary *customIcons;
 @property (nonatomic, assign) NSInteger hapticType;
 
 @property (nonatomic, assign) BOOL refreshView;

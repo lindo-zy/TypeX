@@ -117,7 +117,7 @@
 
 //Reset
 "RESET" = "Reset";
-"RESET_MESSAGE" = "Reset all shortcuts included customized long press, double tap and shooting star actions to default?";
+"RESET_MESSAGE" = "Reset all shortcuts including customized long press actions to default?";
 "RESET_YES" = "Yes";
 "RESET_NO" = "No";
 
@@ -157,7 +157,6 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "GESTURES" = "Gestures";
 "SINGLE_TAP" = "Single Tap";
 "LONG_PRESS" = "Long Press";
-"DOUBLE_TAP" = "Double Tap";
 
 "TEXT" = "Text";
 
@@ -166,6 +165,13 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SHELL_COMMAND" = "Command";
 "FOOTER_SHELL_SINGLE_TAP" = "Set the shell command to be executed when shortcut tapped.";
 "FOOTER_SHELL_LONG_PRESS" = "Set the shell command to be executed when shortcut long pressed.\n\nNOTE: When custom long press gesture is set in previous section, this will be ignored.";
+
+//=====================SHORTCUT APPEARANCE=====================
+"CUSTOM_APPEARANCE" = "Appearance";
+"FOOTER_CUSTOM_APPEARANCE" = "The name replaces the shortcut's label (short-label toolbar mode and the tap toast). The icon only accepts standard SF Symbol names (e.g. doc.on.doc); an invalid name falls back to the default icon.";
+"CUSTOM_NAME" = "Name";
+"CUSTOM_ICON" = "Icon";
+"CUSTOM_ICON_INVALID" = "Invalid icon name. The default icon will be used.";
 
 //=====================SPONGEBOB BEHAVIOR=====================
 "SPONGEBOB_ENTROPY" = "Randomness of Spongebob Text";

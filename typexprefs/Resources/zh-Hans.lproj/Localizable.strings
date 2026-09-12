@@ -119,7 +119,7 @@
 
 //Reset
 "RESET" = "重置";
-"RESET_MESSAGE" = "将所有快捷方式（包括自定义的长按和双击操作）恢复为默认设置？";
+"RESET_MESSAGE" = "将所有快捷方式（包括自定义的长按操作）恢复为默认设置？";
 "RESET_YES" = "是";
 "RESET_NO" = "否";
 
@@ -159,7 +159,6 @@
 "GESTURES" = "手势";
 "SINGLE_TAP" = "单击";
 "LONG_PRESS" = "长按";
-"DOUBLE_TAP" = "双击";
 
 "TEXT" = "文本";
 
@@ -168,6 +167,13 @@
 "SHELL_COMMAND" = "命令";
 "FOOTER_SHELL_SINGLE_TAP" = "单击快捷方式时执行设置的命令。";
 "FOOTER_SHELL_LONG_PRESS" = "长按快捷方式时执行设置的命令。\n\n注意：如果在上方设置了自定义长按手势，此项将被忽略。";
+
+//=====================SHORTCUT APPEARANCE=====================
+"CUSTOM_APPEARANCE" = "显示";
+"FOOTER_CUSTOM_APPEARANCE" = "名称会替换快捷方式的显示名称（短文本工具栏模式和点击提示浮窗）。图标仅支持 SF Symbols 标准图标名称（如 doc.on.doc），无效的名称将回退为默认图标。";
+"CUSTOM_NAME" = "名称";
+"CUSTOM_ICON" = "图标";
+"CUSTOM_ICON_INVALID" = "图标名称无效，将使用默认图标。";
 
 //=====================MISC=====================
 "SEARCHBAR_PLACEHOLDER" = "搜索设置";

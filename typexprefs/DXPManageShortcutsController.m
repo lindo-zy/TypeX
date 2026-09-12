@@ -155,6 +155,17 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
             break;
         }
     }
+    NSDictionary *shortcutItem = (indexPath.section < (NSInteger)self.currentOrder.count &&
+                                  indexPath.row < (NSInteger)[self.currentOrder[indexPath.section] count])
+        ? self.currentOrder[indexPath.section][indexPath.row] : @{};
+
+    // Per-shortcut overrides set in the shortcut's own settings page: a custom
+    // name replaces the localized label and a valid SF Symbol replaces the icon.
+    NSString *customName = [DXHelper customNameForShortcutItem:shortcutItem];
+    if (customName) label = customName;
+    NSString *customIcon = [DXHelper customIconForShortcutItem:shortcutItem];
+    if (customIcon) image = [DXHelper imageForName:customIcon withSystemColor:YES completion:nil];
+
     cell.textLabel.text = label;
     cell.imageView.image = image;
     return cell;
@@ -166,7 +177,8 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     gesturePickerController.fullOrder = self.fullOrder;
     gesturePickerController.identifier = self.currentOrder[indexPath.section][indexPath.row][@"selector"];
     gesturePickerController.configuration = self.topConfiguration ? @"top" : @"bottom";
-    gesturePickerController.title = [DXHelper localizedStringForActionNamed:self.currentOrder[indexPath.section][indexPath.row][@"selector"] shortName:NO bundle:tweakBundle];
+    NSDictionary *shortcutItem = self.currentOrder[indexPath.section][indexPath.row];
+    gesturePickerController.title = [DXHelper customNameForShortcutItem:shortcutItem] ?: [DXHelper localizedStringForActionNamed:shortcutItem[@"selector"] shortName:NO bundle:tweakBundle];
 
     [gesturePickerController setRootController: [self rootController]];
     [gesturePickerController setParentController: [self parentController]];
@@ -282,7 +294,6 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     NSMutableDictionary *prefs = [[[DXPrefsManager sharedInstance] readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
     NSString *shortcutsKey = self.shortcutsPreferenceKey ?: kShortcutskey;
     NSString *customActionsKey = [self scopedKey:kCustomActionskey topKey:kTopCustomActionskey];
-    NSString *customActionsDTKey = [self scopedKey:kCustomActionsDTkey topKey:kTopCustomActionsDTkey];
     NSString *cacheKey = [self scopedKey:kCachekey topKey:kTopCachekey];
     
     //BOOL newShortcutsAvailable = ([tweakVersion compare:prefs[@"version"] options:NSNumericSearch] == NSOrderedDescending);
@@ -323,7 +334,9 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     //reset custom long press actions
     if (reset){
         prefs[customActionsKey] = @[];
-        prefs[customActionsDTKey] = @[];
+        // Drop double-tap keys left over from older versions.
+        [prefs removeObjectForKey:@"customactionsdt"];
+        [prefs removeObjectForKey:@"topcustomactionsdt"];
         [prefs removeObjectForKey:cacheKey];
 
         //Remove all caches

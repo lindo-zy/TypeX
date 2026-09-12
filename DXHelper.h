@@ -7,5 +7,8 @@
 +(void)showSearchCountEasterAlertFor:(id)object searchController:(UISearchController *)searchController count:(NSUInteger)count delay:(double)delay;
 +(NSString *)localizedStringForActionNamed:(NSString *)actionName shortName:(BOOL)shortName bundle:(NSBundle *)tweakBundle;
 +(NSString *)localizedStringOfToastForActionNamed:(NSString *)actionName bundle:(NSBundle *)tweakBundle;
++(NSString *)customNameForShortcutItem:(NSDictionary *)item;
++(NSString *)customIconForShortcutItem:(NSDictionary *)item;
++(NSString *)resolvedIconNameForShortcutItem:(NSDictionary *)item defaultName:(NSString *)defaultName;
 @end
 

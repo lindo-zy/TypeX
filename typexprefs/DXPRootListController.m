@@ -56,32 +56,57 @@ static NSBundle *tweakBundle;
     //search bar
     
     
-    CGRect frame = CGRectMake(0,0,self.table.bounds.size.width,170);
-    CGRect Imageframe = CGRectMake(0,10,self.table.bounds.size.width,80);
-    
-    
-    UIView *headerView = [[UIView alloc] initWithFrame:frame];
-    headerView.backgroundColor = [UIColor colorWithRed: 0.20 green: 0.20 blue: 0.20 alpha: 1.00];
+    CGFloat headerWidth = self.table.bounds.size.width;
+    CGRect frame = CGRectMake(0, 0, headerWidth, 250);
 
-    //UIImage *headerImage = [UIImage systemImageNamed:@"doc.on.doc"];
-    
-    
+    UIView *headerView = [[UIView alloc] initWithFrame:frame];
+    headerView.backgroundColor = UIColor.clearColor;
+
     UIImage *headerImage = [[UIImage alloc]
                             initWithContentsOfFile:[[NSBundle bundleWithPath:bundlePath] pathForResource:@"TypeX512" ofType:@"png"]];
-    UIImageView *imageView = [[UIImageView alloc] initWithFrame:Imageframe];
+
+    // shadow container + rounded inner view so the corners clip without cutting the shadow
+    CGFloat iconSize = 120;
+    UIView *iconContainer = [[UIView alloc] initWithFrame:CGRectMake((headerWidth - iconSize) / 2.0, 28, iconSize, iconSize)];
+    iconContainer.backgroundColor = UIColor.clearColor;
+    iconContainer.layer.shadowColor = [UIColor blackColor].CGColor;
+    iconContainer.layer.shadowOpacity = 0.35;
+    iconContainer.layer.shadowRadius = 12;
+    iconContainer.layer.shadowOffset = CGSizeMake(0, 6);
+    iconContainer.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin;
+
+    UIImageView *imageView = [[UIImageView alloc] initWithFrame:iconContainer.bounds];
     [imageView setImage:headerImage];
     [imageView setContentMode:UIViewContentModeScaleAspectFit];
-    [imageView setAutoresizingMask:UIViewAutoresizingFlexibleWidth];
-    [headerView addSubview:imageView];
-    
-    CGRect labelFrame = CGRectMake(0,imageView.frame.origin.y + 90 ,self.table.bounds.size.width,80);
-    UIFont *font = [UIFont fontWithName:@"HelveticaNeue-Light" size:40];
+    imageView.layer.cornerRadius = iconSize * 0.225;
+    imageView.layer.masksToBounds = YES;
+    [iconContainer addSubview:imageView];
+    [headerView addSubview:iconContainer];
+
+    CGRect labelFrame = CGRectMake(0, iconContainer.frame.origin.y + iconSize + 14, headerWidth, 52);
+    UIFont *font = nil;
+    if (@available(iOS 13.0, *)) {
+        UIFontDescriptor *desc = [[UIFontDescriptor preferredFontDescriptorWithTextStyle:UIFontTextStyleLargeTitle]
+                                  fontDescriptorWithDesign:UIFontDescriptorSystemDesignRounded];
+        font = [UIFont fontWithDescriptor:desc size:36];
+    }
+    if (!font) font = [UIFont systemFontOfSize:36 weight:UIFontWeightBold];
+
     UILabel *headerLabel = [[UILabel alloc] initWithFrame:labelFrame];
     [headerLabel setText:@"TypeX"];
     [headerLabel setFont:font];
-    [headerLabel setTextColor:[UIColor colorWithRed: 0.60 green: 0.60 blue: 0.60 alpha: 1.00]];
+    if (@available(iOS 13.0, *)) {
+        [headerLabel setTextColor:[UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *traitCollection) {
+            return traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark
+                ? [UIColor colorWithRed:1.0 green:1.0 blue:1.0 alpha:0.92]
+                : [UIColor colorWithRed:0.10 green:0.10 blue:0.12 alpha:1.00];
+        }]];
+    } else {
+        [headerLabel setTextColor:[UIColor darkGrayColor]];
+    }
     headerLabel.textAlignment = NSTextAlignmentCenter;
-    [headerLabel setContentMode:UIViewContentModeScaleAspectFit];
+    headerLabel.adjustsFontSizeToFitWidth = YES;
+    headerLabel.minimumScaleFactor = 0.7;
     [headerLabel setAutoresizingMask:UIViewAutoresizingFlexibleWidth];
     [headerView addSubview:headerLabel];
     

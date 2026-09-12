@@ -21,19 +21,7 @@ int preferencesInt(NSString* key, int fallback) {
 NSString *preferencesSelectorForIdentifierScoped(NSString* identifier, int selectorNum, int gestureType, NSString *fallback, NSString *configuration) {
     //HBLogDebug(@"identifier: %@", identifier);
     //0-long press
-    //1-double tap
-    NSString *k;
-    switch (gestureType) {
-        case 0:
-            k = DXScopedPreferenceKey(kCustomActionskey, configuration);
-            break;
-        case 1:
-            k = DXScopedPreferenceKey(kCustomActionsDTkey, configuration);
-            break;
-        default:
-            k = DXScopedPreferenceKey(kCustomActionskey, configuration);
-            break;
-    }
+    NSString *k = DXScopedPreferenceKey(kCustomActionskey, configuration);
     
     NSString *selector = fallback;
     if (selectorNum == 1 && [prefs[k] isKindOfClass:[NSArray class]]) {
