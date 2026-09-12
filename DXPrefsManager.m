@@ -31,14 +31,18 @@ static void reloadPrefs(CFNotificationCenterRef center, void *observer, CFString
     NSArray *args = [[NSClassFromString(@"NSProcessInfo") processInfo] arguments];
     if (args.count == 0) return NO;
 
-    // Only SpringBoard can read /var/mobile/Library/Preferences directly and is
-    // the host of the DXPrefsManagerServer IPC endpoint.  Apps and keyboard
-    // extensions are sandboxed and cannot access the com.lindo.typex domain, so
-    // they must go through IPC; treat any non-SpringBoard process as sandboxed.
+    // Only SpringBoard and the Settings host (Preferences) can reach the
+    // authoritative cfprefsd domain and the preference plist.  Apps and
+    // keyboard extensions are sandboxed away from /var/mobile/Library and from
+    // cross-process messaging; they read and write through the shared snapshot
+    // that the unsandboxed hosts seed and mirror.  Settings MUST be classified
+    // as unsandboxed or its writes would never reach the domain SpringBoard
+    // reads.
     NSString *executablePath = args[0];
     NSString *processName = executablePath.lastPathComponent;
     BOOL isSpringBoardProcess = [processName isEqualToString:@"SpringBoard"];
-    return !isSpringBoardProcess;
+    BOOL isSettingsProcess = [processName isEqualToString:@"Preferences"];
+    return !(isSpringBoardProcess || isSettingsProcess);
 }
 
 - (instancetype)init {
@@ -47,21 +51,13 @@ static void reloadPrefs(CFNotificationCenterRef center, void *observer, CFString
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
                                          (__bridge const void *)self, &reloadPrefs,
                                          (CFStringRef)kPrefsChangedIdentifier, NULL, 0);
-        self.prefs = [self readPrefs];
+        self.prefs = [self readPrefsFromSandbox:[DXPrefsManager isRunningInSandbox]];
+        [self healSharedPrefsIfNeeded];
     }
     return self;
 }
 
-#pragma mark - IPC helpers
-
-- (CPDistributedMessagingCenter *)messagingCenter {
-    if (!_messagingCenter) {
-        _messagingCenter = [CPDistributedMessagingCenter centerNamed:@"com.lindo.typex.server"];
-    }
-    return _messagingCenter;
-}
-
-#pragma mark - Shared file fallback for sandboxed processes
+#pragma mark - Shared snapshot for sandboxed processes
 
 static NSString *DXSharedPrefsPath(void) {
     return TypeXSharedPrefsPath;
@@ -73,10 +69,16 @@ static NSString *DXSharedPrefsPath(void) {
     NSString *dir = [path stringByDeletingLastPathComponent];
     NSFileManager *fm = [NSFileManager defaultManager];
     if (![fm fileExistsAtPath:dir]) {
-        [fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:@{NSFileOwnerAccountName:@"mobile", NSFileGroupOwnerAccountName:@"mobile"} error:nil];
+        // World-writable and NOT sticky: mobile writers atomically replace the
+        // root-owned seed file staged by the package, which sticky would forbid.
+        [fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions: @0777} error:nil];
     }
     [dictionary writeToFile:path atomically:YES];
-    NSDictionary *attrs = @{NSFileOwnerAccountName:@"mobile", NSFileGroupOwnerAccountName:@"mobile"};
+    // Sandboxed app hosts read this snapshot; keep it world-readable whatever
+    // the writing process' umask is.
+    NSDictionary *attrs = @{
+        NSFilePosixPermissions: @0644
+    };
     [fm setAttributes:attrs ofItemAtPath:path error:nil];
 }
 
@@ -84,30 +86,38 @@ static NSString *DXSharedPrefsPath(void) {
     return [NSDictionary dictionaryWithContentsOfFile:DXSharedPrefsPath()] ?: @{};
 }
 
+// Seed the shared snapshot from the authoritative domain when it is missing or
+// empty (first launch after install, or an erased cache).  Never overwrite a
+// live snapshot: every writer that can reach the domain also mirrors its full
+// result into the snapshot, so the snapshot is never behind the domain, while
+// sandboxed writers (dock toggle) reach ONLY the snapshot -- replacing it from
+// the domain would silently revert their writes.
+- (void)healSharedPrefsIfNeeded {
+    if ([DXPrefsManager isRunningInSandbox]) return;
+    if ([self readSharedPrefs].count > 0) return;
+
+    NSDictionary *authoritative = [self readPrefs];
+    if ([authoritative isKindOfClass:[NSDictionary class]] && authoritative.count > 0) {
+        [self writeSharedPrefs:authoritative];
+    }
+}
+
 #pragma mark - Read
 
+// No IPC: CPDistributedMessagingCenter between an app sandbox and SpringBoard
+// needs RocketBootstrap, which this package deliberately does not depend on.
+// Sandboxed hosts instead read through a chain of channels whose availability
+// depends on how far the host's sandbox reaches: cfprefsd, the preference
+// plist itself, and finally the shared snapshot under the (sandbox-readable)
+// jailbreak root.
 - (NSDictionary *)readPrefsFromSandbox:(BOOL)isSandbox {
     if (isSandbox) {
+        NSDictionary *preferences = [self readPrefs];
+        if (preferences.count > 0) return preferences;
+
         NSDictionary *shared = [self readSharedPrefs];
-
-        // The shared plist is only a fallback cache.  It may survive an upgrade
-        // with a partial/old preference snapshot, in which case merely checking
-        // that it is non-empty makes every sandboxed keyboard host miss the
-        // user's shortcuts/topshortcuts and render the six default actions.
-        // Ask SpringBoard for the authoritative domain first and use the shared
-        // file only while the IPC server is unavailable (for example during
-        // SpringBoard start-up).
-        NSDictionary *authoritative = [[self messagingCenter]
-            sendMessageAndReceiveReplyName:@"typeXFetchPrefs"
-                                  userInfo:nil];
-        if ([authoritative isKindOfClass:[NSDictionary class]]) {
-            if (![authoritative isEqualToDictionary:shared]) {
-                [self writeSharedPrefs:authoritative];
-            }
-            return authoritative;
-        }
-
-        return [shared isKindOfClass:[NSDictionary class]] ? shared : @{};
+        if ([shared isKindOfClass:[NSDictionary class]] && shared.count > 0) return shared;
+        return @{};
     }
     return [self readPrefs];
 }
@@ -136,62 +146,52 @@ static NSString *DXSharedPrefsPath(void) {
 
 #pragma mark - Write
 
-- (void)writePrefs:(NSDictionary *)dictionary fromSandbox:(BOOL)isSandbox {
-    if (isSandbox) {
-        [self writeSharedPrefs:dictionary];
-        [[self messagingCenter] sendMessageName:@"typeXWritePrefs" userInfo:dictionary];
-        return;
-    }
-    [self writePrefs:dictionary];
-}
-
+// Writers converge on every channel they can reach.  An unsandboxed host
+// (Settings, SpringBoard) replaces the authoritative domain -- replacing, not
+// merging, so removed keys do not survive -- and mirrors the result into the
+// snapshot.  A sandboxed host can only reach the snapshot: it MERGES there,
+// because its readPrefs is empty and a blind replace would erase every other
+// preference (e.g. a dock toggle writing only toggledOnBOOL).
 - (void)writePrefs:(NSDictionary *)dictionary {
     if (![dictionary isKindOfClass:[NSDictionary class]]) return;
 
-    // Keep the file update and notification in one place.  In particular, callers
-    // that only maintain an internal cache can suppress the notification and avoid
-    // recursively entering the Darwin notification callback.
-    CFStringRef appID = (CFStringRef)kIdentifier;
-    CFPreferencesAppSynchronize(appID);
+    BOOL isSandbox = [DXPrefsManager isRunningInSandbox];
+    NSDictionary *snapshot = dictionary;
+    if (isSandbox) {
+        NSMutableDictionary *merged = [[self readSharedPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
+        [merged addEntriesFromDictionary:dictionary];
+        snapshot = merged;
+    } else {
+        CFStringRef appID = (CFStringRef)kIdentifier;
+        CFPreferencesAppSynchronize(appID);
 
-    // Replace the domain, rather than only setting keys.  This matters for
-    // removed shortcuts: stale keys must not survive an iOS 17 cfprefsd write.
-    CFArrayRef existingKeys = CFPreferencesCopyKeyList(appID, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
-    NSMutableArray *keysToRemove = [NSMutableArray array];
-    if (existingKeys) {
-        for (NSString *existingKey in (__bridge NSArray *)existingKeys) {
-            if (!dictionary[existingKey]) [keysToRemove addObject:existingKey];
+        // Replace the domain, rather than only setting keys.  This matters for
+        // removed shortcuts: stale keys must not survive an iOS 17 cfprefsd write.
+        CFArrayRef existingKeys = CFPreferencesCopyKeyList(appID, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+        NSMutableArray *keysToRemove = [NSMutableArray array];
+        if (existingKeys) {
+            for (NSString *existingKey in (__bridge NSArray *)existingKeys) {
+                if (!dictionary[existingKey]) [keysToRemove addObject:existingKey];
+            }
+            CFRelease(existingKeys);
         }
-        CFRelease(existingKeys);
-    }
-    CFPreferencesSetMultiple((__bridge CFDictionaryRef)dictionary,
-                             (__bridge CFArrayRef)keysToRemove,
-                             appID, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
-    CFPreferencesAppSynchronize(appID);
+        CFPreferencesSetMultiple((__bridge CFDictionaryRef)dictionary,
+                                 (__bridge CFArrayRef)keysToRemove,
+                                 appID, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+        CFPreferencesAppSynchronize(appID);
 
-    // Keep the on-disk representation available to legacy preference cells.
-    [dictionary writeToFile:kPrefsPath atomically:YES];
-    self.prefs = [dictionary copy];
-    [self writeSharedPrefs:dictionary];
+        // Keep the on-disk representation available to legacy preference cells.
+        [dictionary writeToFile:kPrefsPath atomically:YES];
+    }
+
+    self.prefs = [snapshot copy];
+    [self writeSharedPrefs:snapshot];
     [self postChangedNotification];
 }
 
 #pragma mark - Set / Get / Remove
 
 - (void)setValue:(id)value forKey:(NSString *)key fromSandbox:(BOOL)isSandbox {
-    if (isSandbox) {
-        NSDictionary *current = [self readSharedPrefs];
-        NSMutableDictionary *updated = [current mutableCopy] ?: [NSMutableDictionary dictionary];
-        if (value) updated[key] = value;
-        else [updated removeObjectForKey:key];
-        [self writeSharedPrefs:updated];
-        NSDictionary *userInfo = @{
-            @"key": key ?: @"",
-            @"value": value ?: [NSNull null]
-        };
-        [[self messagingCenter] sendMessageName:@"typeXSaveValue" userInfo:userInfo];
-        return;
-    }
     [self setValue:value forKey:key];
 }
 
@@ -215,13 +215,6 @@ static NSString *DXSharedPrefsPath(void) {
 }
 
 - (void)removeKey:(NSString *)key fromSandbox:(BOOL)isSandbox {
-    if (isSandbox) {
-        NSMutableDictionary *current = [[self readSharedPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
-        [current removeObjectForKey:key];
-        [self writeSharedPrefs:current];
-        [[self messagingCenter] sendMessageName:@"typeXRemoveKey" userInfo:@{@"key": key ?: @""}];
-        return;
-    }
     [self removeKey:key];
 }
 
@@ -231,6 +224,17 @@ static NSString *DXSharedPrefsPath(void) {
 
 - (void)removeKey:(NSString *)key notify:(BOOL)notify {
     if (key.length == 0) return;
+
+    // The snapshot is a sandboxed process' only persistent channel; removing
+    // the key there must not carry the empty readPrefs result over it.
+    if ([DXPrefsManager isRunningInSandbox]) {
+        NSMutableDictionary *snapshot = [[self readSharedPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
+        [snapshot removeObjectForKey:key];
+        self.prefs = [snapshot copy];
+        [self writeSharedPrefs:snapshot];
+        if (notify) [self postChangedNotification];
+        return;
+    }
 
     CFStringRef appID = (CFStringRef)kIdentifier;
     CFPreferencesSetAppValue((__bridge CFStringRef)key, NULL, appID);
@@ -250,7 +254,8 @@ static NSString *DXSharedPrefsPath(void) {
 }
 
 - (void)reload {
-    self.prefs = [self readPrefs];
+    self.prefs = [self readPrefsFromSandbox:[DXPrefsManager isRunningInSandbox]];
+    [self healSharedPrefsIfNeeded];
 }
 
 - (void)dealloc {

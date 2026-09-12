@@ -32,6 +32,8 @@
 "SHORT_SELECT_PARAGRAPH" = "Prgph";
 "SHORT_SELECT_SENTENCE" = "Stn";
 "SHORT_DELETE_FORWARD" = "DelFw";
+"SHORT_DELETE_ALL" = "Clear";
+"SHORT_OPEN_LINK" = "Link";
 "SHORT_COPY_LOG" = "CLog";
 "SHORT_SPONGEBOB" = "sPoNge";
 
@@ -66,6 +68,8 @@
 "LONG_SELECT_PARAGRAPH" = "Select Paragraph";
 "LONG_SELECT_SENTENCE" = "Select Sentence";
 "LONG_DELETE_FORWARD" = "Delete Forward";
+"LONG_DELETE_ALL" = "Clear All";
+"LONG_OPEN_LINK" = "Open Link";
 "LONG_SPONGEBOB" = "sPonGeBob teXt";
 
 //=====================Toast=====================
@@ -98,6 +102,8 @@
 "TOAST_SELECT_PARAGRAPH" = "Select Paragraph";
 "TOAST_SELECT_SENTENCE" = "Select Sentence";
 "TOAST_DELETE_FORWARD" = "Delete";
+"TOAST_DELETE_ALL" = "Clear";
+"TOAST_OPEN_LINK" = "Open Link";
 "TOAST_SPONGEBOB" = "sPoNge";
 
 //=====================Manage Shortcuts=====================

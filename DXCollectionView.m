@@ -932,21 +932,41 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 -(void)copyAction:(UIButton*)sender{
     [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
-    
+
+    if (![delegate respondsToSelector:@selector(selectedTextRange)]) {
+        [self autoPaginationControl];
+        return;
+    }
+
+    // With no selection, copy the whole content instead of doing nothing.
+    BOOL hadSelection = [[delegate textInRange:[delegate selectedTextRange]] length] > 0;
+    if (!hadSelection) {
+        if ([delegate respondsToSelector:@selector(selectAll:)]) {
+            [delegate selectAll:nil];
+        }else if ([delegate respondsToSelector:@selector(selectAll)]){
+            [delegate selectAll];
+        }
+    }
+
     if ([delegate respondsToSelector:@selector(copy:)]) {
         [delegate copy:nil]; //UIResponderStandardEditActions.h
     }else{
-        if ([delegate respondsToSelector:@selector(selectedTextRange)]) {
-            UITextRange *range = [delegate selectedTextRange];
-            NSString *textRange = [delegate textInRange:range];
-            UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
-            
-            [pasteboard setString:textRange];
-            
-            [kbImpl clearTransientState];
-            [kbImpl clearAnimations];
-            [kbImpl setCaretBlinks:YES];
+        UITextRange *range = [delegate selectedTextRange];
+        UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
+
+        [pasteboard setString:[delegate textInRange:range]];
+    }
+
+    if (!hadSelection) {
+        // Do not linger in the select-all state: collapse the caret to the end
+        // of the copied range, where a regular copy leaves it.
+        UITextRange *range = [delegate selectedTextRange];
+        if (range) {
+            [delegate setSelectedTextRange:[delegate textRangeFromPosition:range.end toPosition:range.end]];
         }
+        [kbImpl clearTransientState];
+        [kbImpl clearAnimations];
+        [kbImpl setCaretBlinks:YES];
     }
     [self autoPaginationControl];
 }
@@ -1002,16 +1022,27 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 -(void)cutAction:(UIButton*)sender{
     [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:10  toastHeightOffset:0];
-    
+
+    // With no selection, cut the whole content instead of doing nothing.
+    // Cutting collapses the selection back to a caret by itself.
+    if ([delegate respondsToSelector:@selector(selectedTextRange)] &&
+        [[delegate textInRange:[delegate selectedTextRange]] length] == 0) {
+        if ([delegate respondsToSelector:@selector(selectAll:)]) {
+            [delegate selectAll:nil];
+        }else if ([delegate respondsToSelector:@selector(selectAll)]){
+            [delegate selectAll];
+        }
+    }
+
     if ([delegate respondsToSelector:@selector(cut:)]) {
         [delegate cut:nil]; //UIResponderStandardEditActions.h
     }else if ([delegate respondsToSelector:@selector(selectedTextRange)]) {
         UITextRange *range = [delegate selectedTextRange];
         NSString *textRange = [delegate textInRange:range];
         UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
-        
+
         [pasteboard setString:textRange];
-        
+
         [kbImpl deleteFromInput];
         [kbImpl clearTransientState];
         [kbImpl clearAnimations];
@@ -1160,7 +1191,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     [self selectAllAction:nil];
     self.hapticType = 2;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(secondActionDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [self triggerImpactAndAnimationWithButton:sender selectorName:@"deleteAction:" toastWidthOffset:10 toastHeightOffset:0];
+        [self triggerImpactAndAnimationWithButton:sender selectorName:NSStringFromSelector(_cmd) toastWidthOffset:10 toastHeightOffset:0];
         [self beginUpdateDelegate];
         [kbImpl deleteFromInput];
         [kbImpl clearTransientState];
@@ -1168,6 +1199,45 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
         [kbImpl setCaretBlinks:YES];
         [self autoPaginationControl];
     });
+}
+
+-(void)openLinkAction:(UIButton*)sender{
+    [self autoPaginationControl];
+    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+
+    if (![delegate respondsToSelector:@selector(selectedTextRange)]) {
+        [self autoPaginationControl];
+        return;
+    }
+
+    // A selection is checked verbatim; otherwise scan the whole content for
+    // the first link (NSDataDetector also picks up scheme-less hosts such as
+    // "www.example.com").
+    NSString *text = [delegate textInRange:[delegate selectedTextRange]];
+    if (text.length == 0) {
+        text = [delegate textInRange:[delegate textRangeFromPosition:[delegate beginningOfDocument]
+                                                         toPosition:[delegate endOfDocument]]];
+    }
+
+    NSURL *url = nil;
+    if (text.length > 0) {
+        if ([self isValidURL:text]) {
+            url = [NSURL URLWithString:text];
+        }else{
+            NSDataDetector *detector = [NSDataDetector dataDetectorWithTypes:NSTextCheckingTypeLink error:nil];
+            if (detector) {
+                for (NSTextCheckingResult *match in [detector matchesInString:text options:0 range:NSMakeRange(0, text.length)]) {
+                    url = match.URL;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (url) {
+        [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+    }
+    [self autoPaginationControl];
 }
 
 
@@ -1748,11 +1818,8 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     [self activateCustomActions:recognizer gestureType:1];
 }
 
--(void)activateSingleTapAction:(UITapGestureRecognizer *)recognizer {
-    if (recognizer.state != UIGestureRecognizerStateEnded) return;
-
-    UIButton *button = (UIButton *)recognizer.view;
-    NSString *selectorName = button.accessibilityIdentifier;
+-(void)cellButtonTouchUpInside:(UIButton *)sender {
+    NSString *selectorName = sender.accessibilityIdentifier;
     if (![DXShortcutsGenerator isVisibleShortcutSelector:selectorName]) return;
 
     SEL action = NSSelectorFromString(selectorName);
@@ -1761,7 +1828,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
         return;
     }
 
-    ((void(*)(id, SEL, id))objc_msgSend)(self, action, button);
+    ((void(*)(id, SEL, id))objc_msgSend)(self, action, sender);
 }
 
 -(UIWindow *)keyWindow {
@@ -1806,20 +1873,22 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(activateLPActions:)];
     longPress.minimumPressDuration = 0.5;
-    
-    DXUIShortTapGestureRecognizer *singleTap = [[DXUIShortTapGestureRecognizer alloc] initWithTarget:self action:@selector(activateSingleTapAction:)];
-    singleTap.numberOfTapsRequired = 1;
+
+    // Single tap is the button's own TouchUpInside event: it fires on touch-up
+    // with no gesture window, so taps can be repeated as fast as the user likes.
+    // The double-tap recognizer is only mounted when a double-tap action is
+    // actually configured -- otherwise its recognition would cancel every other
+    // tap of a rapid burst.
     DXUIShortTapGestureRecognizer *doubleTap = [[DXUIShortTapGestureRecognizer alloc] initWithTarget:self action:@selector(activateDTActions:)];
     doubleTap.numberOfTapsRequired = 2;
-    // Only delay single-tap when the user has configured a double-tap action for
-    // this shortcut. Otherwise the single-tap should fire immediately to avoid
-    // holding onto a potentially stale input context while waiting for the
-    // double-tap failure timeout.
     NSString *doubleTapSelector = preferencesSelectorForIdentifierScoped(selectorName, 1, 1, @"", self.configuration);
+
+    [cell.btn addTarget:self action:@selector(cellButtonTouchUpInside:) forControlEvents:UIControlEventTouchUpInside];
     if (doubleTapSelector.length > 0) {
-        [singleTap requireGestureRecognizerToFail:doubleTap];
+        cell.btn.gestureRecognizers = @[longPress, doubleTap];
+    }else{
+        cell.btn.gestureRecognizers = @[longPress];
     }
-    cell.btn.gestureRecognizers = @[longPress, doubleTap, singleTap];
     
     //cell.btn.backgroundColor = [UIColor clearColor];
     //cell.btn.layer.cornerRadius = 0; // this value vary as per your desire

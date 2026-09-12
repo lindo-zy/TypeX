@@ -1,15 +1,12 @@
 #import <Foundation/Foundation.h>
 
-@interface DXPrefsManager : NSObject{
-    CPDistributedMessagingCenter * _messagingCenter;
-}
+@interface DXPrefsManager : NSObject
 @property(nonatomic, strong) NSDictionary *prefs;
 + (instancetype)sharedInstance;
 + (BOOL)isRunningInSandbox;
 -(NSDictionary *)readPrefs;
 -(NSDictionary *)readPrefsFromSandbox:(BOOL)isSandbox;
 -(void)writePrefs:(NSDictionary *)dictionary;
--(void)writePrefs:(NSDictionary *)dictionary fromSandbox:(BOOL)isSandbox;
 -(void)setValue:(id)value forKey:(NSString *)key fromSandbox:(BOOL)isSandbox;
 -(void)setValue:(id)value forKey:(NSString *)key;
 -(id)getValueForKey:(NSString *)key fromSandbox:(BOOL)isSandbox;

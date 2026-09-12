@@ -32,6 +32,8 @@
 "SHORT_SELECT_PARAGRAPH" = "选择段落";
 "SHORT_SELECT_SENTENCE" = "选择句子";
 "SHORT_DELETE_FORWARD" = "向后删除";
+"SHORT_DELETE_ALL" = "清空";
+"SHORT_OPEN_LINK" = "跳转";
 "SHORT_COPY_LOG" = "复制记录";
 "SHORT_SPONGEBOB" = "sPoNge";
 
@@ -66,6 +68,8 @@
 "LONG_SELECT_PARAGRAPH" = "选择整段";
 "LONG_SELECT_SENTENCE" = "选择整句";
 "LONG_DELETE_FORWARD" = "向后删除";
+"LONG_DELETE_ALL" = "清空";
+"LONG_OPEN_LINK" = "链接跳转";
 "LONG_COPY_LOG" = "复制记录";
 "LONG_SPONGEBOB" = "sPonGeBob teXt";
 
@@ -99,6 +103,8 @@
 "TOAST_SELECT_PARAGRAPH" = "选择整段";
 "TOAST_SELECT_SENTENCE" = "选择整句";
 "TOAST_DELETE_FORWARD" = "向后删除";
+"TOAST_DELETE_ALL" = "清空";
+"TOAST_OPEN_LINK" = "链接跳转";
 "TOAST_COPY_LOG" = "复制记录";
 "TOAST_SPONGEBOB" = "sPoNge";
 

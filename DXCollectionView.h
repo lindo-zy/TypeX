@@ -54,6 +54,7 @@ typedef NS_ENUM(NSInteger, direction) {
 -(IBAction)endingAction:(UIButton*)sender;
 -(IBAction)deleteAction:(UIButton*)sender;
 -(IBAction)deleteAllAction:(UIButton*)sender;
+-(IBAction)openLinkAction:(UIButton*)sender;
 -(IBAction)dismissKeyboardAction:(UIButton*)sender;
 -(void)moveCursorLeftAction:(UIButton*)sender;
 -(void)moveCursorRightAction:(UIButton*)sender;

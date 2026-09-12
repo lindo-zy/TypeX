@@ -119,8 +119,15 @@
 
 #define secondActionDelay 0.05
 
-#define TypeXCachePath DX_ROOT_PATH_NS(@"/var/mobile/Library/Caches/com.lindo.typex")
-#define TypeXSharedPrefsPath DX_ROOT_PATH_NS(@"/var/mobile/Library/Caches/com.lindo.typex/shared.plist")
+// The shared snapshot must live where sandboxed app hosts can read it.  The
+// jailbreak root (/var/jb on rootless, resolved by DX_ROOT_PATH_NS) is readable
+// from inside app sandboxes -- this tweak already loads its bundle resources
+// from /var/jb/Library -- while /var/mobile/Library/** is not.  The package
+// stages the directory world-writable (no sticky bit: mobile writers must be
+// able to atomically replace the root-owned seed file) so mobile processes
+// (Settings, SpringBoard) can refresh the snapshot without a helper daemon.
+#define TypeXCachePath DX_ROOT_PATH_NS(@"/Library/TypeX")
+#define TypeXSharedPrefsPath DX_ROOT_PATH_NS(@"/Library/TypeX/shared.plist")
 
 static inline NSString *DXScopedPreferenceKey(NSString *baseKey, NSString *configuration) {
     if ([configuration isEqualToString:@"top"]) {

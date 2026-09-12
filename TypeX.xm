@@ -557,18 +557,7 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
         [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
     }
     toggledOn = self.typex.hidden;
-    [[DXPrefsManager sharedInstance] setValue:[NSNumber numberWithBool:toggledOn] forKey:kToggledOnkey fromSandbox:[DXPrefsManager isRunningInSandbox]];
-    /*
-     if (isApplication){
-     [[DXPrefsManager sharedInstance] setValue:[NSNumber numberWithBool:toggledOn] forKey:kToggledOnkey fromSandbox:isApplication];
-     CPDistributedMessagingCenter *c = [CPDistributedMessagingCenter centerNamed:@"com.lindo.typex.server"];
-     [c sendMessageAndReceiveReplyName:@"typeXSaveValue" userInfo:@{@"key":kToggledOnkey, @"value":[NSNumber numberWithBool:toggledOn]}];
-     }else{
-     CFPreferencesSetAppValue((CFStringRef)kToggledOnkey, (CFPropertyListRef)[NSNumber numberWithBool:toggledOn], (CFStringRef)kIdentifier);
-     CFPreferencesAppSynchronize((CFStringRef)kIdentifier);
-     }
-     */
-    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), (CFStringRef)kPrefsChangedIdentifier, NULL, NULL, YES);
+    [[DXPrefsManager sharedInstance] setValue:[NSNumber numberWithBool:toggledOn] forKey:kToggledOnkey];
     
     self.typex.hidden = !toggledOn;
     if (self.typex.hidden) self.typex.alpha = 1.0f;
@@ -1072,31 +1061,7 @@ static void reloadPrefs(void) {
     }
     toastTintColor = toastImageTintColor;
     toastBackgroundTintColor = toastBackgroundColor;
-    
-    
-    
-    //prefs = [[[DXPrefsManager sharedInstance] readPrefs] mutableCopy];
-    
-    //isSandboxed = ![NSHomeDirectory() isEqualToString:@"/var/mobile"];
-    //CFPreferencesAppSynchronize((CFStringRef)kIdentifier);
-    
-    /*
-     if ([NSHomeDirectory() isEqualToString:@"/var/mobile"]) {
-     isSandboxed = NO;
-     prefs = [[[DXPrefsManager sharedInstance] readPrefs] mutableCopy];
-     } else {
-     isSandboxed = YES;
-     CPDistributedMessagingCenter *c = [CPDistributedMessagingCenter centerNamed:@"com.lindo.typex.server"];
-     prefs = [[c sendMessageAndReceiveReplyName:@"typeXFetchPrefs" userInfo:nil] mutableCopy];
-     
-     }
-     */
-    //prefs = [NSMutableDictionary dictionary];
-    //[prefs addEntriesFromDictionary:[NSDictionary dictionaryWithContentsOfFile:kPrefsPath]];
-    
-    
-    //HBLogDebug(@"reloadPrefs: %@", prefs);
-    //HBLogDebug(@"kShortcutsPerSection: %@", prefs[kShortcutsPerSection]);
+
     currentBackgroundTintColor = nil;
     currentTopToolbarBackgroundColor = nil;
     //currentTintColor = nil;
