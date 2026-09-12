@@ -7,7 +7,6 @@
 "SHORTCUTS" = "快捷方式";
 "HAPTIC" = "触感反馈";
 "SHAKE_SHORTCUT" = "摇动显示快捷方式";
-"SHOW_TOAST" = "显示提示";
 "ICON" = "图标";
 "TEXT" = "文本";
 "FOOTER_SHORTCUT_NUM" = "设置每页显示的快捷方式数量。";
@@ -33,13 +32,9 @@
 "CUSTOMIZATION" = "自定义";
 "SHORTCUTS_TINT" = "快捷方式颜色";
 "SHORTCUTS_BACKGROUND_TINT" = "快捷方式背景颜色";
-"TOAST_TINT" = "提示颜色";
-"TOAST_BACKGROUND_TINT" = "提示背景颜色";
 "TOP_TOOLBAR_SETTINGS" = "顶部工具栏设置";
 "TOP_TOOLBAR" = "顶部工具栏";
 "TOP_TOOLBAR_BACKGROUND_TINT" = "顶部工具栏背景颜色";
-"PAGING" = "分页";
-"FOOTER_PAGING" = "如果点击快捷方式后界面滚回上一页，可关闭分页功能。";
 "ADVANCED" = "高级";
 "ADVANCED_SETTINGS" = "高级设置";
 "DEVELOPMENT" = "开发";

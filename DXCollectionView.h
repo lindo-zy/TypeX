@@ -12,12 +12,11 @@ typedef NS_ENUM(NSInteger, direction) {
 @interface DXCollectionView : UICollectionView <UICollectionViewDataSource, UICollectionViewDelegate>
 - (instancetype)initWithConfiguration:(NSString *)configuration;
 @property (nonatomic, copy) NSString *configuration;
+@property (nonatomic, assign, readonly) BOOL shortcutConfigurationAvailable;
 @property (strong, nonatomic) NSArray *shortcuts;
-@property (strong, nonatomic) NSArray *fullshortcuts;
-// selector -> custom display name / custom SF Symbol icon, resolved from the
-// shortcut dictionaries; empty when no shortcut carries overrides.
+// selector -> custom display name, resolved from the shortcut dictionaries;
+// empty when no shortcut carries an override.
 @property (strong, nonatomic) NSDictionary *customNames;
-@property (strong, nonatomic) NSDictionary *customIcons;
 @property (nonatomic, assign) NSInteger hapticType;
 
 @property (nonatomic, assign) BOOL refreshView;
@@ -33,8 +32,6 @@ typedef NS_ENUM(NSInteger, direction) {
 @property (strong, nonatomic) NSArray *indexArray;
 @property (strong, nonatomic) NSArray *sectionOffsetForwardArray;
 @property (strong, nonatomic) NSArray *sectionOffsetBackwardArray;
-@property (strong, nonatomic) CPDistributedMessagingCenter *toastCenter;
-@property (strong, nonatomic) NSString *commandTitle;
 
 @property (nonatomic, assign) BOOL moveCursorWithSelect;
 @property (nonatomic, assign) BOOL isWordSender;
@@ -83,10 +80,7 @@ typedef NS_ENUM(NSInteger, direction) {
 -(UIWindow*)keyWindow;
 
 -(void)moveCursorContinuoslyWithDelegate:(id <UITextInput, UITextInputTokenizer>)delegate offset:(int)offset;
--(NSString *)convertColorToString:(UIColor *)colorname;
--(NSString *)getImageNameForActionName:(NSString *)actionname;
--(void)sendShowToastRequestWithMessage:(NSString *)message imagePath:(NSString *)imagepath imageTint:(UIColor *)imagetint width:(int)width height:(int)height position:(float)position duration:(double)duration alpha:(float)alpha radius:(float)radius textColor:(UIColor *)textColor backgroundColor:(UIColor *)backgroundColor displayType:(int)displayType;
--(void)triggerImpactAndAnimationWithButton:(UIButton *)sender selectorName:(NSString *)selname toastWidthOffset:(int)woffset toastHeightOffset:(int)hoffset;
+-(void)triggerImpactAndAnimationWithButton:(UIButton *)sender;
 -(NSArray *)synthesizeIndexingForIndexOrOffset:(BOOL)offset descendingOffset:(BOOL)reverse numberOfItems:(int)itemsCount;
 - (NSInteger)currentCursorPosition:(id <UITextInput, UITextInputTokenizer>)delegate;
 -(void)moveCursorWithDelegate:(id <UITextInput, UITextInputTokenizer>)delegate offset:(int)offset;

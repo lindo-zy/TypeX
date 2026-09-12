@@ -73,41 +73,6 @@
 "LONG_COPY_LOG" = "复制记录";
 "LONG_SPONGEBOB" = "sPonGeBob teXt";
 
-//=====================Toast=====================
-"TOAST_SELECT_ALL" = "全选";
-"TOAST_COPY" = "复制";
-"TOAST_PASTE" = "粘贴";
-"TOAST_CUT" = "剪切";
-"TOAST_UNDO" = "撤销操作";
-"TOAST_REDO" = "重做操作";
-"TOAST_SELECT" = "选择";
-"TOAST_BEGINNING" = "移动到文档开头";
-"TOAST_ENDING" = "移动到文档末尾";
-"TOAST_DELETE" = "删除";
-"TOAST_DISMISS_KEYBOARD" = "收起键盘";
-"TOAST_MOVE_CURSOR_LEFT" = "光标向左";
-"TOAST_MOVE_CURSOR_RIGHT" = "光标向右";
-"TOAST_MOVE_CURSOR_UP" = "光标向上";
-"TOAST_MOVE_CURSOR_DOWN" = "光标向下";
-"TOAST_DEFINE" = "查词";
-"TOAST_RUN_COMMAND" = "命令";
-"TOAST_MOVE_CURSOR_PREVIOUS_WORD" = "上一个词";
-"TOAST_MOVE_CURSOR_NEXT_WORD" = "下一个词";
-"TOAST_MOVE_CURSOR_START_OF_LINE" = "移动到行首";
-"TOAST_MOVE_CURSOR_END_OF_LINE" = "移动到行尾";
-"TOAST_MOVE_CURSOR_START_OF_PARAGRAPH" = "移动到段首";
-"TOAST_MOVE_CURSOR_END_OF_PARAGRAPH" = "移动到段末";
-"TOAST_MOVE_CURSOR_START_OF_SENTENCE" = "移动到句首";
-"TOAST_MOVE_CURSOR_END_OF_SENTENCE" = "移动到句末";
-"TOAST_SELECT_LINE" = "选择整行";
-"TOAST_SELECT_PARAGRAPH" = "选择整段";
-"TOAST_SELECT_SENTENCE" = "选择整句";
-"TOAST_DELETE_FORWARD" = "向后删除";
-"TOAST_DELETE_ALL" = "清空";
-"TOAST_OPEN_LINK" = "链接跳转";
-"TOAST_COPY_LOG" = "复制记录";
-"TOAST_SPONGEBOB" = "sPoNge";
-
 //=====================Manage Shortcuts=====================
 //Title
 "ENABLED_SHORTCUTS" = "已启用的快捷方式";
@@ -174,7 +139,7 @@
 
 //=====================SHORTCUT APPEARANCE=====================
 "CUSTOM_APPEARANCE" = "显示";
-"FOOTER_CUSTOM_APPEARANCE" = "名称会替换快捷方式的显示名称（短文本工具栏模式和点击提示浮窗）。图标仅支持 SF Symbols 标准图标名称（如 doc.on.doc），无效的名称将回退为默认图标。";
+"FOOTER_CUSTOM_APPEARANCE" = "名称会替换短文本工具栏模式中的快捷方式显示名称。图标仅支持 SF Symbols 标准图标名称（如 doc.on.doc），无效的名称将回退为默认图标。";
 "CUSTOM_NAME" = "名称";
 "CUSTOM_ICON" = "图标";
 "CUSTOM_ICON_INVALID" = "图标名称无效，将使用默认图标。";

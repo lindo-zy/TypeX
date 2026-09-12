@@ -1,7 +1,6 @@
 #import "common.h"
 #import "DXShared.h"
 #import "DXCollectionView.h"
-#import "DXToastWindowController.h"
 #import "DXHelper.h"
 
 #import <objc/runtime.h>
@@ -11,34 +10,38 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     return ![DXShortcutsGenerator isVisibleShortcutSelector:selector];
 }
 
-static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
-    NSArray *fullGroups = cache[@"fullshortcuts"];
-    if (![fullGroups isKindOfClass:[NSArray class]] || fullGroups.count < 3 ||
-        ![fullGroups[2] isEqual:[[DXShortcutsGenerator sharedInstance] selectorNames]]) return YES;
-    NSArray *shortcutGroups = cache[@"shortcuts"];
-    if (![shortcutGroups isKindOfClass:[NSArray class]] || shortcutGroups.count < 3) {
-        return NO;
-    }
-    for (NSString *selector in shortcutGroups[2]) {
-        if (DXIsHiddenShortcutSelector(selector)) {
-            return YES;
-        }
-    }
+
+@interface DXCollectionView ()
+@property (nonatomic, assign, readwrite) BOOL shortcutConfigurationAvailable;
+@end
+
+// Shortcut order is a user-authored, physical left-to-right order. Keyboard
+// accessory views can temporarily inherit a different semantic direction while
+// UIKit moves them into its private keyboard hierarchy. UICollectionViewFlowLayout
+// otherwise mirrors horizontal item positions when that direction changes,
+// producing a reversed first frame followed by the configured order.
+@interface DXTopShortcutFlowLayout : UICollectionViewFlowLayout
+@end
+
+@implementation DXTopShortcutFlowLayout
+
+- (BOOL)flipsHorizontallyInOppositeLayoutDirection {
     return NO;
 }
+
+@end
 
 @implementation DXCollectionView
 
 // Resolves one configured shortcut entry into the parallel toolbar arrays.  The
 // iOS 13 image slot takes the custom SF Symbol when it validates, and custom
-// names/icons are keyed by selector for the short-label and toast paths.  iOS 12
-// has no SF Symbols, so images12 always keeps its default value.
+// names are keyed by selector for short-label mode. iOS 12 has no SF Symbols,
+// so images12 always keeps its default value.
 -(void)integrateShortcutItem:(NSDictionary *)item
               intoImages12:(NSMutableArray *)images12
                images13:(NSMutableArray *)images13
                selectors:(NSMutableArray *)selectors
-                    names:(NSMutableDictionary *)names
-                    icons:(NSMutableDictionary *)icons {
+                    names:(NSMutableDictionary *)names {
     NSString *selector = item[@"selector"];
     [images12 addObject:item[@"images12"]];
     [images13 addObject:[DXHelper resolvedIconNameForShortcutItem:item defaultName:item[@"images13"]]];
@@ -46,8 +49,6 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
     NSString *customName = [DXHelper customNameForShortcutItem:item];
     if (customName) names[selector] = customName;
-    NSString *customIcon = [DXHelper customIconForShortcutItem:item];
-    if (customIcon) icons[selector] = customIcon;
 }
 
 - (NSString *)scopedPreferenceKey:(NSString *)key {
@@ -67,106 +68,32 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 - (instancetype)initWithConfiguration:(NSString *)configuration{
     
-    UICollectionViewFlowLayout *flowLayout = [[UICollectionViewFlowLayout alloc] init];
+    BOOL isTopConfiguration = [configuration isEqualToString:@"top"];
+    UICollectionViewFlowLayout *flowLayout = isTopConfiguration
+        ? [[DXTopShortcutFlowLayout alloc] init]
+        : [[UICollectionViewFlowLayout alloc] init];
     flowLayout.scrollDirection = UICollectionViewScrollDirectionHorizontal;
     flowLayout.minimumInteritemSpacing = currentBackgroundTintColor?buttonSpacing:0;
     flowLayout.minimumLineSpacing = 0;
     
     
     if (self = [super initWithFrame:CGRectZero collectionViewLayout:flowLayout]) {
+        // Keep the configured array order stable before and after the view is
+        // attached to the keyboard's accessory hierarchy.
+        if (isTopConfiguration) {
+            self.semanticContentAttribute = UISemanticContentAttributeForceLeftToRight;
+        }
         self.configuration = configuration ?: @"bottom";
-        //HBLogDebug(@"DXCollectionView initWithConfiguration: %@, shortcutsPerSection: %d", self.configuration, [self shortcutsPerSection]);
         self.shortcutsGenerator = [DXShortcutsGenerator sharedInstance];
-        if (!prefs){
-            prefs = [[[DXPrefsManager sharedInstance] readPrefsFromSandbox:[DXPrefsManager isRunningInSandbox]] mutableCopy];
-        }
-        
-        
-        
-        // A cache is only safe when the user has never customized the
-        // shortcut order.  On iOS 17 the collection view can
-        // outlive the Settings controller, so a stale cache otherwise masks the
-        // newly written configuration.
-        NSString *shortcutsKey = [self scopedPreferenceKey:kShortcutskey];
-        NSString *cacheKey = [self scopedPreferenceKey:kCachekey];
-        if (prefs[cacheKey] && !DXShortcutCacheContainsHiddenSelectors(prefs[cacheKey]) &&
-            [prefs[cacheKey][@"shortcuts"][kbuttonsImages12] count] <= [self shortcutsPerSection] &&
-            !prefs[shortcutsKey]){
-            NSDictionary *cache = prefs[cacheKey];
-            self.shortcuts = cache[@"shortcuts"];
-            self.fullshortcuts = cache[@"fullshortcuts"];
-            // The cache branch only runs when no scoped shortcuts key exists, so
-            // per-shortcut overrides cannot be present here.
-            self.customNames = @{};
-            self.customIcons = @{};
-            //HBLogDebug(@"Utilized cache");
-        }else{
-            //HBLogDebug(@"Update cache");
-            
-            NSMutableDictionary *cache = [[NSMutableDictionary alloc] init];
-            
-            
-            NSMutableArray *currentOrderDefault12 = [[self.shortcutsGenerator imageNameArrayForiOS:0] mutableCopy];
-            NSMutableArray *currentOrderDefault13 =  [[self.shortcutsGenerator imageNameArrayForiOS:1] mutableCopy];
-            NSMutableArray *selectorsDefault = [[self.shortcutsGenerator selectorNames] mutableCopy];
-            //NSMutableArray *shortLabelDefault = [[self.shortcutsGenerator shortenedlabelName] mutableCopy];
-            
-            NSMutableArray *currentOrder12 = [[NSMutableArray alloc] init];
-            NSMutableArray *currentOrder13 = [[NSMutableArray alloc] init];
-            NSMutableArray *selectors = [[NSMutableArray alloc] init];
-            //NSMutableArray *shortLabel = [[NSMutableArray alloc] init];
-            
-        if (prefs[shortcutsKey]){
-
-            NSMutableDictionary *customNames = [[NSMutableDictionary alloc] init];
-            NSMutableDictionary *customIcons = [[NSMutableDictionary alloc] init];
-
-            for (NSDictionary *item in prefs[shortcutsKey][0]){
-                if (currentOrder12.count >= [self shortcutsPerSection]) break;
-                if (DXIsHiddenShortcutSelector(item[@"selector"])){
-                    continue;
-                }
-                [self integrateShortcutItem:item intoImages12:currentOrder12 images13:currentOrder13 selectors:selectors names:customNames icons:customIcons];
-                //if (item[@"slabel"]){
-                //[shortLabel addObject:item[@"slabel"]];
-                //}else{
-                //useShortenedLabel = NO;
-                //}
-            }
-            self.customNames = customNames;
-            self.customIcons = customIcons;
-        }else{
-                for (int i = 0; i < [self shortcutsPerSection]; i++ ){
-                    [currentOrder12 addObject:[currentOrderDefault12 objectAtIndex:i]];
-                    [currentOrder13 addObject:[currentOrderDefault13 objectAtIndex:i]];
-                    [selectors addObject:[selectorsDefault objectAtIndex:i]];
-                    //[shortLabel addObject:[shortLabelDefault objectAtIndex:i]];
-                }
-                //currentOrder12 = [[currentOrderDefault12 subarrayWithRange:NSMakeRange(0, 6)] mutableCopy];
-                //currentOrder12 = [[currentOrderDefault13 subarrayWithRange:NSMakeRange(0, 6)] mutableCopy];
-                //selectors = [[selectorsDefault subarrayWithRange:NSMakeRange(0, 6)] mutableCopy];
-            }
-            
-            //self.buttonsImages12 = currentOrder12;
-            //self.buttonsImages13 = currentOrder13;
-            //self.buttonSelectors = selectors;
-            self.shortcuts = @[currentOrder12, currentOrder13, selectors];
-            self.fullshortcuts = @[currentOrderDefault12, currentOrderDefault13, selectorsDefault];
-            cache[@"shortcuts"] = self.shortcuts;
-            cache[@"fullshortcuts"] = self.fullshortcuts;
-            
-            
-            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-                [[DXPrefsManager sharedInstance] setValue:cache forKey:cacheKey fromSandbox:[DXPrefsManager isRunningInSandbox]];
-                prefs = [[[DXPrefsManager sharedInstance] readPrefsFromSandbox:[DXPrefsManager isRunningInSandbox]] mutableCopy];
-            });
-        }
+        // Build the data source exactly once, directly from the complete
+        // preference snapshot.  There is no default/cache view that is later
+        // covered by a second user-configured view.
+        [self reloadShortcutConfiguration];
         
         self.hapticType = 1;
         self.refreshView = YES;
         self.firstCellVisible = YES;
         
-        self.commandTitle = @"";
         self.isWordSender = NO;
         self.moveCursorWithSelect = NO;
         
@@ -176,7 +103,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
         self.dataSource = self;
         self.showsVerticalScrollIndicator = NO;
         self.showsHorizontalScrollIndicator = NO;
-        self.pagingEnabled = preferencesBool([self scopedPreferenceKey:kPagingkey], preferencesBool(kPagingkey, YES));
+        self.pagingEnabled = YES;
         [self registerClass:NSClassFromString(@"DXCell") forCellWithReuseIdentifier:@"kTypeXCellID"];
         dispatch_async(dispatch_get_main_queue(), ^{
             [self keyboardRotated:nil];
@@ -553,14 +480,10 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     }
 }
 
--(void)setAutoPaginationControlEnabled{
-    self.pagingEnabled = YES;
-}
-
 -(void)autoPaginationControl{
-    if (isPagingEnabled && self.pagingEnabled){
+    if (self.pagingEnabled){
         self.pagingEnabled = NO;
-    }else if (isPagingEnabled && !self.pagingEnabled){
+    }else{
         if (!self.autoPaginationDispatchBlock){
             self.autoPaginationDispatchBlock = dispatch_block_create(0, ^{
                 self.pagingEnabled = YES;
@@ -573,8 +496,10 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 }
 
 -(void)reloadShortcutConfiguration{
-    NSDictionary *currentPrefs = [[DXPrefsManager sharedInstance] readPrefsFromSandbox:[DXPrefsManager isRunningInSandbox]];
-    if (![currentPrefs isKindOfClass:[NSDictionary class]]) currentPrefs = @{};
+    DXPrefsManager *manager = [DXPrefsManager sharedInstance];
+    NSDictionary *currentPrefs = manager.preferencesAvailable ? manager.prefs : nil;
+    self.shortcutConfigurationAvailable = [currentPrefs isKindOfClass:[NSDictionary class]];
+    if (!self.shortcutConfigurationAvailable) currentPrefs = @{};
     prefs = [currentPrefs mutableCopy];
     //HBLogDebug(@"reloadShortcutConfiguration configuration=%@ shortcutsPerSection=%d scopedKey=%@", self.configuration, [self shortcutsPerSection], [self scopedPreferenceKey:kShortcutskey]);
     NSMutableArray *defaultImages12 = [[self.shortcutsGenerator imageNameArrayForiOS:0] mutableCopy];
@@ -585,28 +510,28 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     NSMutableArray *images13 = [NSMutableArray array];
     NSMutableArray *selectors = [NSMutableArray array];
     NSString *shortcutsKey = [self scopedPreferenceKey:kShortcutskey];
-    NSArray *configuredShortcuts = currentPrefs[shortcutsKey];
+    id configuredValue = currentPrefs[shortcutsKey];
+    NSArray *configuredShortcuts = [configuredValue isKindOfClass:[NSArray class]] ? configuredValue : nil;
 
     // Top and bottom shortcuts are fully decoupled.  When a scoped key has no
     // persisted value (e.g. user never opened "顶部设置"), the else-branch
     // below uses the default set (first N actions from DXShortcutsGenerator).
     // The bottom configuration is never inherited by the top toolbar.
 
-    if ([configuredShortcuts isKindOfClass:[NSArray class]] && configuredShortcuts.count > 0) {
+    if (self.shortcutConfigurationAvailable && configuredShortcuts.count > 0 &&
+        [configuredShortcuts[0] isKindOfClass:[NSArray class]]) {
         NSMutableDictionary *customNames = [[NSMutableDictionary alloc] init];
-        NSMutableDictionary *customIcons = [[NSMutableDictionary alloc] init];
         for (NSDictionary *item in configuredShortcuts[0]) {
             if (images12.count >= [self shortcutsPerSection]) break;
             if (![item isKindOfClass:[NSDictionary class]]) continue;
             NSString *selector = item[@"selector"];
             if (DXIsHiddenShortcutSelector(selector)) continue;
             if (item[@"images12"] && item[@"images13"] && selector) {
-                [self integrateShortcutItem:item intoImages12:images12 images13:images13 selectors:selectors names:customNames icons:customIcons];
+                [self integrateShortcutItem:item intoImages12:images12 images13:images13 selectors:selectors names:customNames];
             }
         }
         self.customNames = customNames;
-        self.customIcons = customIcons;
-    } else {
+    } else if (self.shortcutConfigurationAvailable && configuredValue == nil) {
         NSUInteger count = MIN((NSUInteger)[self shortcutsPerSection],
                                MIN(defaultImages12.count,
                                    MIN(defaultImages13.count, defaultSelectors.count)));
@@ -616,13 +541,16 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
             [selectors addObject:defaultSelectors[index]];
         }
         self.customNames = @{};
-        self.customIcons = @{};
+    } else {
+        // A missing snapshot or malformed persisted shortcut value is not a
+        // request for the six defaults.  Keep the toolbar empty until a valid
+        // snapshot arrives.
+        self.customNames = @{};
     }
 
     self.shortcuts = @[images12, images13, selectors];
     //HBLogDebug(@"reloadShortcutConfiguration built shortcuts count=%lu for scope=%@", (unsigned long)images12.count, self.configuration);
-    self.fullshortcuts = @[defaultImages12, defaultImages13, defaultSelectors];
-    self.pagingEnabled = preferencesBool([self scopedPreferenceKey:kPagingkey], preferencesBool(kPagingkey, YES));
+    self.pagingEnabled = YES;
     self.indexArray = nil;
     self.sectionOffsetForwardArray = nil;
     self.sectionOffsetBackwardArray = nil;
@@ -794,67 +722,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     }
 }
 
--(NSString *)convertColorToString:(UIColor *)colorname{
-    if(colorname==[UIColor whiteColor] ){
-        colorname= [UIColor colorWithRed:1 green:1 blue:1 alpha:1];
-    }
-    else if(colorname==[UIColor blackColor]){
-        colorname= [UIColor colorWithRed:0 green:0 blue:0 alpha:1];
-    }
-    CGColorRef colorRef = colorname.CGColor;
-    NSString *colorString = [CIColor colorWithCGColor:colorRef].stringRepresentation;
-    return colorString;
-}
-
--(NSString *)getImageNameForActionName:(NSString *)actionname{
-    NSString *customIcon = self.customIcons[actionname];
-    if (customIcon.length > 0) return customIcon;
-
-    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"SELF contains[cd] %@", actionname];
-    NSUInteger idx = [self.fullshortcuts[2]  indexOfObjectPassingTest:^(id obj, NSUInteger idx, BOOL *stop) {
-        return [predicate evaluateWithObject:obj];
-    }];
-    
-    if (@available(iOS 13.0, *)){
-        return self.fullshortcuts[1][idx];
-    }else{
-        return self.fullshortcuts[0][idx];
-    }
-    
-}
-
--(void)sendShowToastRequestWithMessage:(NSString *)message imagePath:(NSString *)imagepath imageTint:(UIColor *)imagetint width:(int)width height:(int)height position:(float)position duration:(double)duration alpha:(float)alpha radius:(float)radius textColor:(UIColor *)textColor backgroundColor:(UIColor *)backgroundColor displayType:(int)displayType{
-    
-    //HBLogDebug(@"%@",NSStringFromClass([[UIApplication sharedApplication] class]));
-    NSDictionary *userInfo = [NSDictionary dictionaryWithObjectsAndKeys:
-                              message, @"message",
-                              imagepath, @"imagepath",
-                              [NSNumber numberWithInt:width], @"width",
-                              [NSNumber numberWithInt:height], @"height",
-                              [NSNumber numberWithFloat:position], @"position",
-                              [NSNumber numberWithDouble:duration], @"duration",
-                              [NSNumber numberWithDouble:alpha], @"alpha",
-                              [NSNumber numberWithDouble:radius], @"radius",
-                              [self convertColorToString:textColor], @"textColor",
-                              [self convertColorToString:backgroundColor], @"backgroundColor",
-                              [self convertColorToString:imagetint], @"imagetint",
-                              [NSNumber numberWithInt:displayType], @"displayType",
-                              nil];
-    
-    //if (![NSStringFromClass([[UIApplication sharedApplication] class]) isEqualToString:@"SpringBoard"]){
-    [[DXToastWindowController sharedInstance] showToastRequest:@"showToastRequest" withUserInfo:userInfo];
-    
-    
-    
-}
-
-- (CGFloat)widthOfString:(NSString *)string withFont:(UIFont *)font {
-	if (!string) return .0f;
-    NSDictionary *attributes = [NSDictionary dictionaryWithObjectsAndKeys:font, NSFontAttributeName, nil];
-    return [[[NSAttributedString alloc] initWithString:string attributes:attributes] size].width;
-}
-
--(void)triggerImpactAndAnimationWithButton:(UIButton *)sender selectorName:(NSString *)selname toastWidthOffset:(int)woffset toastHeightOffset:(int)hoffset{
+-(void)triggerImpactAndAnimationWithButton:(UIButton *)sender{
     //haptic, 0=none, 1=once, 2==success(twice)
     if ( preferencesBool(kEnabledHaptickey,YES) && self.hapticType != 0){
         
@@ -865,40 +733,6 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
             self.hapticType = 1;
         }
     }
-    if ( preferencesBool(kToastkey,YES) ){
-        int th = toastHeight;
-        int tw = toastWidth;
-        if (preferencesInt(kDisplayTypekey, 0) == 1){
-            th = 30;
-            //tw = 100;
-        }
-        //NSString *actionName = selname;
-        
-        NSString *actionName = [DXHelper localizedStringOfToastForActionNamed:selname bundle:tweakBundle];
-        
-        //HBLogDebug(@"^^^^^^^^^actionName: %@", actionName);
-        if ([selname containsString:@"runCommandAction"]){
-            actionName = self.commandTitle;
-            //if (preferencesInt(kDisplayTypekey, 0) == 1){
-            //tw = tw + 15;
-            //}
-            selname = @"runCommandAction:";
-        }
-
-        // A per-shortcut custom name (设置里的"名称") overrides both the
-        // localized action label and the run-command title in the toast.
-        NSString *customToastName = self.customNames[selname];
-        if (customToastName.length > 0) actionName = customToastName;
-
-        if (preferencesInt(kDisplayTypekey, 0) == 1){
-            tw = (int)([self widthOfString:actionName withFont:[UIFont systemFontOfSize:18]] + 0.5f) + 25;
-            //tw = 10*[actionName length] - 20;
-        }
-        float normalizedToastY = preferencesFloat(kToastPy, toastPosition);
-        normalizedToastY = normalizedToastY > 0.95 ? 0.95 : normalizedToastY ;
-        normalizedToastY = normalizedToastY < 0.05 ? 0.05 : normalizedToastY;
-        [self sendShowToastRequestWithMessage:actionName imagePath:[self getImageNameForActionName:selname] imageTint:toastTintColor width:tw+woffset height:th+hoffset position:normalizedToastY duration:preferencesFloat(kToastDurationkey, toastDuration) alpha:toastAlpha radius:toastRadius textColor:toastTextColor backgroundColor:toastBackgroundTintColor displayType:preferencesInt(kDisplayTypekey, 0)];
-    }
     [self shakeButton:sender];
 }
 
@@ -907,15 +741,15 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     delegate = DXKeyboardInputDelegate(kbImpl);
 }
 
--(void)beginImpactAnimationAndUpdateDelegate:(SEL)action sender:(UIButton *)sender toastWidthOffset:(int)toastWidthOffset toastHeightOffset:(int)toastHeightOffset{
-    [self triggerImpactAndAnimationWithButton:sender selectorName:NSStringFromSelector(action) toastWidthOffset:toastWidthOffset toastHeightOffset:toastHeightOffset];
+-(void)beginImpactAnimationAndUpdateDelegateWithSender:(UIButton *)sender{
+    [self triggerImpactAndAnimationWithButton:sender];
     [self beginUpdateDelegate];
 }
 
 #pragma mark actions
 -(void)selectAllAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     
     if ([delegate respondsToSelector:@selector(selectAll:)]) {
         [delegate selectAll:nil];
@@ -931,7 +765,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)selectLineAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     
     [delegate _moveToStartOfLine:NO withHistory:nil];
     [delegate _moveToEndOfLine:YES withHistory:nil];
@@ -940,7 +774,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)selectParagraphAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     
     [delegate _moveToStartOfParagraph:NO withHistory:nil];
     [delegate _moveToEndOfParagraph:YES withHistory:nil];;
@@ -949,7 +783,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)selectSentenceAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput, UITextInputTokenizer> *)delegate;
     
     UITextPosition *startPositionTemp = tempDelegate.selectedTextRange.start;
@@ -970,7 +804,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)copyAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
 
     if (![delegate respondsToSelector:@selector(selectedTextRange)]) {
         [self autoPaginationControl];
@@ -1019,7 +853,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)pasteAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     
     BOOL isUnifiedField = [delegate isKindOfClass:objc_getClass("UnifiedField")];
     int pasteAndGoType = preferencesInt(kPasteAndGoEnabledkey, 2);
@@ -1060,7 +894,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)cutAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:10  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
 
     // With no selection, cut the whole content instead of doing nothing.
     // Cutting collapses the selection back to a caret by itself.
@@ -1092,7 +926,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)undoAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     if ([[delegate undoManager] canUndo]) {
         [[delegate undoManager] undo];
         
@@ -1105,7 +939,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)redoAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     if ([[delegate undoManager] canRedo]) {
         [[delegate undoManager] redo];
         
@@ -1118,7 +952,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)selectAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     
     if ([delegate respondsToSelector:@selector(select:)]) {
         [delegate select:nil]; //UIResponderStandardEditActions.h
@@ -1145,7 +979,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)beginningAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
     
     BOOL isWKContentView = [tempDelegate isKindOfClass:objc_getClass("WKContentView")];
@@ -1162,7 +996,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)endingAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
     
     BOOL isWKContentView = [tempDelegate isKindOfClass:objc_getClass("WKContentView")];
@@ -1183,7 +1017,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)deleteAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:10  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     [kbImpl deleteBackward];
     [kbImpl clearTransientState];
     [kbImpl clearAnimations];
@@ -1193,7 +1027,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)deleteForwardAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:10  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     NSString *selectedString = [delegate textInRange:[delegate selectedTextRange]];
     BOOL smartDelete = preferencesBool(kEnabledSmartDeleteForwardkey, NO);
     if (!selectedString.length) {
@@ -1226,23 +1060,37 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)deleteAllAction:(UIButton*)sender{
     [self autoPaginationControl];
-    self.hapticType = 0;
-    [self selectAllAction:nil];
     self.hapticType = 2;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(secondActionDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [self triggerImpactAndAnimationWithButton:sender selectorName:NSStringFromSelector(_cmd) toastWidthOffset:10 toastHeightOffset:0];
-        [self beginUpdateDelegate];
-        [kbImpl deleteFromInput];
-        [kbImpl clearTransientState];
-        [kbImpl clearAnimations];
-        [kbImpl setCaretBlinks:YES];
-        [self autoPaginationControl];
-    });
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
+
+    // Clear in place: select the whole document directly instead of running
+    // the select-all action, and delete it within the same run-loop tick so
+    // no selection highlight or handles ever appear.
+    if ([delegate respondsToSelector:@selector(selectedTextRange)]) {
+        UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
+        UITextRange *wholeRange = [tempDelegate textRangeFromPosition:[tempDelegate beginningOfDocument]
+                                                           toPosition:[tempDelegate endOfDocument]];
+        if (wholeRange == nil || [[tempDelegate textInRange:wholeRange] length] == 0) {
+            [self autoPaginationControl];
+            return;
+        }
+        tempDelegate.selectedTextRange = wholeRange;
+    }else if ([delegate respondsToSelector:@selector(selectAll:)]) {
+        [delegate selectAll:nil];
+    }else if ([delegate respondsToSelector:@selector(selectAll)]){
+        [delegate selectAll];
+    }
+
+    [kbImpl deleteFromInput];
+    [kbImpl clearTransientState];
+    [kbImpl clearAnimations];
+    [kbImpl setCaretBlinks:YES];
+    [self autoPaginationControl];
 }
 
 -(void)openLinkAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
 
     if (![delegate respondsToSelector:@selector(selectedTextRange)]) {
         [self autoPaginationControl];
@@ -1293,7 +1141,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)dismissKeyboardAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self triggerImpactAndAnimationWithButton:sender selectorName:NSStringFromSelector(_cmd) toastWidthOffset:10 toastHeightOffset:0];
+    [self triggerImpactAndAnimationWithButton:sender];
     kbImpl = [objc_getClass("UIKeyboardImpl") activeInstance];
     [kbImpl dismissKeyboard];
     [self autoPaginationControl];
@@ -1301,7 +1149,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)moveCursorLeftAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     
     BOOL isWKContentView = [delegate isKindOfClass:objc_getClass("WKContentView")];
     if (isWKContentView){
@@ -1319,7 +1167,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)moveCursorRightAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     
     BOOL isWKContentView = [delegate isKindOfClass:objc_getClass("WKContentView")];
     if (isWKContentView){
@@ -1338,7 +1186,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 -(void)moveCursorPreviousWordAction:(UIButton*)sender{
     [self autoPaginationControl];
     if (sender || self.isWordSender){
-        [self triggerImpactAndAnimationWithButton:sender selectorName:NSStringFromSelector(_cmd) toastWidthOffset:0 toastHeightOffset:0];
+        [self triggerImpactAndAnimationWithButton:sender];
     }
     [self beginUpdateDelegate];
     
@@ -1369,7 +1217,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 -(void)moveCursorNextWordAction:(UIButton*)sender{
     [self autoPaginationControl];
     if (sender || self.isWordSender){
-        [self triggerImpactAndAnimationWithButton:sender selectorName:NSStringFromSelector(_cmd) toastWidthOffset:0 toastHeightOffset:0];
+        [self triggerImpactAndAnimationWithButton:sender];
     }
     [self beginUpdateDelegate];
     
@@ -1399,7 +1247,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)moveCursorStartOfLineAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
     
     UITextPosition *startPositionTemp = tempDelegate.selectedTextRange.start;
@@ -1439,7 +1287,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)moveCursorEndOfLineAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
     
     UITextPosition *startPositionTemp = tempDelegate.selectedTextRange.end;
@@ -1480,7 +1328,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)moveCursorStartOfParagraphAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
     
     UITextPosition *startPositionTemp = tempDelegate.selectedTextRange.start;
@@ -1513,7 +1361,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)moveCursorEndOfParagraphAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
     
     UITextPosition *endPositionTemp = tempDelegate.selectedTextRange.end;
@@ -1545,7 +1393,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)moveCursorStartOfSentenceAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
     
     UITextPosition *startPositionTemp = tempDelegate.selectedTextRange.start;
@@ -1566,7 +1414,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)moveCursorEndOfSentenceAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
     
     UITextPosition *startPositionTemp = tempDelegate.selectedTextRange.end;
@@ -1587,7 +1435,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)moveCursorUpAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     
     BOOL isWKContentView = [delegate isKindOfClass:objc_getClass("WKContentView")];
     if (isWKContentView){
@@ -1600,7 +1448,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)moveCursorDownAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     
     BOOL isWKContentView = [delegate isKindOfClass:objc_getClass("WKContentView")];
     if (isWKContentView){
@@ -1617,7 +1465,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)defineAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:0  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
     
     BOOL isWKContentView = [tempDelegate isKindOfClass:objc_getClass("WKContentView")];
@@ -1662,8 +1510,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 -(void)runCommandAction:(UIButton*)sender{
     [self autoPaginationControl];
     NSDictionary *snippet = [self getItemWithID:NSStringFromSelector(_cmd) forKey:@"snippets" identifierKey:@"entryID"];
-    self.commandTitle = snippet[@"title"] ? : @"Command";
-    [self triggerImpactAndAnimationWithButton:sender selectorName:NSStringFromSelector(_cmd) toastWidthOffset:0 toastHeightOffset:0];
+    [self triggerImpactAndAnimationWithButton:sender];
     if (snippet[@"command"]){
         [self runCommand:snippet[@"command"]];
     }
@@ -1731,7 +1578,7 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
 -(void)spongebobAction:(UIButton*)sender{
     [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegate:_cmd sender:sender toastWidthOffset:10  toastHeightOffset:0];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     NSString *selectedString = [delegate textInRange:[delegate selectedTextRange]];
     if (!selectedString.length) {
         

@@ -19,20 +19,6 @@ static NSBundle *tweakBundle;
     
     return _specifiers;
 }
-/*
- -(void)reloadSpecifiers {
- [super reloadSpecifiers];
- 
-    NSDictionary *preferences = [[DXPrefsManager sharedInstance] readPrefs];
- if(![preferences[@"toastBOOL"] boolValue]) {
- [self removeContiguousSpecifiers:@[self.dynamicSpecifiers[@"pyslider"]] animated:YES];
- [self removeContiguousSpecifiers:@[self.dynamicSpecifiers[@"timerslider"]] animated:YES];
- }
- }
- 
- 
- */
-
 -(void)viewDidLoad  {
     tweakBundle = [NSBundle bundleWithPath:bundlePath];
     [tweakBundle load];

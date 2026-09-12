@@ -2,6 +2,10 @@
 
 @interface DXPrefsManager : NSObject
 @property(nonatomic, strong) NSDictionary *prefs;
+/// YES only after this process has loaded a complete preference snapshot.
+/// Sandboxed hosts keep this false when the shared snapshot cannot be read, so
+/// callers never mistake an IPC/file-access failure for a fresh installation.
+@property(nonatomic, assign, readonly) BOOL preferencesAvailable;
 + (instancetype)sharedInstance;
 + (BOOL)isRunningInSandbox;
 -(NSDictionary *)readPrefs;

@@ -16,7 +16,7 @@ static NSBundle *tweakBundle;
     if (!_specifiers) {
         _specifiers = [self loadSpecifiersFromPlistName:@"Customization" target:self];
         
-        NSArray *dynamicCell = @[@"pyslider", @"timerslider",@"shortcutstintpicker",@"toasttintpicker",@"toastbackgroundtintpicker", @"granularityslider", @"displaytypeselection", @"gesturetypeselection", @"gesturebuttonselection",@"shortcutstintselection", @"toasttintselection", @"toastbackgroundtintselection", @"shortcutsbackgroundtintpicker", @"shortcutsbackgroundtintselection", @"toptoolbarbackgroundtintpicker", @"toptoolbarbackgroundselection"];
+        NSArray *dynamicCell = @[@"shortcutstintpicker", @"granularityslider", @"gesturetypeselection", @"gesturebuttonselection", @"shortcutstintselection", @"shortcutsbackgroundtintpicker", @"shortcutsbackgroundtintselection", @"toptoolbarbackgroundtintpicker", @"toptoolbarbackgroundselection"];
         self.dynamicSpecifiers = (!self.dynamicSpecifiers) ? [[NSMutableDictionary alloc] init] : self.dynamicSpecifiers;
         for(PSSpecifier *specifier in _specifiers) {
             if([dynamicCell containsObject:[specifier propertyForKey:@"id"]]) {
@@ -55,22 +55,14 @@ static NSBundle *tweakBundle;
     NSDictionary *preferences = [[DXPrefsManager sharedInstance] readPrefs];
     if(![preferences[@"colorBOOL"] boolValue]){
         // Don't disable shortcuts tint controls — they're now independent
-        [(PSSpecifier *)self.dynamicSpecifiers[@"toasttintpicker"] setProperty:@NO forKey:@"enabled"];
-        [(PSSpecifier *)self.dynamicSpecifiers[@"toastbackgroundtintpicker"] setProperty:@NO forKey:@"enabled"];
         [(PSSpecifier *)self.dynamicSpecifiers[@"shortcutsbackgroundtintpicker"] setProperty:@NO forKey:@"enabled"];
 
-        [(PSSpecifier *)self.dynamicSpecifiers[@"toasttintselection"] setProperty:@NO forKey:@"enabled"];
-        [(PSSpecifier *)self.dynamicSpecifiers[@"toastbackgroundtintselection"] setProperty:@NO forKey:@"enabled"];
         [(PSSpecifier *)self.dynamicSpecifiers[@"shortcutsbackgroundtintselection"] setProperty:@NO forKey:@"enabled"];
         [(PSSpecifier *)self.dynamicSpecifiers[@"toptoolbarbackgroundtintpicker"] setProperty:@NO forKey:@"enabled"];
         [(PSSpecifier *)self.dynamicSpecifiers[@"toptoolbarbackgroundselection"] setProperty:@NO forKey:@"enabled"];
         
-        [self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"toasttintpicker"] animated:NO];
-        [self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"toastbackgroundtintpicker"] animated:NO];
         [self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"shortcutsbackgroundtintpicker"] animated:NO];
 
-        [self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"toasttintselection"] animated:NO];
-        [self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"toastbackgroundtintselection"] animated:NO];
         [self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"shortcutsbackgroundtintselection"] animated:NO];
         [self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"toptoolbarbackgroundtintpicker"] animated:NO];
         [self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"toptoolbarbackgroundselection"] animated:NO];
@@ -159,22 +151,14 @@ static NSBundle *tweakBundle;
     }
     if([key isEqualToString:@"colorBOOL"]){
         // Don't control shortcuts tint — it's independent now
-        [(PSSpecifier *)self.dynamicSpecifiers[@"toasttintpicker"] setProperty:value forKey:@"enabled"];
-        [(PSSpecifier *)self.dynamicSpecifiers[@"toastbackgroundtintpicker"] setProperty:value forKey:@"enabled"];
         [(PSSpecifier *)self.dynamicSpecifiers[@"shortcutsbackgroundtintpicker"] setProperty:value forKey:@"enabled"];
         
-        [(PSSpecifier *)self.dynamicSpecifiers[@"toasttintselection"] setProperty:value forKey:@"enabled"];
-        [(PSSpecifier *)self.dynamicSpecifiers[@"toastbackgroundtintselection"] setProperty:value forKey:@"enabled"];
         [(PSSpecifier *)self.dynamicSpecifiers[@"shortcutsbackgroundtintselection"] setProperty:value forKey:@"enabled"];
         [(PSSpecifier *)self.dynamicSpecifiers[@"toptoolbarbackgroundtintpicker"] setProperty:value forKey:@"enabled"];
         [(PSSpecifier *)self.dynamicSpecifiers[@"toptoolbarbackgroundselection"] setProperty:value forKey:@"enabled"];
 
-        //[self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"toasttintpicker"] animated:NO];
-        //[self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"toastbackgroundtintpicker"] animated:NO];
         //[self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"shortcutsbackgroundtintpicker"] animated:NO];
 
-        [self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"toasttintselection"] animated:NO];
-        [self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"toastbackgroundtintselection"] animated:NO];
         [self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"shortcutsbackgroundtintselection"] animated:NO];
 
     }
@@ -193,30 +177,20 @@ static NSBundle *tweakBundle;
     // Always refresh the top-toolbar preview when any color-related key changes
     if ([key hasPrefix:@"toptoolbarbackground"] ||
         [key hasPrefix:@"shortcutstint"] ||
-        [key hasPrefix:@"shortcutsbackgroundtint"] ||
-        [key hasPrefix:@"toasttint"] ||
-        [key hasPrefix:@"toastbackgroundtint"]) {
+        [key hasPrefix:@"shortcutsbackgroundtint"]) {
         [self updateTopToolbarPreview];
     }
 
     if([key isEqualToString:@"colorBOOL"]){
         // Don't control shortcuts tint — it's independent now
-        [(PSSpecifier *)self.dynamicSpecifiers[@"toasttintpicker"] setProperty:value forKey:@"enabled"];
-        [(PSSpecifier *)self.dynamicSpecifiers[@"toastbackgroundtintpicker"] setProperty:value forKey:@"enabled"];
         [(PSSpecifier *)self.dynamicSpecifiers[@"shortcutsbackgroundtintpicker"] setProperty:value forKey:@"enabled"];
 
-        [(PSSpecifier *)self.dynamicSpecifiers[@"toasttintselection"] setProperty:value forKey:@"enabled"];
-        [(PSSpecifier *)self.dynamicSpecifiers[@"toastbackgroundtintselection"] setProperty:value forKey:@"enabled"];
         [(PSSpecifier *)self.dynamicSpecifiers[@"shortcutsbackgroundtintselection"] setProperty:value forKey:@"enabled"];
         [(PSSpecifier *)self.dynamicSpecifiers[@"toptoolbarbackgroundtintpicker"] setProperty:value forKey:@"enabled"];
         [(PSSpecifier *)self.dynamicSpecifiers[@"toptoolbarbackgroundselection"] setProperty:value forKey:@"enabled"];
 
-        [self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"toasttintpicker"] animated:NO];
-        [self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"toastbackgroundtintpicker"] animated:NO];
         [self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"shortcutsbackgroundtintpicker"] animated:NO];
 
-        [self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"toasttintselection"] animated:NO];
-        [self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"toastbackgroundtintselection"] animated:NO];
         [self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"shortcutsbackgroundtintselection"] animated:NO];
         [self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"toptoolbarbackgroundtintpicker"] animated:NO];
         [self reloadSpecifier:(PSSpecifier *)self.dynamicSpecifiers[@"toptoolbarbackgroundselection"] animated:NO];

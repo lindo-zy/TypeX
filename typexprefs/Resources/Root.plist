@@ -79,20 +79,6 @@
 			<string>SHAKE_SHORTCUT</string>
 		</dict>
 		<dict>
-			<key>PostNotification</key>
-			<string>com.lindo.typex/prefschanged</string>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.lindo.typex</string>
-			<key>key</key>
-			<string>toastBOOL</string>
-			<key>label</key>
-			<string>SHOW_TOAST</string>
-		</dict>
-		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
@@ -239,28 +225,6 @@
 				<string>2</string>
 				<string>3</string>
 			</array>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSGroupCell</string>
-			<key>footerText</key>
-			<string>FOOTER_PAGING</string>
-			<key>label</key>
-			<string>PAGING</string>
-		</dict>
-		<dict>
-			<key>PostNotification</key>
-			<string>com.lindo.typex/prefschanged</string>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.lindo.typex</string>
-			<key>key</key>
-			<string>pagingBOOL</string>
-			<key>label</key>
-			<string>PAGING</string>
 		</dict>
 		<dict>
 			<key>cell</key>

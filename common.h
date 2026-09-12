@@ -20,7 +20,6 @@
 
 #define kIdentifier @"com.lindo.typex"
 #define kIPCCenterPrefsManager @"com.lindo.typex.prefsmanager"
-#define kIPCCenterToast @"com.lindo.typex.toast"
 #define kIPCCenterTypeX @"com.lindo.typex"
 #define kPrefsChangedIdentifier @"com.lindo.typex/prefschanged"
 #define kPrefsPath @"/var/mobile/Library/Preferences/com.lindo.typex.plist"
@@ -28,11 +27,8 @@
 #define kEnabledkey @"enabledBOOL"
 #define kEnabledHaptickey @"hapticBOOL"
 #define kShakeShortcutkey @"shakeBOOL"
-#define kToastkey @"toastBOOL"
-#define kToastPy @"toastpy"
 #define kShortcutskey @"shortcuts"
 #define kTopShortcutskey @"topshortcuts"
-#define kToastDurationkey @"toastduration"
 #define kColorEnabledkey @"colorBOOL"
 #define kSpaceBarScrollingBOOL @"enabledSpaceBarScrollingBOOL"
 #define kGranularity @"granularityvalue"
@@ -40,7 +36,6 @@
 #define kTopShortcutsPerSection @"topshortcutsnum"
 #define kToggledOnkey @"toggledOnBOOL"
 #define kDockModekey @"dockmode"
-#define kDisplayTypekey @"displaytype"
 #define kDedicatedGestureButtonkey @"gesturebutton"
 #define kGestureTypekey @"gesturetype"
 #define kCustomActionskey @"customactions"
@@ -49,11 +44,8 @@
 #define kSwipeDownCustomActionskey @"swipedownactions"
 #define kSwipeLeftCustomActionskey @"swipeleftactions"
 #define kSwipeRightCustomActionskey @"swiperightactions"
-#define kPagingkey @"pagingBOOL"
 #define kShortcutsTintEnabled @"shortcutstintBOOL"
 #define kShortcutsBackgroundTintEnabled @"shortcutsbackgroundtintBOOL"
-#define kToastTintEnabled @"toasttintBOOL"
-#define kToastBackgroundTintEnabled @"toastbackgroundtintBOOL"
 #define kTopToolbarBackgroundTintKey @"toptoolbarbackgroundtint"
 #define kTopToolbarBackgroundTintEnabledKey @"toptoolbarbackgroundtintBOOL"
 #define kPasteAndGoEnabledkey @"pasteandgo"
@@ -71,19 +63,7 @@
 #define kCellHeightkey @"shortcutheight"
 #define kCellRadiuskey @"shortcutradius"
 #define kCellSpacingkey @"shortcutspacing"
-#define kCachekey @"cache"
-#define kTopCachekey @"topcache"
 #define kSpongebobEntropyKey @"spongebobEntropy"
-
-#define toastWidth 50
-#define toastHeight 50
-#define toastPosition 0.8f
-#define toastDuration 0.2
-#define toastAlpha 0.95
-#define toastRadius 6
-#define toastTextColor [UIColor whiteColor]
-#define toastBackgroundColor [UIColor blackColor]
-#define toastImageTintColor [UIColor whiteColor]
 
 #define kbuttonsImages12 0
 #define kbuttonsImages13 1
@@ -118,8 +98,6 @@
 #define spacingBetweenCellsDefault 3
 #define cellsHeightDefault 30
 #define cellsRadiusDefault 5
-
-#define secondActionDelay 0.05
 
 // The shared snapshot must live where sandboxed app hosts can read it.  The
 // jailbreak root (/var/jb on rootless, resolved by DX_ROOT_PATH_NS) is readable
@@ -248,10 +226,6 @@ typedef NS_ENUM(NSInteger, DXStudlyCapsType){
 - (void)registerForMessageName:(id)arg1 target:(id)arg2 selector:(SEL)arg3;
 - (BOOL)sendMessageName:(id)arg1 userInfo:(id)arg2;
 - (NSDictionary *)sendMessageAndReceiveReplyName:(id)arg1 userInfo:(id)arg2;
-@end
-
-@interface SpringBoard : NSObject
-- (NSDictionary *)showToastRequest:(NSString *)name withUserInfo:(NSDictionary *)userInfo;
 @end
 
 @interface UIKeyboardEmojiCollectionInputView : NSObject {

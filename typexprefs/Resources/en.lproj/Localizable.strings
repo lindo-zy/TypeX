@@ -72,40 +72,6 @@
 "LONG_OPEN_LINK" = "Open Link";
 "LONG_SPONGEBOB" = "sPonGeBob teXt";
 
-//=====================Toast=====================
-"TOAST_SELECT_ALL" = "Select All";
-"TOAST_COPY" = "Copy";
-"TOAST_PASTE" = "Paste";
-"TOAST_CUT" = "Cut";
-"TOAST_UNDO" = "Undo";
-"TOAST_REDO" = "Redo";
-"TOAST_SELECT" = "Select";
-"TOAST_BEGINNING" = "Beginning";
-"TOAST_ENDING" = "Ending";
-"TOAST_DELETE" = "Delete";
-"TOAST_DISMISS_KEYBOARD" = "Dismiss";
-"TOAST_MOVE_CURSOR_LEFT" = "Left";
-"TOAST_MOVE_CURSOR_RIGHT" = "Right";
-"TOAST_MOVE_CURSOR_UP" = "Up";
-"TOAST_MOVE_CURSOR_DOWN" = "Down";
-"TOAST_DEFINE" = "Define";
-"TOAST_RUN_COMMAND" = "Command";
-"TOAST_MOVE_CURSOR_PREVIOUS_WORD" = "Previous";
-"TOAST_MOVE_CURSOR_NEXT_WORD" = "Next";
-"TOAST_MOVE_CURSOR_START_OF_LINE" = "Start of Line";
-"TOAST_MOVE_CURSOR_END_OF_LINE" = "End of Line";
-"TOAST_MOVE_CURSOR_START_OF_PARAGRAPH" = "Start of Paragraph";
-"TOAST_MOVE_CURSOR_END_OF_PARAGRAPH" = "End of Paragraph";
-"TOAST_MOVE_CURSOR_START_OF_SENTENCE" = "Start of Sentence";
-"TOAST_MOVE_CURSOR_END_OF_SENTENCE" = "End of Sentence";
-"TOAST_SELECT_LINE" = "Select Line";
-"TOAST_SELECT_PARAGRAPH" = "Select Paragraph";
-"TOAST_SELECT_SENTENCE" = "Select Sentence";
-"TOAST_DELETE_FORWARD" = "Delete";
-"TOAST_DELETE_ALL" = "Clear";
-"TOAST_OPEN_LINK" = "Open Link";
-"TOAST_SPONGEBOB" = "sPoNge";
-
 //=====================Manage Shortcuts=====================
 //Title
 "ENABLED_SHORTCUTS" = "Enabled Shorcuts";
@@ -172,7 +138,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 
 //=====================SHORTCUT APPEARANCE=====================
 "CUSTOM_APPEARANCE" = "Appearance";
-"FOOTER_CUSTOM_APPEARANCE" = "The name replaces the shortcut's label (short-label toolbar mode and the tap toast). The icon only accepts standard SF Symbol names (e.g. doc.on.doc); an invalid name falls back to the default icon.";
+"FOOTER_CUSTOM_APPEARANCE" = "The name replaces the shortcut's label in short-label toolbar mode. The icon only accepts standard SF Symbol names (e.g. doc.on.doc); an invalid name falls back to the default icon.";
 "CUSTOM_NAME" = "Name";
 "CUSTOM_ICON" = "Icon";
 "CUSTOM_ICON_INVALID" = "Invalid icon name. The default icon will be used.";

@@ -1,6 +1,14 @@
 #import "common.h"
 #import "DXPrefsManager.h"
 
+static NSString *const DXSharedPrefsFormatKey = @"_typexSnapshotFormat";
+static NSString *const DXSharedPrefsPayloadKey = @"preferences";
+static const NSInteger DXSharedPrefsFormatVersion = 1;
+
+@interface DXPrefsManager ()
+@property(nonatomic, assign, readwrite) BOOL preferencesAvailable;
+@end
+
 static void reloadPrefs(CFNotificationCenterRef center, void *observer, CFStringRef name,
                         const void *object, CFDictionaryRef userInfo) {
     [(__bridge DXPrefsManager *)observer reload];
@@ -51,7 +59,7 @@ static void reloadPrefs(CFNotificationCenterRef center, void *observer, CFString
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
                                          (__bridge const void *)self, &reloadPrefs,
                                          (CFStringRef)kPrefsChangedIdentifier, NULL, 0);
-        self.prefs = [self readPrefsFromSandbox:[DXPrefsManager isRunningInSandbox]];
+        [self reload];
         [self healSharedPrefsIfNeeded];
     }
     return self;
@@ -73,17 +81,47 @@ static NSString *DXSharedPrefsPath(void) {
         // root-owned seed file staged by the package, which sticky would forbid.
         [fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions: @0777} error:nil];
     }
-    [dictionary writeToFile:path atomically:YES];
+    // The envelope makes an intentionally empty preference set distinguishable
+    // from a missing/unreadable file.  Without that distinction an app could
+    // render the six defaults while the real user configuration was simply
+    // unavailable.
+    NSDictionary *snapshot = @{
+        DXSharedPrefsFormatKey: @(DXSharedPrefsFormatVersion),
+        DXSharedPrefsPayloadKey: dictionary
+    };
+    [snapshot writeToFile:path atomically:YES];
     // Sandboxed app hosts read this snapshot; keep it world-readable whatever
     // the writing process' umask is.
     NSDictionary *attrs = @{
-        NSFilePosixPermissions: @0644
+        NSFilePosixPermissions: @0644,
+        NSFileProtectionKey: NSFileProtectionNone
     };
     [fm setAttributes:attrs ofItemAtPath:path error:nil];
 }
 
 - (NSDictionary *)readSharedPrefs {
-    return [NSDictionary dictionaryWithContentsOfFile:DXSharedPrefsPath()] ?: @{};
+    NSDictionary *snapshot = [NSDictionary dictionaryWithContentsOfFile:DXSharedPrefsPath()];
+    if (![snapshot isKindOfClass:[NSDictionary class]]) return nil;
+
+    NSNumber *format = snapshot[DXSharedPrefsFormatKey];
+    NSDictionary *payload = snapshot[DXSharedPrefsPayloadKey];
+    if ([format isKindOfClass:[NSNumber class]] &&
+        format.integerValue == DXSharedPrefsFormatVersion &&
+        [payload isKindOfClass:[NSDictionary class]]) {
+        return payload;
+    }
+
+    // Migrate snapshots written by TypeX 2.7.44-2.7.65.  A non-empty legacy
+    // dictionary is complete; an empty legacy file is ambiguous and is healed
+    // by Settings/SpringBoard instead of being treated as a valid default set.
+    return snapshot.count > 0 ? snapshot : nil;
+}
+
+- (BOOL)sharedPrefsUseCurrentFormat {
+    NSDictionary *snapshot = [NSDictionary dictionaryWithContentsOfFile:DXSharedPrefsPath()];
+    return [snapshot[DXSharedPrefsFormatKey] isKindOfClass:[NSNumber class]] &&
+           [snapshot[DXSharedPrefsFormatKey] integerValue] == DXSharedPrefsFormatVersion &&
+           [snapshot[DXSharedPrefsPayloadKey] isKindOfClass:[NSDictionary class]];
 }
 
 // Seed the shared snapshot from the authoritative domain when it is missing or
@@ -94,10 +132,13 @@ static NSString *DXSharedPrefsPath(void) {
 // the domain would silently revert their writes.
 - (void)healSharedPrefsIfNeeded {
     if ([DXPrefsManager isRunningInSandbox]) return;
-    if ([self readSharedPrefs].count > 0) return;
+    if ([self sharedPrefsUseCurrentFormat]) return;
 
+    // Always replace a legacy snapshot once.  Older sandboxed hosts could
+    // overwrite it with only their local cache/toggle key, leaving a readable
+    // but incomplete file that permanently produced the six defaults.
     NSDictionary *authoritative = [self readPrefs];
-    if ([authoritative isKindOfClass:[NSDictionary class]] && authoritative.count > 0) {
+    if ([authoritative isKindOfClass:[NSDictionary class]]) {
         [self writeSharedPrefs:authoritative];
     }
 }
@@ -106,18 +147,18 @@ static NSString *DXSharedPrefsPath(void) {
 
 // No IPC: CPDistributedMessagingCenter between an app sandbox and SpringBoard
 // needs RocketBootstrap, which this package deliberately does not depend on.
-// Sandboxed hosts instead read through a chain of channels whose availability
-// depends on how far the host's sandbox reaches: cfprefsd, the preference
-// plist itself, and finally the shared snapshot under the (sandbox-readable)
-// jailbreak root.
+// Sandboxed hosts use only the shared snapshot.  A sandbox's CFPreferences call
+// addresses that app's own container and can return a non-empty but unrelated
+// dictionary; accepting it used to make the toolbar fall back to six defaults.
 - (NSDictionary *)readPrefsFromSandbox:(BOOL)isSandbox {
     if (isSandbox) {
-        NSDictionary *preferences = [self readPrefs];
-        if (preferences.count > 0) return preferences;
-
         NSDictionary *shared = [self readSharedPrefs];
-        if ([shared isKindOfClass:[NSDictionary class]] && shared.count > 0) return shared;
-        return @{};
+        if ([shared isKindOfClass:[NSDictionary class]]) return shared;
+
+        // An atomic replacement can still be momentarily unavailable on a few
+        // filesystems.  Preserve the last complete snapshot rather than
+        // replacing configured buttons with defaults.
+        return self.preferencesAvailable ? self.prefs : nil;
     }
     return [self readPrefs];
 }
@@ -185,6 +226,7 @@ static NSString *DXSharedPrefsPath(void) {
     }
 
     self.prefs = [snapshot copy];
+    self.preferencesAvailable = YES;
     [self writeSharedPrefs:snapshot];
     [self postChangedNotification];
 }
@@ -197,7 +239,12 @@ static NSString *DXSharedPrefsPath(void) {
 
 - (void)setValue:(id)value forKey:(NSString *)key {
     if (key.length == 0) return;
-    NSMutableDictionary *dictionary = [[self readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
+    BOOL isSandbox = [DXPrefsManager isRunningInSandbox];
+    NSDictionary *base = [self readPrefsFromSandbox:isSandbox];
+    // Never turn a failed sandbox read into a new one-key snapshot: that would
+    // erase the shortcut order for every other process.
+    if (isSandbox && ![base isKindOfClass:[NSDictionary class]]) return;
+    NSMutableDictionary *dictionary = [base mutableCopy] ?: [NSMutableDictionary dictionary];
     if (value) dictionary[key] = value;
     else [dictionary removeObjectForKey:key];
     [self writePrefs:dictionary];
@@ -228,9 +275,12 @@ static NSString *DXSharedPrefsPath(void) {
     // The snapshot is a sandboxed process' only persistent channel; removing
     // the key there must not carry the empty readPrefs result over it.
     if ([DXPrefsManager isRunningInSandbox]) {
-        NSMutableDictionary *snapshot = [[self readSharedPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
+        NSDictionary *base = [self readPrefsFromSandbox:YES];
+        if (![base isKindOfClass:[NSDictionary class]]) return;
+        NSMutableDictionary *snapshot = [base mutableCopy];
         [snapshot removeObjectForKey:key];
         self.prefs = [snapshot copy];
+        self.preferencesAvailable = YES;
         [self writeSharedPrefs:snapshot];
         if (notify) [self postChangedNotification];
         return;
@@ -244,6 +294,7 @@ static NSString *DXSharedPrefsPath(void) {
     [dictionary removeObjectForKey:key];
     [dictionary writeToFile:kPrefsPath atomically:YES];
     self.prefs = [dictionary copy];
+    self.preferencesAvailable = YES;
     [self writeSharedPrefs:dictionary];
     if (notify) [self postChangedNotification];
 }
@@ -254,7 +305,11 @@ static NSString *DXSharedPrefsPath(void) {
 }
 
 - (void)reload {
-    self.prefs = [self readPrefsFromSandbox:[DXPrefsManager isRunningInSandbox]];
+    NSDictionary *loaded = [self readPrefsFromSandbox:[DXPrefsManager isRunningInSandbox]];
+    if ([loaded isKindOfClass:[NSDictionary class]]) {
+        self.prefs = [loaded copy];
+        self.preferencesAvailable = YES;
+    }
     [self healSharedPrefsIfNeeded];
 }
 

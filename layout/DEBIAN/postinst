@@ -5,8 +5,10 @@ if [[ x$JB_ROOT_PATH != x"" ]]; then
 else
     JBROOT=""
 fi
-mkdir -p "$JBROOT/var/mobile/Library/Caches/com.lindo.typex" || true
-chown mobile:mobile "$JBROOT/var/mobile/Library/Caches/com.lindo.typex"
-chmod 0755 "$JBROOT/var/mobile/Library/Caches/com.lindo.typex"
+TYPEX_SHARED_DIR="$JBROOT/Library/TypeX"
+mkdir -p "$TYPEX_SHARED_DIR" || true
+# Settings runs as mobile and writes the snapshot with an atomic rename, so the
+# directory itself (not only shared.plist) must remain writable.
+chmod 0777 "$TYPEX_SHARED_DIR"
 
 exit 0

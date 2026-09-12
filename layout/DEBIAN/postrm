@@ -6,6 +6,6 @@ else
     JBROOT=""
 fi
 
-rm -rf "$JBROOT/var/mobile/Library/Caches/com.lindo.typex" || true
+rm -rf "$JBROOT/Library/TypeX" || true
 
 exit 0

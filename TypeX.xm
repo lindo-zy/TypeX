@@ -1,7 +1,6 @@
 #import "common.h"
 #import "TypeX.h"
 #import "DXShared.h"
-#import "DXToastWindowController.h"
 #import "DXHelper.h"
 #import <objc/runtime.h>
 
@@ -9,8 +8,6 @@
 id delegate;
 UIKeyboardImpl *kbImpl;
 UIColor *currentTintColor;
-UIColor *toastTintColor;
-UIColor *toastBackgroundTintColor;
 UIColor *currentBackgroundTintColor;
 UIColor *currentTopToolbarBackgroundColor;
 BOOL isLandscape = NO;
@@ -27,7 +24,6 @@ BOOL isSafari = NO;
 BOOL shouldPerformBatchUpdate = YES;
 //BOOL shouldSendScrollExecution = YES;
 UIKeyboardDockView *dockV;
-BOOL isPagingEnabled = YES;
 BOOL useShortenedLabel = NO;
 NSBundle *tweakBundle;
 BOOL firstInit = YES;
@@ -126,10 +122,15 @@ static void DXSetInputAccessoryView(UIResponder *responder, UIView *view) {
     }
 }
 
+static BOOL DXToolbarHasShortcuts(DXCollectionView *toolbar) {
+    return toolbar.shortcutConfigurationAvailable &&
+           [toolbar.shortcuts[kbuttonsImages12] count] > 0;
+}
+
 static BOOL DXShouldDisplayTopAccessory(DXTopAccessoryContainer *container) {
     BOOL enabled = preferencesBool(kEnabledkey, YES);
-    BOOL hasShortcuts = [container.toolbar.shortcuts[kbuttonsImages12] count] > 0;
-    return enabled && toggledOn && !isLandscape && !isDictating && hasShortcuts;
+    return enabled && toggledOn && !isLandscape && !isDictating &&
+           DXToolbarHasShortcuts(container.toolbar);
 }
 
 static UIView *DXAccessoryByWrappingReplacement(UIResponder *responder, UIView *replacement) {
@@ -157,7 +158,9 @@ static void DXInstallTopAccessoryForResponder(UIResponder *responder, BOOL reloa
     BOOL enabled = preferencesBool(kEnabledkey, YES);
     DXTopAccessoryContainer *container = objc_getAssociatedObject(responder, &kDXTopAccessoryContainerKey);
     UIView *currentAccessory = DXInputAccessoryView(responder);
-    BOOL mayCreate = enabled && toggledOn && !isLandscape && !isDictating;
+    BOOL mayCreate = enabled && toggledOn && !isLandscape && !isDictating &&
+                     [DXPrefsManager sharedInstance].preferencesAvailable;
+    BOOL createdContainer = NO;
 
     if (!container && mayCreate) {
         container = [[DXTopAccessoryContainer alloc] initWithFrame:CGRectMake(0.0, 0.0, 0.0,
@@ -165,13 +168,13 @@ static void DXInstallTopAccessoryForResponder(UIResponder *responder, BOOL reloa
         container.clipsToBounds = YES;
         container.toolbar = [[DXCollectionView alloc] initWithConfiguration:@"top"];
         container.toolbar.clipsToBounds = YES;
-        [container.toolbar reloadShortcutConfiguration];
         [container addSubview:container.toolbar];
         objc_setAssociatedObject(responder, &kDXTopAccessoryContainerKey, container, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        createdContainer = YES;
     }
     if (!container) return;
 
-    if (reloadConfiguration) {
+    if (reloadConfiguration && !createdContainer) {
         [container.toolbar reloadShortcutConfiguration];
         [container.toolbar.collectionViewLayout invalidateLayout];
         [container.toolbar reloadData];
@@ -240,7 +243,11 @@ static void DXRefreshActiveTopToolbar(void) {
 - (void)keyboardDidShow:(NSNotification *)notification {
     (void)notification;
     NSUInteger generation = ++topToolbarPresentationGeneration;
-    DXRefreshActiveTopToolbar();
+    // The responder already loaded the current configuration before becoming
+    // first responder. At this point only re-wrap the accessory UIKit finalized;
+    // reloading the collection here exposes a second, visibly different layout
+    // pass after the keyboard is already on screen.
+    DXRefreshActiveTopToolbarWithConfiguration(NO);
 
     // Some keyboards install their own accessory asynchronously on their first
     // presentation. Retry after that work completes and wrap the final view.
@@ -443,7 +450,8 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
         });
         
     }
-    self.typex.hidden = !preferencesBool(kEnabledkey, YES) || !toggledOn;
+    self.typex.hidden = !preferencesBool(kEnabledkey, YES) || !toggledOn ||
+                        !DXToolbarHasShortcuts(self.typex);
     
     
     return dockV = dockView;
@@ -559,7 +567,7 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
     toggledOn = self.typex.hidden;
     [[DXPrefsManager sharedInstance] setValue:[NSNumber numberWithBool:toggledOn] forKey:kToggledOnkey];
     
-    self.typex.hidden = !toggledOn;
+    self.typex.hidden = !toggledOn || !DXToolbarHasShortcuts(self.typex);
     if (self.typex.hidden) self.typex.alpha = 1.0f;
     else {
         self.typex.alpha = 0.0f;
@@ -741,7 +749,7 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
             //NSTimeInterval timeInterval = fabs([lastReloadDate timeIntervalSinceNow]);
             //if (lastReloadDate && timeInterval < 0.5f ) lastReloadDate = [NSDate date]; return;
             //if (!self.typex) return;
-            if (isDictating || isLandscape){
+            if (isDictating || isLandscape || !DXToolbarHasShortcuts(self.typex)){
                 //HBLogDebug(@"Should Hide");
                 self.typex.hidden = YES;
                 return;
@@ -1031,7 +1039,10 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
 -(void)updateDockItemsVisibility{
     %orig;
     if (preferencesBool(kEnabledkey,YES)){
-        self.dockView.typex.hidden = self.dockView.centerDockItem ? !self.dockView.centerDockItem.view.hidden : NO;
+        BOOL stockDockRequiresHiding = self.dockView.centerDockItem ?
+            !self.dockView.centerDockItem.view.hidden : NO;
+        self.dockView.typex.hidden = stockDockRequiresHiding ||
+                                     !DXToolbarHasShortcuts(self.dockView.typex);
         UIInterfaceOrientation orientation = DXCurrentInterfaceOrientation();
         
         if (UIInterfaceOrientationIsLandscape(orientation)){
@@ -1048,20 +1059,13 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
 
 
 static void reloadPrefs(void) {
-    prefs = [[[DXPrefsManager sharedInstance] readPrefsFromSandbox:[DXPrefsManager isRunningInSandbox]] mutableCopy];
+    DXPrefsManager *manager = [DXPrefsManager sharedInstance];
+    [manager reload];
+    prefs = manager.preferencesAvailable ? [manager.prefs mutableCopy] : nil;
     
-    if (!firstInit){
-        // Cache invalidation is an internal maintenance operation.  Do not post
-        // kPrefsChangedIdentifier here: this function is itself the observer for
-        // that notification, and posting synchronously causes unbounded re-entry
-        // (and a SpringBoard SIGSEGV) when the user toggles the main switch.
-        [[DXPrefsManager sharedInstance] removeKey:kCachekey notify:NO];
-    }else{
+    if (firstInit){
         firstInit = NO;
     }
-    toastTintColor = toastImageTintColor;
-    toastBackgroundTintColor = toastBackgroundColor;
-
     currentBackgroundTintColor = nil;
     currentTopToolbarBackgroundColor = nil;
     //currentTintColor = nil;
@@ -1071,11 +1075,9 @@ static void reloadPrefs(void) {
         currentTintColor = DXColorFromHex(prefs[@"shortcutstint"], @"#ff0000");
     }
     
-    // Legacy colorBOOL block for other tint options (toast, backgrounds)
+    // Background tint options share the legacy colorBOOL master switch.
     if (preferencesBool(kColorEnabledkey,NO)){
-        if (preferencesBool(kToastTintEnabled,YES)) toastTintColor = DXColorFromHex(prefs[@"toasttint"], @"#ff0000");
         if (preferencesBool(kShortcutsBackgroundTintEnabled,YES)) currentBackgroundTintColor = DXColorFromHex(prefs[@"shortcutsbackgroundtint"], @"#5B5B5B");
-        if (preferencesBool(kToastBackgroundTintEnabled,YES)) toastBackgroundTintColor = DXColorFromHex(prefs[@"toastbackgroundtint"], @"#000000");
         if (preferencesBool(kTopToolbarBackgroundTintEnabledKey,YES)){
             currentTopToolbarBackgroundColor = DXColorFromHex(prefs[kTopToolbarBackgroundTintKey], @"#5B5B5B");
         }
@@ -1104,8 +1106,7 @@ static void reloadPrefs(void) {
     buttonSpacing = preferencesFloat(kCellSpacingkey, spacingBetweenCellsDefault);
     
     //attemptOneHandedOffsetAdjust = preferencesBool(kAttemptOffsetAutoAdjustInOneHandedkey, YES);
-    
-    isPagingEnabled =  preferencesBool(kPagingkey, YES);
+
     shouldPerformBatchUpdate = NO;
     spongebobEntropy = (DXStudlyCapsType)preferencesInt(kSpongebobEntropyKey, DXStudlyCapsTypeRandom);
 
@@ -1115,7 +1116,8 @@ static void reloadPrefs(void) {
     BOOL enabled = preferencesBool(kEnabledkey, YES);
     if (dockView.typex) {
         [dockView.typex reloadShortcutConfiguration];
-        dockView.typex.hidden = !enabled || !toggledOn || isLandscape || isDictating;
+        dockView.typex.hidden = !enabled || !toggledOn || isLandscape || isDictating ||
+                                !DXToolbarHasShortcuts(dockView.typex);
         [dockView.typex.collectionViewLayout invalidateLayout];
         [dockView.typex reloadData];
     }
@@ -1155,10 +1157,6 @@ static void reloadPrefsNotificationCallback(CFNotificationCenterRef center,
     });
 }
 
-static void sbDidLaunch(){
-    [DXToastWindowController sharedInstance];
-}
-
 %ctor {
     
     @autoreleasepool {
@@ -1196,10 +1194,6 @@ static void sbDidLaunch(){
                                                                object:nil];
                     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, reloadPrefsNotificationCallback, (CFStringRef)kPrefsChangedIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                 }
-                if (isSpringBoard){
-                    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)sbDidLaunch, (CFStringRef)@"SBSpringBoardDidLaunchNotification", NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
-                }
-                
             }
         }
     }

@@ -293,7 +293,6 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
 - (void)updateOrder:(BOOL)reset{
     NSMutableDictionary *prefs = [[[DXPrefsManager sharedInstance] readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
     NSString *shortcutsKey = self.shortcutsPreferenceKey ?: kShortcutskey;
-    NSString *cacheKey = [self scopedKey:kCachekey topKey:kTopCachekey];
     
     //BOOL newShortcutsAvailable = ([tweakVersion compare:prefs[@"version"] options:NSNumericSearch] == NSOrderedDescending);
     /*
@@ -341,12 +340,14 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
         // Drop double-tap keys left over from older versions.
         [prefs removeObjectForKey:@"customactionsdt"];
         [prefs removeObjectForKey:@"topcustomactionsdt"];
-        [prefs removeObjectForKey:cacheKey];
-
-        //Remove all caches
+        // Remove only generated icon images.  TypeXSharedPrefsPath lives in the
+        // same directory and is the configuration source for sandboxed apps;
+        // deleting every file here caused those apps to show six defaults.
         NSFileManager *fm = [NSFileManager defaultManager];
         for (NSString *cacheFile in [fm contentsOfDirectoryAtPath:TypeXCachePath error:nil]) {
-            [fm removeItemAtPath:[NSString stringWithFormat:@"%@/%@", TypeXCachePath, cacheFile] error:nil];
+            if ([[cacheFile.pathExtension lowercaseString] isEqualToString:@"png"]) {
+                [fm removeItemAtPath:[TypeXCachePath stringByAppendingPathComponent:cacheFile] error:nil];
+            }
         }
     }
 

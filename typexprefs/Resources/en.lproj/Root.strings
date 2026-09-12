@@ -7,7 +7,6 @@
 "SHORTCUTS" = "Shortcuts";
 "HAPTIC" = "Haptic";
 "SHAKE_SHORTCUT" = "Shake Shortcut";
-"SHOW_TOAST" = "Show Toast";
 "ICON" = "Icon";
 "TEXT" = "Text";
 "FOOTER_SHORTCUT_NUM" = "Set number of shortcuts per page.";
@@ -33,13 +32,9 @@
 "CUSTOMIZATION" = "Customization";
 "SHORTCUTS_TINT" = "Shortcuts Tint";
 "SHORTCUTS_BACKGROUND_TINT" = "Shortcuts Background Tint";
-"TOAST_TINT" = "Toast Tint";
-"TOAST_BACKGROUND_TINT" = "Toast Background Tint";
 "TOP_TOOLBAR_SETTINGS" = "Top Toolbar Settings";
 "TOP_TOOLBAR" = "Top Toolbar";
 "TOP_TOOLBAR_BACKGROUND_TINT" = "Top Toolbar Background Tint";
-"PAGING" = "Paging";
-"FOOTER_PAGING" = "Disable paging if you experiencing view scrolling back to previous page when shortcut is tapped.";
 "ADVANCED" = "Advanced";
 "ADVANCED_SETTINGS" = "Advanced Settings";
 "DEVELOPMENT" = "Development";

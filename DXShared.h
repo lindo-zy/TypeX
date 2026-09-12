@@ -4,8 +4,6 @@
 extern id delegate;
 extern UIKeyboardImpl *kbImpl;
 extern UIColor *currentTintColor;
-extern UIColor *toastTintColor;
-extern UIColor *toastBackgroundTintColor;
 extern UIColor *currentBackgroundTintColor;
 extern BOOL isLandscape;
 extern NSMutableDictionary *prefs;
@@ -27,7 +25,6 @@ extern BOOL shouldPerformBatchUpdate;
 extern NSString *key;
 extern BOOL isDraggedGesture;
 extern UIKeyboardDockView *dockV;
-extern BOOL isPagingEnabled;
 extern BOOL useShortenedLabel;
 extern NSBundle *tweakBundle;
 extern BOOL firstInit;
