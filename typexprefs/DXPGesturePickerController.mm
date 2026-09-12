@@ -115,6 +115,17 @@ static NSBundle *tweakBundle;
 
 #pragma mark - Specifiers
 
+// Gesture rows in display order: long press first, then the four swipes.
+- (NSArray<NSArray *> *)gestureRows {
+    return @[
+        @[@(DXShortcutGestureLongPress), @"LONG_PRESS"],
+        @[@(DXShortcutGestureSwipeUp), @"SWIPE_UP"],
+        @[@(DXShortcutGestureSwipeDown), @"SWIPE_DOWN"],
+        @[@(DXShortcutGestureSwipeLeft), @"SWIPE_LEFT"],
+        @[@(DXShortcutGestureSwipeRight), @"SWIPE_RIGHT"],
+    ];
+}
+
 - (NSArray *)specifiers {
     if (!_specifiers) {
         NSMutableArray *snippetEntrySpecifiers = [[NSMutableArray alloc] init];
@@ -136,9 +147,12 @@ static NSBundle *tweakBundle;
         PSSpecifier *gestureTypeGroup = [PSSpecifier preferenceSpecifierNamed:LOCALIZED(@"GESTURES") target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
         [snippetEntrySpecifiers addObject:gestureTypeGroup];
 
-        PSSpecifier *longPressSpec = [PSSpecifier preferenceSpecifierNamed:LOCALIZED(@"LONG_PRESS") target:nil set:nil get:nil detail:NSClassFromString(@"DXPGesturePickerController") cell:PSLinkListCell edit:nil];
-        [longPressSpec setProperty:LOCALIZED(@"LONG_PRESS") forKey:@"label"];
-        [snippetEntrySpecifiers addObject:longPressSpec];
+        for (NSArray *gestureRow in [self gestureRows]) {
+            NSString *label = LOCALIZED(gestureRow[1]);
+            PSSpecifier *gestureSpec = [PSSpecifier preferenceSpecifierNamed:label target:nil set:nil get:nil detail:NSClassFromString(@"DXPGesturePickerController") cell:PSLinkListCell edit:nil];
+            [gestureSpec setProperty:label forKey:@"label"];
+            [snippetEntrySpecifiers addObject:gestureSpec];
+        }
 
         _specifiers = snippetEntrySpecifiers;
 
@@ -152,8 +166,16 @@ static NSBundle *tweakBundle;
     UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
 
     // The custom name/icon rows are plain edit-text cells handled by
-    // Preferences; only the long-press row pushes the action editor.
-    if (![cell.textLabel.text isEqualToString:LOCALIZED(@"LONG_PRESS")]) {
+    // Preferences; only gesture rows push the action editor. Rows are matched
+    // by label so the position of the row in the list does not matter here.
+    NSInteger gestureType = -1;
+    for (NSArray *gestureRow in [self gestureRows]) {
+        if ([cell.textLabel.text isEqualToString:LOCALIZED(gestureRow[1])]) {
+            gestureType = [gestureRow[0] integerValue];
+            break;
+        }
+    }
+    if (gestureType < 0) {
         [tableView deselectRowAtIndexPath:indexPath animated:YES];
         return;
     }
@@ -163,15 +185,8 @@ static NSBundle *tweakBundle;
     actionViewController.fullOrder = self.fullOrder;
     actionViewController.identifier = self.identifier;
     actionViewController.configuration = self.configuration;
-
-    switch (indexPath.row) {
-        case 0:
-            actionViewController.keyID = [self.configuration isEqualToString:@"top"] ? kTopCustomActionskey : kCustomActionskey;
-            break;
-        default:
-            actionViewController.keyID = [self.configuration isEqualToString:@"top"] ? kTopCustomActionskey : kCustomActionskey;
-            break;
-    }
+    // Each gesture type keeps its custom action under its own preference key.
+    actionViewController.keyID = DXCustomActionsKeyForGesture((int)gestureType, self.configuration);
 
     actionViewController.title = cell.textLabel.text;
 

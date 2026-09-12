@@ -20,8 +20,8 @@ int preferencesInt(NSString* key, int fallback) {
 
 NSString *preferencesSelectorForIdentifierScoped(NSString* identifier, int selectorNum, int gestureType, NSString *fallback, NSString *configuration) {
     //HBLogDebug(@"identifier: %@", identifier);
-    //0-long press
-    NSString *k = DXScopedPreferenceKey(kCustomActionskey, configuration);
+    //0-long press, 1-swipe up, 2-swipe down, 3-swipe left, 4-swipe right
+    NSString *k = DXCustomActionsKeyForGesture(gestureType, configuration);
     
     NSString *selector = fallback;
     if (selectorNum == 1 && [prefs[k] isKindOfClass:[NSArray class]]) {

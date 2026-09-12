@@ -45,6 +45,10 @@
 #define kGestureTypekey @"gesturetype"
 #define kCustomActionskey @"customactions"
 #define kTopCustomActionskey @"topcustomactions"
+#define kSwipeUpCustomActionskey @"swipeupactions"
+#define kSwipeDownCustomActionskey @"swipedownactions"
+#define kSwipeLeftCustomActionskey @"swipeleftactions"
+#define kSwipeRightCustomActionskey @"swiperightactions"
 #define kPagingkey @"pagingBOOL"
 #define kShortcutsTintEnabled @"shortcutstintBOOL"
 #define kShortcutsBackgroundTintEnabled @"shortcutsbackgroundtintBOOL"
@@ -132,6 +136,28 @@ static inline NSString *DXScopedPreferenceKey(NSString *baseKey, NSString *confi
         return [@"top" stringByAppendingString:baseKey];
     }
     return baseKey;
+}
+
+// Gesture types for per-shortcut custom actions. Long press keeps the
+// historical "customactions" store; each swipe direction has its own.
+typedef NS_ENUM(NSInteger, DXShortcutGestureType) {
+    DXShortcutGestureLongPress = 0,
+    DXShortcutGestureSwipeUp = 1,
+    DXShortcutGestureSwipeDown = 2,
+    DXShortcutGestureSwipeLeft = 3,
+    DXShortcutGestureSwipeRight = 4,
+};
+
+static inline NSString *DXCustomActionsKeyForGesture(int gestureType, NSString *configuration) {
+    NSString *baseKey;
+    switch (gestureType) {
+        case DXShortcutGestureSwipeUp: baseKey = kSwipeUpCustomActionskey; break;
+        case DXShortcutGestureSwipeDown: baseKey = kSwipeDownCustomActionskey; break;
+        case DXShortcutGestureSwipeLeft: baseKey = kSwipeLeftCustomActionskey; break;
+        case DXShortcutGestureSwipeRight: baseKey = kSwipeRightCustomActionskey; break;
+        default: baseKey = kCustomActionskey; break;
+    }
+    return DXScopedPreferenceKey(baseKey, configuration);
 }
 
 static inline UIColor *DXColorFromHex(NSString *value, NSString *fallback) {

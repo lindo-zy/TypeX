@@ -117,7 +117,7 @@
 
 //Reset
 "RESET" = "Reset";
-"RESET_MESSAGE" = "Reset all shortcuts including customized long press actions to default?";
+"RESET_MESSAGE" = "Reset all shortcuts including customized gesture actions to default?";
 "RESET_YES" = "Yes";
 "RESET_NO" = "No";
 
@@ -157,6 +157,10 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "GESTURES" = "Gestures";
 "SINGLE_TAP" = "Single Tap";
 "LONG_PRESS" = "Long Press";
+"SWIPE_UP" = "Swipe Up";
+"SWIPE_DOWN" = "Swipe Down";
+"SWIPE_LEFT" = "Swipe Left";
+"SWIPE_RIGHT" = "Swipe Right";
 
 "TEXT" = "Text";
 

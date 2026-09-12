@@ -293,7 +293,6 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
 - (void)updateOrder:(BOOL)reset{
     NSMutableDictionary *prefs = [[[DXPrefsManager sharedInstance] readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
     NSString *shortcutsKey = self.shortcutsPreferenceKey ?: kShortcutskey;
-    NSString *customActionsKey = [self scopedKey:kCustomActionskey topKey:kTopCustomActionskey];
     NSString *cacheKey = [self scopedKey:kCachekey topKey:kTopCachekey];
     
     //BOOL newShortcutsAvailable = ([tweakVersion compare:prefs[@"version"] options:NSNumericSearch] == NSOrderedDescending);
@@ -331,9 +330,14 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     self.fullOrder = fullOrderDict;
     
     
-    //reset custom long press actions
+    //reset custom gesture actions (long press + swipes)
     if (reset){
-        prefs[customActionsKey] = @[];
+        // Every gesture type keeps its custom action under its own key; clear
+        // this configuration's stores so reset covers them all.
+        NSString *gestureConfiguration = self.topConfiguration ? @"top" : @"bottom";
+        for (NSInteger gesture = DXShortcutGestureLongPress; gesture <= DXShortcutGestureSwipeRight; gesture++) {
+            prefs[DXCustomActionsKeyForGesture((int)gesture, gestureConfiguration)] = @[];
+        }
         // Drop double-tap keys left over from older versions.
         [prefs removeObjectForKey:@"customactionsdt"];
         [prefs removeObjectForKey:@"topcustomactionsdt"];
@@ -427,6 +431,7 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [self updateOrder:NO];
+    [self.tableView reloadData];
 }
 
 - (void)viewDidLoad {

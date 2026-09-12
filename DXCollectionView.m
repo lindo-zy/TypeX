@@ -1857,6 +1857,39 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
     [self shakeView:recognizer.view];
 }
 
+- (void)activateSwipeActions:(UISwipeGestureRecognizer *)recognizer {
+    if (recognizer.state != UIGestureRecognizerStateEnded) return;
+
+    int gestureType;
+    switch (recognizer.direction) {
+        case UISwipeGestureRecognizerDirectionUp: gestureType = DXShortcutGestureSwipeUp; break;
+        case UISwipeGestureRecognizerDirectionDown: gestureType = DXShortcutGestureSwipeDown; break;
+        case UISwipeGestureRecognizerDirectionLeft: gestureType = DXShortcutGestureSwipeLeft; break;
+        case UISwipeGestureRecognizerDirectionRight: gestureType = DXShortcutGestureSwipeRight; break;
+        default: return;
+    }
+
+    [self autoPaginationControl];
+    UIButton *button = (UIButton *)recognizer.view;
+    NSString *selectorName = preferencesSelectorForIdentifierScoped(button.accessibilityIdentifier, 1, gestureType, @"", self.configuration);
+    if (selectorName.length == 0) return;
+
+    SEL action = NSSelectorFromString(selectorName);
+    if (![self respondsToSelector:action]) {
+        HBLogWarn(@"TypeX ignoring unimplemented %@ for %@", selectorName, button.accessibilityIdentifier);
+        return;
+    }
+
+    if (![DXShortcutsGenerator isVisibleShortcutSelector:selectorName]) {
+        HBLogWarn(@"TypeX ignoring legacy/hidden selector %@", selectorName);
+        return;
+    }
+
+    self.hapticType = 2;
+    ((void(*)(id, SEL, id))objc_msgSend)(self, action, nil);
+    [self shakeView:recognizer.view];
+}
+
 -(void)cellButtonTouchUpInside:(UIButton *)sender {
     NSString *selectorName = sender.accessibilityIdentifier;
     if (![DXShortcutsGenerator isVisibleShortcutSelector:selectorName]) return;
@@ -1915,10 +1948,28 @@ static BOOL DXShortcutCacheContainsHiddenSelectors(NSDictionary *cache) {
 
     // Single tap is the button's own TouchUpInside event: it fires on touch-up
     // with no gesture-recognizer window, so taps can be repeated as fast as the
-    // user likes. Only the long-press recognizer is mounted; adding any tap
-    // recognizer would delay every touch-up until it fails.
+    // user likes. No tap recognizer is mounted; one would delay every touch-up
+    // until it fails.
     [cell.btn addTarget:self action:@selector(cellButtonTouchUpInside:) forControlEvents:UIControlEventTouchUpInside];
-    cell.btn.gestureRecognizers = @[longPress];
+
+    NSMutableArray<UIGestureRecognizer *> *recognizers = [NSMutableArray arrayWithObject:longPress];
+    // Swipe recognizers are mounted only for directions with a configured
+    // action, mirroring the conditional double-tap approach: an always-mounted
+    // horizontal swipe would win over the paging pan on flicks that start on a
+    // button.
+    for (NSInteger gesture = DXShortcutGestureSwipeUp; gesture <= DXShortcutGestureSwipeRight; gesture++) {
+        if ([preferencesSelectorForIdentifierScoped(cell.btn.accessibilityIdentifier, 1, (int)gesture, @"", self.configuration) length] == 0) continue;
+
+        UISwipeGestureRecognizer *swipe = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(activateSwipeActions:)];
+        switch (gesture) {
+            case DXShortcutGestureSwipeUp: swipe.direction = UISwipeGestureRecognizerDirectionUp; break;
+            case DXShortcutGestureSwipeDown: swipe.direction = UISwipeGestureRecognizerDirectionDown; break;
+            case DXShortcutGestureSwipeLeft: swipe.direction = UISwipeGestureRecognizerDirectionLeft; break;
+            default: swipe.direction = UISwipeGestureRecognizerDirectionRight; break;
+        }
+        [recognizers addObject:swipe];
+    }
+    cell.btn.gestureRecognizers = recognizers;
     
     //cell.btn.backgroundColor = [UIColor clearColor];
     //cell.btn.layer.cornerRadius = 0; // this value vary as per your desire
