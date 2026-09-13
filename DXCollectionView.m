@@ -5,10 +5,13 @@
 
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import <SpringBoardServices/SpringBoardServices.h>
 
 static const NSInteger DXCustomActionToastTag = 0x54584341;
 static const NSInteger DXSubActionPanelOverlayTag = 0x54585341;
 static __weak DXCollectionView *DXActiveSubActionPanelOwner;
+
+typedef void (^DXCustomActionOpenCompletion)(BOOL success);
 
 @interface DXSubActionPanelItem : UIControl
 @property (nonatomic, strong) UIImageView *iconView;
@@ -1717,17 +1720,15 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     [self runSubActionsForButton:(UIButton *)recognizer.view];
 }
 
-// Bundle identifiers use reverse-DNS notation. Limit the prefix to common
-// reverse-domain namespaces so scheme-less hosts such as "www.example.com"
-// continue through the web-link path.
+// Bundle identifiers use reverse-DNS notation. Web links are classified first,
+// so this validator can accept any syntactically valid identifier without a
+// hard-coded top-level-domain allowlist.
 -(BOOL)isBundleIdentifier:(NSString *)value {
-    if (value.length == 0 || [value rangeOfString:@"://"].location != NSNotFound) return NO;
-    NSRegularExpression *expression = [NSRegularExpression regularExpressionWithPattern:@"^[A-Za-z][A-Za-z0-9-]*(\\.[A-Za-z0-9][A-Za-z0-9-]*){2,}$"
+    if (value.length == 0) return NO;
+    NSRegularExpression *expression = [NSRegularExpression regularExpressionWithPattern:@"^[A-Za-z0-9_](?:[A-Za-z0-9_-]*[A-Za-z0-9_])?(?:\\.[A-Za-z0-9_](?:[A-Za-z0-9_-]*[A-Za-z0-9_])?)+$"
                                                                                 options:0
                                                                                   error:nil];
-    if ([expression firstMatchInString:value options:0 range:NSMakeRange(0, value.length)] == nil) return NO;
-    NSString *prefix = [value componentsSeparatedByString:@"."].firstObject.lowercaseString;
-    return [@[@"com", @"org", @"net", @"io", @"co", @"me", @"cn", @"app", @"dev"] containsObject:prefix];
+    return [expression firstMatchInString:value options:0 range:NSMakeRange(0, value.length)] != nil;
 }
 
 -(NSString *)currentInputTextForCustomAction {
@@ -1795,34 +1796,75 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     });
 }
 
--(BOOL)openApplicationWithBundleIdentifier:(NSString *)bundleIdentifier {
-    Class proxyClass = objc_getClass("LSApplicationProxy");
-    SEL proxySelector = NSSelectorFromString(@"applicationProxyForIdentifier:");
-    id proxy = proxyClass && [proxyClass respondsToSelector:proxySelector]
-        ? ((id(*)(id, SEL, id))objc_msgSend)(proxyClass, proxySelector, bundleIdentifier)
-        : nil;
-    SEL installedSelector = NSSelectorFromString(@"isInstalled");
-    BOOL installed = proxy && [proxy respondsToSelector:installedSelector] &&
-        ((BOOL(*)(id, SEL))objc_msgSend)(proxy, installedSelector);
-    SEL prohibitedSelector = NSSelectorFromString(@"isLaunchProhibited");
-    if (!installed || ([proxy respondsToSelector:prohibitedSelector] &&
-        ((BOOL(*)(id, SEL))objc_msgSend)(proxy, prohibitedSelector))) return NO;
+-(void)finishCustomActionOpen:(DXCustomActionOpenCompletion)completion success:(BOOL)success {
+    if (!completion) return;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        completion(success);
+    });
+}
 
-    Class workspaceClass = objc_getClass("LSApplicationWorkspace");
-    SEL defaultWorkspaceSelector = NSSelectorFromString(@"defaultWorkspace");
-    id workspace = workspaceClass && [workspaceClass respondsToSelector:defaultWorkspaceSelector]
-        ? ((id(*)(id, SEL))objc_msgSend)(workspaceClass, defaultWorkspaceSelector)
-        : nil;
-    SEL openSelector = NSSelectorFromString(@"openApplicationWithBundleID:");
-    if (!workspace || ![workspace respondsToSelector:openSelector]) return NO;
+// UIApplication is intentionally tried first: another injected tweak can
+// implement an in-process scheme (for example kayokox://) without registering
+// it with LaunchServices. App-extension hosts can reject ordinary external
+// URLs, so a failed request falls back to SpringBoardServices.
+-(void)openCustomActionURL:(NSURL *)url completion:(DXCustomActionOpenCompletion)completion {
+    void (^openThroughSpringBoard)(void) = ^{
+        BOOL success = SBSOpenSensitiveURLAndUnlock((__bridge CFURLRef)url, 0);
+        [self finishCustomActionOpen:completion success:success];
+    };
+
+    UIApplication *application = [UIApplication sharedApplication];
+    if (!application || ![application respondsToSelector:@selector(openURL:options:completionHandler:)]) {
+        openThroughSpringBoard();
+        return;
+    }
 
     @try {
-        ((void(*)(id, SEL, id))objc_msgSend)(workspace, openSelector, bundleIdentifier);
-        return YES;
+        [application openURL:url options:@{} completionHandler:^(BOOL success) {
+            if (success) {
+                [self finishCustomActionOpen:completion success:YES];
+            } else {
+                openThroughSpringBoard();
+            }
+        }];
     } @catch (NSException *exception) {
-        HBLogWarn(@"TypeX failed to open application %@: %@", bundleIdentifier, exception);
-        return NO;
+        HBLogWarn(@"TypeX UIApplication failed to open custom action URL %@: %@", url, exception);
+        openThroughSpringBoard();
     }
+}
+
+// FBSSystemService is the FrontBoard client that accepts a bundle identifier.
+// Do not preflight with LSApplicationProxy: that lookup can fail in an injected
+// app even when the target application is installed.
+-(void)openApplicationWithBundleIdentifier:(NSString *)bundleIdentifier
+                                 completion:(DXCustomActionOpenCompletion)completion {
+    void (^openThroughSpringBoard)(void) = ^{
+        int result = SBSLaunchApplicationWithIdentifierAndLaunchOptions(bundleIdentifier, @{}, @{}, NO);
+        [self finishCustomActionOpen:completion success:(result == 0)];
+    };
+
+    FBSSystemService *service = [FBSSystemService sharedService];
+    SEL openSelector = @selector(openApplication:options:withResult:);
+    if (service && [service respondsToSelector:openSelector]) {
+        @try {
+            [service openApplication:bundleIdentifier options:@{} withResult:^(NSError *error) {
+                if (!error) {
+                    [self finishCustomActionOpen:completion success:YES];
+                    return;
+                }
+
+                HBLogWarn(@"TypeX FrontBoard could not open application %@: %@", bundleIdentifier, error);
+                openThroughSpringBoard();
+            }];
+            return;
+        } @catch (NSException *exception) {
+            HBLogWarn(@"TypeX FrontBoard raised while opening application %@: %@", bundleIdentifier, exception);
+        }
+    }
+
+    // Compatibility fallback for systems where FBSSystemService is
+    // unavailable. SpringBoardServices returns zero when it accepts the launch.
+    openThroughSpringBoard();
 }
 
 // Opens a user-defined web URL, URL scheme, or installed app bundle ID. The
@@ -1847,34 +1889,66 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         return YES;
     }
 
+    NSString *lowercaseLink = link.lowercaseString;
+    BOOL isHTTPURL = [lowercaseLink hasPrefix:@"http://"] || [lowercaseLink hasPrefix:@"https://"];
+    BOOL isWWWURL = [lowercaseLink hasPrefix:@"www."];
+    if (isHTTPURL || isWWWURL) {
+        NSString *webLink = isWWWURL ? [@"https://" stringByAppendingString:link] : link;
+        NSURL *url = [NSURL URLWithString:webLink];
+        BOOL validWebURL = url && url.host.length > 0 &&
+            ([url.scheme.lowercaseString isEqualToString:@"http"] ||
+             [url.scheme.lowercaseString isEqualToString:@"https"]);
+        if (!validWebURL) {
+            HBLogWarn(@"TypeX ignoring invalid custom action web URL %@", link);
+            [self showCustomActionLinkError];
+            [self autoPaginationControl];
+            return YES;
+        }
+
+        [self openCustomActionURL:url completion:^(BOOL success) {
+            if (!success) {
+                HBLogWarn(@"TypeX failed to open custom action web URL %@", url);
+                [self showCustomActionLinkError];
+            }
+        }];
+        [self autoPaginationControl];
+        return YES;
+    }
+
+    NSRange schemeRange = [link rangeOfString:@"^[A-Za-z][A-Za-z0-9+.-]*:"
+                                      options:NSRegularExpressionSearch];
+    if (schemeRange.location == 0) {
+        NSURL *url = [NSURL URLWithString:link];
+        if (!url || url.scheme.length == 0) {
+            HBLogWarn(@"TypeX ignoring invalid custom action URL scheme %@", link);
+            [self showCustomActionLinkError];
+            [self autoPaginationControl];
+            return YES;
+        }
+
+        [self openCustomActionURL:url completion:^(BOOL success) {
+            if (!success) {
+                HBLogWarn(@"TypeX failed to open custom action URL scheme %@", url);
+                [self showCustomActionLinkError];
+            }
+        }];
+        [self autoPaginationControl];
+        return YES;
+    }
+
     if ([self isBundleIdentifier:link]) {
-        if (![self openApplicationWithBundleIdentifier:link]) {
-            HBLogWarn(@"TypeX failed to open custom action bundle identifier %@", link);
-            [self showCustomActionLinkError];
-        }
+        [self openApplicationWithBundleIdentifier:link completion:^(BOOL success) {
+            if (!success) {
+                HBLogWarn(@"TypeX failed to open custom action bundle identifier %@", link);
+                [self showCustomActionLinkError];
+            }
+        }];
         [self autoPaginationControl];
         return YES;
     }
 
-    NSURL *url = [NSURL URLWithString:link];
-    if (url.scheme.length == 0) {
-        url = [NSURL URLWithString:[@"https://" stringByAppendingString:link]];
-    }
-    BOOL webURLMissingHost = ([url.scheme.lowercaseString isEqualToString:@"http"] ||
-                              [url.scheme.lowercaseString isEqualToString:@"https"]) && url.host.length == 0;
-    if (!url || url.scheme.length == 0 || webURLMissingHost) {
-        HBLogWarn(@"TypeX ignoring invalid custom action link %@", link);
-        [self showCustomActionLinkError];
-        [self autoPaginationControl];
-        return YES;
-    }
-
-    [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:^(BOOL success) {
-        if (!success) {
-            HBLogWarn(@"TypeX failed to open custom action URL %@", url);
-            [self showCustomActionLinkError];
-        }
-    }];
+    HBLogWarn(@"TypeX ignoring invalid custom action link %@", link);
+    [self showCustomActionLinkError];
     [self autoPaginationControl];
     return YES;
 }

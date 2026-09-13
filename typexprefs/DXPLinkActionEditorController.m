@@ -97,7 +97,7 @@ static NSBundle *tweakBundle;
     self.entry = [self.entry mutableCopy] ?: [NSMutableDictionary dictionary];
     self.nameField = [self newFieldWithText:self.entry[@"name"] placeholder:LOCALIZED(@"DEFAULT_BUTTON_NAME")];
     self.iconField = [self newFieldWithText:self.entry[@"icon"] placeholder:@"link"];
-    self.linkField = [self newFieldWithText:self.entry[@"link"] placeholder:@"https://example.com"];
+    self.linkField = [self newFieldWithText:self.entry[@"link"] placeholder:@""];
     self.linkField.keyboardType = UIKeyboardTypeURL;
     self.linkField.returnKeyType = UIReturnKeyDone;
 

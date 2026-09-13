@@ -147,7 +147,7 @@
 "CUSTOM_ACTIONS" = "自定义动作";
 "CUSTOM_ACTION" = "自定义动作";
 "EDIT" = "编辑";
-"CUSTOM_LINK_ACTION_FOOTER" = "图标请填写 SF Symbols 名称。动作链接支持网页 URL、App URL Scheme 或 Bundle ID；使用 @@@ 可传入当前输入框的内容。";
+"CUSTOM_LINK_ACTION_FOOTER" = "图标请填写 SF Symbols 名称。\n网址填写方式：以 http://、https:// 或 www. 开头，如 https://apple.com\nURL Scheme 填写方式：如 example://open\nBundle ID 填写方式：如 com.apple.Preferences\n使用 @@@ 可传入当前输入框的内容。";
 "CUSTOM_ACTION_LINK_ERROR" = "动作链接设置错误";
 "TEXT" = "文本";
 

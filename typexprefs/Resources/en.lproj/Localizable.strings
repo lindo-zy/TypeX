@@ -146,7 +146,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "CUSTOM_ACTIONS" = "Custom Actions";
 "CUSTOM_ACTION" = "Custom Action";
 "EDIT" = "Edit";
-"CUSTOM_LINK_ACTION_FOOTER" = "Enter an SF Symbol name for the icon. The action link accepts a web URL, app URL scheme, or bundle ID; use @@@ to insert the current input field's text.";
+"CUSTOM_LINK_ACTION_FOOTER" = "Enter an SF Symbol name for the icon.\nWeb link: must begin with http://, https://, or www., e.g. https://apple.com\nURL scheme: e.g. example://open\nBundle ID: e.g. com.apple.Preferences\nUse @@@ to insert the current input field's text.";
 "CUSTOM_ACTION_LINK_ERROR" = "The action link is invalid";
 "TEXT" = "Text";
 

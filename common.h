@@ -275,4 +275,7 @@ typedef NS_ENUM(NSInteger, DXStudlyCapsType){
 @interface FBSSystemService : NSObject
 + (id)sharedService;
 - (void)sendActions:(id)arg1 withResult:(/*^block*/id)arg2;
+- (void)openApplication:(NSString *)bundleIdentifier
+                options:(NSDictionary *)options
+             withResult:(void (^)(NSError *error))result;
 @end
