@@ -1,10 +1,11 @@
 #import "DXPManageShortcutsController.h"
+#import "DXPGesturePickerController.h"
 #import "../DXShortcutsGenerator.h"
 #import "../DXHelper.h"
-#import "DXPGesturePickerController.h"
 
-static UISearchController *searchController;
 static NSBundle *tweakBundle;
+
+#define kTestFieldHeaderHeight 78.0
 
 static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     return ![DXShortcutsGenerator isVisibleShortcutSelector:selector];
@@ -20,14 +21,18 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
 
         NSDictionary *shortcut = (NSDictionary *)object;
         NSString *selector = shortcut[@"selector"];
-        if (![selector isKindOfClass:[NSString class]] ||
-            DXIsHiddenShortcutSelector(selector) ||
-            [seenSelectors containsObject:selector]) {
-            continue;
+        // Draft buttons (saved without a tap action) carry a synthetic
+        // selector and must survive normalization untouched.
+        if (!DXIsDraftActionSelector(selector)) {
+            if (![selector isKindOfClass:[NSString class]] ||
+                DXIsHiddenShortcutSelector(selector) ||
+                [seenSelectors containsObject:selector]) {
+                continue;
+            }
+            [seenSelectors addObject:selector];
         }
 
         [destination addObject:shortcut];
-        [seenSelectors addObject:selector];
     }
 }
 
@@ -38,131 +43,59 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     return self.topConfiguration ? topKey : bottomKey;
 }
 
+#pragma mark - Table view: configured buttons only
+
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 2;
+    return 1;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    switch (section) {
-        case 0:
-            return LOCALIZED(@"ENABLED_SHORTCUTS");
-        case 1:
-            return LOCALIZED(@"DISABLED_SHORTCUTS");
-        default:
-            return nil;
-    }
+    return nil;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    switch (section) {
-        case 0:
-            return [self.currentOrder[0] count];
-        case 1:
-            return [self.currentOrder[1] count];
-        default:
-            return 0;
-    }
+    return [self.currentOrder[0] count];
 }
 
-- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section{
-    switch (section) {
-        case 0:
-            return LOCALIZED(@"FOOTER_TEXT_FOR_ENABLED_SHORTCUTS");
-        case 1:
-            return @"";
-        default:
-            return @"";
-            
-    }
-}
-
--(void)setCompatibiltyWarning{
-    CGRect frame = CGRectMake(0,0,self.tableView.bounds.size.width,50);
-    UIView *headerView = [[UIView alloc] initWithFrame:frame];
-    UIFont *font = [UIFont fontWithName:@"HelveticaNeue-Bold" size:15];
-    UILabel *headerLabel = [[UILabel alloc] initWithFrame:frame];
-    [headerLabel setText:@"Due to compatibility issue, please \"Reset\".\nInteraction with table below is temporary disabled."];
-    [headerLabel setFont:font];
-    [headerLabel setTextColor:[UIColor redColor]];
-    headerLabel.textAlignment = NSTextAlignmentCenter;
-    [headerLabel setContentMode:UIViewContentModeScaleAspectFit];
-    [headerLabel setAutoresizingMask:UIViewAutoresizingFlexibleWidth];
-    [headerLabel setNumberOfLines:0];
-    [headerLabel setLineBreakMode:NSLineBreakByWordWrapping];
-    [headerView addSubview:headerLabel];
-    self.tableView.tableHeaderView = headerView;
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+    return [NSString stringWithFormat:LOCALIZED(@"FOOTER_TOOLBAR_BUTTONS"), (int)maxshortcutpersection];
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"TypeXItemCell" forIndexPath:indexPath];
-    
+
     if (cell == nil)
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"TypeXItemCell"];
-    
+
+    if (self.currentOrder[0] == nil || indexPath.row >= [self.currentOrder[0] count])
+        return cell;
+
     UIImage *image;
     NSString *label;
-    
+
     dispatch_semaphore_t smp = dispatch_semaphore_create(0);
     __block BOOL isCustomImagePath = NO;
     __block BOOL isThirteen = NO;
-    
-    switch(indexPath.section) {
-        case 0: {
-            if (self.currentOrder[0] == nil || [self.currentOrder[0] count] <= indexPath.row)
-                return nil;
-            if (indexPath.row >= [self.currentOrder[0] count]){
-                [self setCompatibiltyWarning];
-                cell.textLabel.text = LOCALIZED(@"INCOMPATIBLE_RESET");
-                cell.imageView.image = nil;
-                self.tableView.userInteractionEnabled = NO;
-                return cell;
-            }
-            label = [DXHelper localizedStringForActionNamed:[DXHelper actionNameFromArray:self.currentOrder[0] atIndex:indexPath.row] shortName:NO bundle:tweakBundle];
-            //label = [DXHelper labelFromArray:self.currentOrder[0] atIndex:indexPath.row];
-            image = [DXHelper imageFromArray:self.currentOrder[0] atIndex:indexPath.row withSystemColor:YES completion:^(BOOL thirteen, BOOL customPath){
-                isThirteen = thirteen;
-                isCustomImagePath = customPath;
-                dispatch_semaphore_signal(smp);
-            }];
-            dispatch_semaphore_wait(smp, DISPATCH_TIME_FOREVER);
-            if (!isThirteen && isCustomImagePath){
-                [cell.imageView setTintColor:[UIColor blackColor]];
-            }
-            break;
-        }
-        case 1: {
-            if (self.currentOrder[1] == nil || [self.currentOrder[1] count] <= indexPath.row)
-                return nil;
-            if (indexPath.row >= [self.currentOrder[1] count]){
-                [self setCompatibiltyWarning];
-                cell.textLabel.text = LOCALIZED(@"INCOMPATIBLE_RESET");
-                cell.imageView.image = nil;
-                self.tableView.userInteractionEnabled = NO;
-                return cell;
-            }
-            label = [DXHelper localizedStringForActionNamed:[DXHelper actionNameFromArray:self.currentOrder[1] atIndex:indexPath.row] shortName:NO bundle:tweakBundle];
-            
-            //label = [DXHelper labelFromArray:self.currentOrder[1] atIndex:indexPath.row];
-            image = [DXHelper imageFromArray:self.currentOrder[1] atIndex:indexPath.row withSystemColor:YES completion:^(BOOL thirteen, BOOL customPath){
-                isThirteen = thirteen;
-                isCustomImagePath = customPath;
-                dispatch_semaphore_signal(smp);
-            }];
-            dispatch_semaphore_wait(smp, DISPATCH_TIME_FOREVER);
-            if (!isThirteen && isCustomImagePath){
-                [cell.imageView setTintColor:[UIColor blackColor]];
-            }
-            break;
-        }
-    }
-    NSDictionary *shortcutItem = (indexPath.section < (NSInteger)self.currentOrder.count &&
-                                  indexPath.row < (NSInteger)[self.currentOrder[indexPath.section] count])
-        ? self.currentOrder[indexPath.section][indexPath.row] : @{};
 
-    // Per-shortcut overrides set in the shortcut's own settings page: a custom
+    label = [DXHelper localizedStringForActionNamed:[DXHelper actionNameFromArray:self.currentOrder[0] atIndex:indexPath.row] shortName:NO bundle:tweakBundle];
+    image = [DXHelper imageFromArray:self.currentOrder[0] atIndex:indexPath.row withSystemColor:YES completion:^(BOOL thirteen, BOOL customPath){
+        isThirteen = thirteen;
+        isCustomImagePath = customPath;
+        dispatch_semaphore_signal(smp);
+    }];
+    dispatch_semaphore_wait(smp, DISPATCH_TIME_FOREVER);
+    if (!isThirteen && isCustomImagePath){
+        [cell.imageView setTintColor:[UIColor blackColor]];
+    }
+
+    NSDictionary *shortcutItem = self.currentOrder[indexPath.section][indexPath.row];
+
+    // Per-shortcut overrides set in the button's own settings page: a custom
     // name replaces the localized label and a valid SF Symbol replaces the icon.
     NSString *customName = [DXHelper customNameForShortcutItem:shortcutItem];
     if (customName) label = customName;
+    else if ([shortcutItem[@"label"] isKindOfClass:[NSString class]] && [(NSString *)shortcutItem[@"label"] length])
+        label = shortcutItem[@"label"];
     NSString *customIcon = [DXHelper customIconForShortcutItem:shortcutItem];
     if (customIcon) image = [DXHelper imageForName:customIcon withSystemColor:YES completion:nil];
 
@@ -178,7 +111,10 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     gesturePickerController.identifier = self.currentOrder[indexPath.section][indexPath.row][@"selector"];
     gesturePickerController.configuration = self.topConfiguration ? @"top" : @"bottom";
     NSDictionary *shortcutItem = self.currentOrder[indexPath.section][indexPath.row];
-    gesturePickerController.title = [DXHelper customNameForShortcutItem:shortcutItem] ?: [DXHelper localizedStringForActionNamed:shortcutItem[@"selector"] shortName:NO bundle:tweakBundle];
+    // Draft buttons have a synthetic selector, so prefer the stored label.
+    gesturePickerController.title = [DXHelper customNameForShortcutItem:shortcutItem]
+        ?: [shortcutItem[@"label"] isKindOfClass:[NSString class]] && [(NSString *)shortcutItem[@"label"] length] ? shortcutItem[@"label"]
+        : [DXHelper localizedStringForActionNamed:shortcutItem[@"selector"] shortName:NO bundle:tweakBundle];
 
     [gesturePickerController setRootController: [self rootController]];
     [gesturePickerController setParentController: [self parentController]];
@@ -190,221 +126,42 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
 - (void)tableView:(UITableView *)tableView moveRowAtIndexPath:(NSIndexPath *)sourceIndexPath toIndexPath:(NSIndexPath *)destinationIndexPath {
     if (self.tableView == nil)
         return;
-    
-    if (self.currentOrder[0] == nil)
-        [self updateOrder:NO];
-    
+
     NSString *objectToMove = [self.currentOrder[0] objectAtIndex:sourceIndexPath.row];
     [self.currentOrder[0] removeObjectAtIndex:sourceIndexPath.row];
     [self.currentOrder[0] insertObject:objectToMove atIndex:destinationIndexPath.row];
     [self.tableView reloadData];
     [self writeToFile];
-    
 }
 
 - (BOOL)tableView:(UITableView *)tableView canMoveRowAtIndexPath:(NSIndexPath *)indexPath {
-    switch (indexPath.section) {
-        case 0:
-            return [self.currentOrder[0] count] == 1?NO:YES;
-        case 1:
-            return NO;
-        default:
-            return NO;
-    }
+    return indexPath.section == 0;
 }
 
 - (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath{
-    switch (indexPath.section) {
-        case 0: {
-            return YES;
-            break;
-        }
-        case 1: {
-            return YES;
-            break;
-        }
-        default:
-            return NO;
-    }
+    return indexPath.section == 0;
 }
 
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
-    switch (indexPath.section) {
-        case 0: {
-            if (editingStyle == UITableViewCellEditingStyleDelete) {
-                // Delete the row from the data source
-                [tableView beginUpdates];
-                [self.currentOrder[1] addObject:self.currentOrder[0][indexPath.row]];
-                [self.currentOrder[0] removeObjectAtIndex:indexPath.row];
-                [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationFade];
-                //[tableView endUpdates];
-                
-                //[tableView beginUpdates];
-                NSIndexPath *indexPath = [NSIndexPath indexPathForRow:[self.currentOrder[1] count] - 1 inSection:1];
-                [tableView insertRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationRight];
-                [tableView endUpdates];
-                [self writeToFile];
-                
-            }
-        }
-            break;
-        case 1: {
-            if (editingStyle == UITableViewCellEditingStyleInsert) {
-                if ([self.currentOrder[0] count] >= maxshortcutpersection) {
-                    return;
-                }
-                [tableView beginUpdates];
-                [self.currentOrder[0] addObject:self.currentOrder[1][indexPath.row]];
-                [self.currentOrder[1] removeObjectAtIndex:indexPath.row];
-                [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationFade];
-                NSIndexPath *indexPath = [NSIndexPath indexPathForRow:[self.currentOrder[0] count] - 1  inSection:0];
-                [tableView insertRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationRight];
-                [tableView endUpdates];
-                [self writeToFile];
-                
-                
-            }
-            
-        }
-    }
+    if (editingStyle != UITableViewCellEditingStyleDelete || indexPath.section != 0) return;
+
+    // Deleting forgets the button entirely: the entry leaves the toolbar and
+    // its per-button gesture configuration is cleared with it.
+    NSString *identifier = self.currentOrder[0][indexPath.row][@"selector"];
+    [tableView beginUpdates];
+    [self.currentOrder[0] removeObjectAtIndex:indexPath.row];
+    [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationFade];
+    [tableView endUpdates];
+    [self removeCustomActionsForIdentifier:identifier];
+    [self writeToFile];
 }
 
 - (UITableViewCellEditingStyle)tableView:(UITableView *)tableView editingStyleForRowAtIndexPath:(NSIndexPath *)indexPath {
-    switch (indexPath.section) {
-        case 0:
-            return [self.currentOrder[0] count] == 1?UITableViewCellEditingStyleNone:UITableViewCellEditingStyleDelete;
-        case 1:
-            return [self.currentOrder[0] count] >= maxshortcutpersection ? UITableViewCellEditingStyleNone : UITableViewCellEditingStyleInsert;
-            //return [self.currentOrder[0] count] == maxShortcuts?UITableViewCellEditingStyleNone:UITableViewCellEditingStyleInsert;
-        default:
-            return UITableViewCellEditingStyleNone;
-    }
+    return indexPath.section == 0 ? UITableViewCellEditingStyleDelete : UITableViewCellEditingStyleNone;
 }
 
 - (BOOL)tableView:(UITableView *)tableView shouldIndentWhileEditingRowAtIndexPath:(NSIndexPath *)indexPath {
     return NO;
-}
-
-
-- (void)writeToFile{
-    [[DXPrefsManager sharedInstance] setValue:self.currentOrder forKey:self.shortcutsPreferenceKey ?: kShortcutskey];
-}
-
-- (void)updateOrder:(BOOL)reset{
-    NSMutableDictionary *prefs = [[[DXPrefsManager sharedInstance] readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
-    NSString *shortcutsKey = self.shortcutsPreferenceKey ?: kShortcutskey;
-    
-    //BOOL newShortcutsAvailable = ([tweakVersion compare:prefs[@"version"] options:NSNumericSearch] == NSOrderedDescending);
-    /*
-     if (forceDefault){
-     [prefs removeObjectForKey:@"shortcuts"];
-     prefs[@"version"] = tweakVersion;
-     [prefs writeToFile:kPrefsPath atomically:NO];
-     }
-     */
-    //NSMutableDictionary *currentOrderDefault = [[NSMutableDictionary alloc] init];
-    DXShortcutsGenerator *shortcutsGenerator = [DXShortcutsGenerator sharedInstance];
-    NSMutableArray *defaultOrderLabel = [[shortcutsGenerator labelName] mutableCopy];
-    NSMutableArray *defaultOrderSelector = [[shortcutsGenerator selectorNames] mutableCopy];
-    NSMutableArray *defaultOrder12 = [[shortcutsGenerator imageNameArrayForiOS:0] mutableCopy];
-    NSMutableArray *defaultOrder13 = [[shortcutsGenerator imageNameArrayForiOS:1] mutableCopy];
-    //NSMutableArray *shortLabel = [[shortcutsGenerator shortenedlabelName] mutableCopy];
-    
-
-    NSMutableArray *fullOrderDict = [[NSMutableArray alloc] init];
-    
-    for (int i = 0; i < [defaultOrderLabel count]; i++){
-        if (DXIsHiddenShortcutSelector(defaultOrderSelector[i])) {
-            continue;
-        }
-        [fullOrderDict addObject: @{
-            @"label" : defaultOrderLabel[i],
-            @"images12" : defaultOrder12[i],
-            @"images13" : defaultOrder13[i],
-            @"selector" : defaultOrderSelector[i],
-            //@"slabel" : shortLabel[i]
-        }];
-    }
-    
-    self.fullOrder = fullOrderDict;
-    
-    
-    //reset custom gesture actions (long press + swipes)
-    if (reset){
-        // Every gesture type keeps its custom action under its own key; clear
-        // this configuration's stores so reset covers them all.
-        NSString *gestureConfiguration = self.topConfiguration ? @"top" : @"bottom";
-        for (NSInteger gesture = DXShortcutGestureLongPress; gesture <= DXShortcutGestureSwipeRight; gesture++) {
-            prefs[DXCustomActionsKeyForGesture((int)gesture, gestureConfiguration)] = @[];
-        }
-        // Drop double-tap keys left over from older versions.
-        [prefs removeObjectForKey:@"customactionsdt"];
-        [prefs removeObjectForKey:@"topcustomactionsdt"];
-        // Remove only generated icon images.  TypeXSharedPrefsPath lives in the
-        // same directory and is the configuration source for sandboxed apps;
-        // deleting every file here caused those apps to show six defaults.
-        NSFileManager *fm = [NSFileManager defaultManager];
-        for (NSString *cacheFile in [fm contentsOfDirectoryAtPath:TypeXCachePath error:nil]) {
-            if ([[cacheFile.pathExtension lowercaseString] isEqualToString:@"png"]) {
-                [fm removeItemAtPath:[TypeXCachePath stringByAppendingPathComponent:cacheFile] error:nil];
-            }
-        }
-    }
-
-    id storedOrder = prefs[shortcutsKey];
-    BOOL hasStoredOrder = !reset && [storedOrder isKindOfClass:[NSArray class]] && [storedOrder count] >= 2;
-    NSArray *storedEnabled = hasStoredOrder && [storedOrder[0] isKindOfClass:[NSArray class]] ? storedOrder[0] : @[];
-    NSArray *storedDisabled = hasStoredOrder && [storedOrder[1] isKindOfClass:[NSArray class]] ? storedOrder[1] : @[];
-
-    NSMutableArray *enabled = [NSMutableArray array];
-    NSMutableArray *disabled = [NSMutableArray array];
-    NSMutableSet *seenSelectors = [NSMutableSet set];
-
-    if (hasStoredOrder) {
-        DXAppendUniqueShortcuts(storedEnabled, enabled, seenSelectors, maxshortcutpersection);
-    }
-    if (enabled.count == 0) {
-        DXAppendUniqueShortcuts(fullOrderDict, enabled, seenSelectors, maxdefaultshortcuts);
-    }
-
-    if (hasStoredOrder) {
-        DXAppendUniqueShortcuts(storedDisabled, disabled, seenSelectors, NSUIntegerMax);
-    }
-    // Compare shortcut identity by selector.  Stored entries from older versions
-    // may contain obsolete metadata (for example selectorlp), so dictionary
-    // equality would incorrectly append a second copy of the same action.
-    DXAppendUniqueShortcuts(fullOrderDict, disabled, seenSelectors, NSUIntegerMax);
-
-    self.currentOrder = [NSMutableArray arrayWithObjects:enabled, disabled, nil];
-
-    NSArray *normalizedOrder = @[[enabled copy], [disabled copy]];
-    if (reset || ![storedOrder isEqual:normalizedOrder]) {
-        prefs[shortcutsKey] = normalizedOrder;
-        [[DXPrefsManager sharedInstance] writePrefs:prefs];
-    }
-    
-}
-
--(void)reset{
-    
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"TypeX" message:LOCALIZED(@"RESET_MESSAGE") preferredStyle:UIAlertControllerStyleAlert];
-    
-    UIAlertAction *resetAction = [UIAlertAction actionWithTitle:LOCALIZED(@"RESET_YES") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [self updateOrder:YES];
-        [self.tableView.tableHeaderView removeFromSuperview];
-        self.tableView.tableHeaderView = nil;
-        self.tableView.userInteractionEnabled = YES;
-        [self.tableView reloadData];
-    }];
-    UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:LOCALIZED(@"RESET_NO") style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) {
-        [self dismissViewControllerAnimated:YES completion:nil];
-    }];
-    
-    [alert addAction:resetAction];
-    [alert addAction:cancelAction];
-    
-    [self presentViewController:alert animated:YES completion:nil];
-    
 }
 
 -(NSIndexPath *)tableView:(UITableView *)tableView targetIndexPathForMoveFromRowAtIndexPath:(NSIndexPath *)sourceIndexPath toProposedIndexPath:(NSIndexPath *)proposedDestinationIndexPath
@@ -419,14 +176,169 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     }
 }
 
+#pragma mark - Test input field
+
+// A text field pinned above the list: tapping it pops the keyboard with the
+// TypeX toolbar attached (the tweak loads into UIKit, Settings included), so
+// freshly saved buttons can be tried without leaving the page.
+- (void)buildTestFieldHeader {
+    CGFloat width = CGRectGetWidth(self.tableView.bounds);
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, kTestFieldHeaderHeight)];
+    header.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+
+    UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(16, 12, MAX(0, width - 32), 18)];
+    title.text = LOCALIZED(@"TEST_INPUT_FIELD");
+    title.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
+    title.textColor = [UIColor secondaryLabelColor];
+    title.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    [header addSubview:title];
+
+    self.testInputField = [[UITextField alloc] initWithFrame:CGRectMake(16, 36, MAX(0, width - 32), 36)];
+    self.testInputField.placeholder = LOCALIZED(@"TEST_INPUT_FIELD_PLACEHOLDER");
+    self.testInputField.font = [UIFont systemFontOfSize:15];
+    self.testInputField.borderStyle = UITextBorderStyleRoundedRect;
+    self.testInputField.delegate = self;
+    self.testInputField.returnKeyType = UIReturnKeyDone;
+    self.testInputField.clearButtonMode = UITextFieldViewModeWhileEditing;
+    self.testInputField.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    [header addSubview:self.testInputField];
+
+    self.tableView.tableHeaderView = header;
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    // Rotation support: keep the header as wide as the table.
+    CGFloat width = CGRectGetWidth(self.tableView.bounds);
+    UIView *header = self.tableView.tableHeaderView;
+    if (header && fabs(CGRectGetWidth(header.frame) - width) > 0.5) {
+        header.frame = CGRectMake(0, 0, width, kTestFieldHeaderHeight);
+        self.tableView.tableHeaderView = header;
+    }
+}
+
+- (BOOL)textFieldShouldReturn:(UITextField *)textField {
+    [textField resignFirstResponder];
+    return YES;
+}
+
+#pragma mark - Add button
+
+- (void)addButtonTapped{
+    if ([self.currentOrder[0] count] >= maxshortcutpersection) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"TypeX"
+                                                                       message:[NSString stringWithFormat:LOCALIZED(@"MAX_BUTTONS_REACHED"), (int)maxshortcutpersection]
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK") style:UIAlertActionStyleCancel handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+        return;
+    }
+
+    DXPGesturePickerController *gesturePickerController = [[DXPGesturePickerController alloc] init];
+    gesturePickerController.fullOrder = self.fullOrder;
+    gesturePickerController.configuration = self.topConfiguration ? @"top" : @"bottom";
+    // A new button has no action yet: its tap action (chosen in the pushed
+    // page) defines it, so the identifier is left nil until the user picks.
+    gesturePickerController.pendingNewEntry = YES;
+    gesturePickerController.title = LOCALIZED(@"NEW_BUTTON");
+
+    [gesturePickerController setRootController: [self rootController]];
+    [gesturePickerController setParentController: [self parentController]];
+    [self pushController:gesturePickerController];
+}
+
+#pragma mark - Storage
+
+- (void)writeToFile{
+    [[DXPrefsManager sharedInstance] setValue:self.currentOrder forKey:self.shortcutsPreferenceKey ?: kShortcutskey];
+}
+
+// Removes the per-gesture custom actions recorded for a deleted button so a
+// later re-add starts clean instead of silently inheriting old gestures.
+- (void)removeCustomActionsForIdentifier:(NSString *)identifier {
+    if (![identifier isKindOfClass:[NSString class]] || identifier.length == 0) return;
+    NSString *configuration = self.topConfiguration ? @"top" : @"bottom";
+
+    NSMutableDictionary *prefs = [[[DXPrefsManager sharedInstance] readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
+    BOOL changed = NO;
+    for (NSInteger gesture = DXShortcutGestureLongPress; gesture <= DXShortcutGestureTap; gesture++) {
+        NSString *key = DXCustomActionsKeyForGesture((int)gesture, configuration);
+        NSArray *entries = prefs[key];
+        if (![entries isKindOfClass:[NSArray class]]) continue;
+        NSArray *filtered = [entries filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"identifier != %@", identifier]];
+        if (![filtered isEqualToArray:entries]) {
+            prefs[key] = filtered;
+            changed = YES;
+        }
+    }
+    if (changed) [[DXPrefsManager sharedInstance] writePrefs:prefs];
+}
+
+- (void)updateOrder:(BOOL)reset{
+    NSMutableDictionary *prefs = [[[DXPrefsManager sharedInstance] readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
+    NSString *shortcutsKey = self.shortcutsPreferenceKey ?: kShortcutskey;
+
+    DXShortcutsGenerator *shortcutsGenerator = [DXShortcutsGenerator sharedInstance];
+    NSMutableArray *defaultOrderLabel = [[shortcutsGenerator labelName] mutableCopy];
+    NSMutableArray *defaultOrderSelector = [[shortcutsGenerator selectorNames] mutableCopy];
+    NSMutableArray *defaultOrder12 = [[shortcutsGenerator imageNameArrayForiOS:0] mutableCopy];
+    NSMutableArray *defaultOrder13 = [[shortcutsGenerator imageNameArrayForiOS:1] mutableCopy];
+
+    NSMutableArray *fullOrderDict = [[NSMutableArray alloc] init];
+
+    for (int i = 0; i < [defaultOrderLabel count]; i++){
+        if (DXIsHiddenShortcutSelector(defaultOrderSelector[i])) {
+            continue;
+        }
+        [fullOrderDict addObject: @{
+            @"label" : defaultOrderLabel[i],
+            @"images12" : defaultOrder12[i],
+            @"images13" : defaultOrder13[i],
+            @"selector" : defaultOrderSelector[i],
+        }];
+    }
+
+    self.fullOrder = fullOrderDict;
+
+    id storedOrder = prefs[shortcutsKey];
+    BOOL hasStoredOrder = !reset && [storedOrder isKindOfClass:[NSArray class]] && [storedOrder count] >= 2;
+    NSArray *storedEnabled = hasStoredOrder && [storedOrder[0] isKindOfClass:[NSArray class]] ? storedOrder[0] : @[];
+    NSArray *storedDisabled = hasStoredOrder && [storedOrder[1] isKindOfClass:[NSArray class]] ? storedOrder[1] : @[];
+
+    NSMutableArray *enabled = [NSMutableArray array];
+    NSMutableArray *disabled = [NSMutableArray array];
+    NSMutableSet *seenSelectors = [NSMutableSet set];
+
+    if (hasStoredOrder) {
+        DXAppendUniqueShortcuts(storedEnabled, enabled, seenSelectors, maxshortcutpersection);
+    }
+    // Defaults seed only a configuration that was never stored. An explicitly
+    // emptied toolbar (user deleted every button) stays empty.
+    if (!hasStoredOrder) {
+        DXAppendUniqueShortcuts(fullOrderDict, enabled, seenSelectors, maxdefaultshortcuts);
+    }
+
+    if (hasStoredOrder) {
+        DXAppendUniqueShortcuts(storedDisabled, disabled, seenSelectors, NSUIntegerMax);
+    }
+    // Compare shortcut identity by selector.  Stored entries from older versions
+    // may contain obsolete metadata (for example selectorlp), so dictionary
+    // equality would incorrectly append a second copy of the same action.
+    DXAppendUniqueShortcuts(fullOrderDict, disabled, seenSelectors, NSUIntegerMax);
+
+    self.currentOrder = [NSMutableArray arrayWithObjects:enabled, disabled, nil];
+
+    // The page only manages the enabled section; the disabled section is kept
+    // in the stored schema so the toolbar keeps reading the two-section format.
+    NSArray *normalizedOrder = @[[enabled copy], [disabled copy]];
+    if (reset || ![storedOrder isEqual:normalizedOrder]) {
+        prefs[shortcutsKey] = normalizedOrder;
+        [[DXPrefsManager sharedInstance] writePrefs:prefs];
+    }
+}
+
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
-    if (@available(iOS 11.0, *)){
-    }else{
-        CGPoint contentOffset = self.tableView.contentOffset;
-        contentOffset.y += CGRectGetHeight(self.tableView.tableHeaderView.frame);
-        self.tableView.contentOffset = contentOffset;
-    }
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -447,41 +359,15 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     [self.tableView setAutoresizingMask:UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight];
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"TypeXItemCell"];
     [self.tableView setEditing:YES];
-    [self.tableView setAllowsSelection:NO];
     self.tableView.allowsSelectionDuringEditing=YES;
-    
+
     ((UIViewController *)self).title = self.topConfiguration ? @"顶部设置" : @"底部设置";
     self.view = self.tableView;
-    
-    self.resetBtn = [[UIBarButtonItem alloc] initWithTitle:LOCALIZED(@"RESET") style:UIBarButtonItemStylePlain target:self action:@selector(reset)];
-    //self.addSnippetBtn.tintColor = [UIColor blackColor];
-    self.navigationItem.rightBarButtonItem = self.resetBtn;
-    
-    
-    searchController = [[UISearchController alloc] initWithSearchResultsController:nil];
-    searchController.definesPresentationContext = YES;
-    searchController.hidesNavigationBarDuringPresentation = YES;
-    //searchController.searchBar.delegate = self;
-    searchController.searchBar.placeholder = LOCALIZED(@"SEARCHBAR_PLACEHOLDER");
-    [searchController.searchBar setImage:[DXHelper imageForTypeXWithPlaceholder:YES] forSearchBarIcon:UISearchBarIconSearch state:UIControlStateNormal];
-    
-    searchController.obscuresBackgroundDuringPresentation = NO;
-    
-    if (@available(iOS 11.0, *)){
-        self.navigationItem.searchController = searchController;
-        self.navigationItem.hidesSearchBarWhenScrolling = YES;
-    }
-    
-}
 
--(BOOL)searchBarShouldBeginEditing:(UISearchBar *)searchBar{
-    DXPrefsManager *prefsManager = [DXPrefsManager sharedInstance];
-    NSUInteger tappedCount = [[prefsManager getValueForKey:@"searchedc"] longValue];
-    [prefsManager setValue:@(tappedCount + 1) forKey:@"searchedc"];
-    if (tappedCount + 1 == searchedCountEaster){
-        [DXHelper showSearchCountEasterAlertFor:self searchController:searchController count:tappedCount+1 delay:0.5];
-    }
-    return YES;
+    [self buildTestFieldHeader];
+
+    self.addBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addButtonTapped)];
+    self.navigationItem.rightBarButtonItem = self.addBtn;
 }
 
 @end

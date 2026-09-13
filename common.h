@@ -40,6 +40,7 @@
 #define kGestureTypekey @"gesturetype"
 #define kCustomActionskey @"customactions"
 #define kTopCustomActionskey @"topcustomactions"
+#define kTapCustomActionskey @"tapactions"
 #define kSwipeUpCustomActionskey @"swipeupactions"
 #define kSwipeDownCustomActionskey @"swipedownactions"
 #define kSwipeLeftCustomActionskey @"swipeleftactions"
@@ -117,18 +118,35 @@ static inline NSString *DXScopedPreferenceKey(NSString *baseKey, NSString *confi
 }
 
 // Gesture types for per-shortcut custom actions. Long press keeps the
-// historical "customactions" store; each swipe direction has its own.
+// historical "customactions" store; each swipe direction has its own. The tap
+// store holds an optional override for the button's own TouchUpInside action.
 typedef NS_ENUM(NSInteger, DXShortcutGestureType) {
     DXShortcutGestureLongPress = 0,
     DXShortcutGestureSwipeUp = 1,
     DXShortcutGestureSwipeDown = 2,
     DXShortcutGestureSwipeLeft = 3,
     DXShortcutGestureSwipeRight = 4,
+    DXShortcutGestureTap = 5,
 };
+
+// Temporary identifier used by the "add button" flow: the entry written into
+// the tap store before the new button's action (and therefore its real
+// identifier) exists. Rewritten to the real selector once the user picks one.
+#define kNewButtonPendingIdentifier @"__typex_pending_new_button__"
+
+// Buttons saved without a tap action get a synthetic identifier so gesture
+// stores never collide between them. They render on the toolbar but stay
+// inert until a tap action is configured for them.
+#define kDraftActionPrefix @"__typexdraft_"
+
+static inline BOOL DXIsDraftActionSelector(NSString *selector) {
+    return [selector isKindOfClass:[NSString class]] && [selector hasPrefix:kDraftActionPrefix];
+}
 
 static inline NSString *DXCustomActionsKeyForGesture(int gestureType, NSString *configuration) {
     NSString *baseKey;
     switch (gestureType) {
+        case DXShortcutGestureTap: baseKey = kTapCustomActionskey; break;
         case DXShortcutGestureSwipeUp: baseKey = kSwipeUpCustomActionskey; break;
         case DXShortcutGestureSwipeDown: baseKey = kSwipeDownCustomActionskey; break;
         case DXShortcutGestureSwipeLeft: baseKey = kSwipeLeftCustomActionskey; break;

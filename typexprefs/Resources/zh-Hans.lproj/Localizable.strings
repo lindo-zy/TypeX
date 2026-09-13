@@ -172,3 +172,14 @@
 "ICON_TYPE" = "图标类型";
 "ICON_PATH" = "图标路径";
 "EMOJI" = "表情符号";
+"GESTURE_TAP" = "点按";
+"NEW_BUTTON" = "新建按钮";
+"MAX_BUTTONS_REACHED" = "工具栏最多支持 %d 个按钮";
+"DUPLICATE_ACTION" = "该动作已添加到工具栏";
+"CHOOSE_TAP_FIRST" = "请先设置点按动作";
+"FOOTER_TOOLBAR_BUTTONS" = "点击按钮可编辑手势，拖动可调整顺序，最多 %d 个。点击右上角“+”新建按钮。";
+"ANSWER_OK" = "好";
+"SAVE" = "保存";
+"DEFAULT_BUTTON_NAME" = "动作";
+"TEST_INPUT_FIELD" = "测试输入框（点击弹出键盘试试按钮）";
+"TEST_INPUT_FIELD_PLACEHOLDER" = "输入文本试试工具栏按钮…";

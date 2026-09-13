@@ -525,7 +525,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
             if (images12.count >= [self shortcutsPerSection]) break;
             if (![item isKindOfClass:[NSDictionary class]]) continue;
             NSString *selector = item[@"selector"];
-            if (DXIsHiddenShortcutSelector(selector)) continue;
+            // Draft buttons (saved without a tap action) render inert on the
+            // toolbar; everything else unknown stays filtered out.
+            if (!DXIsDraftActionSelector(selector) && DXIsHiddenShortcutSelector(selector)) continue;
             if (item[@"images12"] && item[@"images13"] && selector) {
                 [self integrateShortcutItem:item intoImages12:images12 images13:images13 selectors:selectors names:customNames];
             }
@@ -1738,7 +1740,12 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 -(void)cellButtonTouchUpInside:(UIButton *)sender {
-    NSString *selectorName = sender.accessibilityIdentifier;
+    // A configured tap gesture overrides the button's own action; an empty tap
+    // store leaves the historical TouchUpInside selector untouched.
+    NSString *selectorName = preferencesSelectorForIdentifierScoped(sender.accessibilityIdentifier, 1, DXShortcutGestureTap, @"", self.configuration);
+    if (selectorName.length == 0) selectorName = sender.accessibilityIdentifier;
+    // Draft buttons have no action yet: they render but taps stay inert.
+    if (DXIsDraftActionSelector(selectorName)) return;
     if (![DXShortcutsGenerator isVisibleShortcutSelector:selectorName]) return;
 
     SEL action = NSSelectorFromString(selectorName);

@@ -173,3 +173,14 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "ICON_TYPE" = "Icon Type";
 "ICON_PATH" = "Icon Path";
 "EMOJI" = "Emoji";
+"GESTURE_TAP" = "Tap";
+"NEW_BUTTON" = "New Button";
+"MAX_BUTTONS_REACHED" = "A toolbar can hold up to %d buttons";
+"DUPLICATE_ACTION" = "This action is already in the toolbar";
+"CHOOSE_TAP_FIRST" = "Set the tap action first";
+"FOOTER_TOOLBAR_BUTTONS" = "Tap a button to edit its gestures, drag to reorder, up to %d buttons. Use “+” to add a new button.";
+"ANSWER_OK" = "OK";
+"SAVE" = "Save";
+"DEFAULT_BUTTON_NAME" = "Action";
+"TEST_INPUT_FIELD" = "Test Field (tap to try the toolbar buttons)";
+"TEST_INPUT_FIELD_PLACEHOLDER" = "Type here to test the toolbar…";
