@@ -1,5 +1,6 @@
 #import "DXPGesturePickerController.h"
 #import "DXPCustomActionViewController.h"
+#import "DXPSubActionsController.h"
 #import "../DXHelper.h"
 #import "../DXShortcutsGenerator.h"
 #import "../common.h"
@@ -105,12 +106,23 @@ static NSBundle *tweakBundle;
     return ([action isKindOfClass:[NSString class]] && action.length > 0) ? action : nil;
 }
 
+// All preference stores that carry per-button entries: the six gesture stores
+// plus the ordered sub-action list. Pending new buttons stage under one
+// sentinel identifier in every store; cleanup/re-key must cover all of them.
+- (NSArray<NSString *> *)perButtonPreferenceKeys {
+    NSMutableArray<NSString *> *keys = [NSMutableArray array];
+    for (NSInteger gesture = DXShortcutGestureLongPress; gesture <= DXShortcutGestureTap; gesture++) {
+        [keys addObject:DXCustomActionsKeyForGesture((int)gesture, self.configuration)];
+    }
+    [keys addObject:DXScopedPreferenceKey(kSubActionskey, self.configuration)];
+    return keys;
+}
+
 - (void)removeCustomActionEntriesWithIdentifier:(NSString *)identifier {
     if (![identifier isKindOfClass:[NSString class]] || identifier.length == 0) return;
     NSMutableDictionary *prefs = [[[DXPrefsManager sharedInstance] readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
     BOOL changed = NO;
-    for (NSInteger gesture = DXShortcutGestureLongPress; gesture <= DXShortcutGestureTap; gesture++) {
-        NSString *key = DXCustomActionsKeyForGesture((int)gesture, self.configuration);
+    for (NSString *key in [self perButtonPreferenceKeys]) {
         NSArray *entries = prefs[key];
         if (![entries isKindOfClass:[NSArray class]]) continue;
         NSArray *filtered = [entries filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"identifier != %@", identifier]];
@@ -121,12 +133,11 @@ static NSBundle *tweakBundle;
     if (changed) [[DXPrefsManager sharedInstance] writePrefs:prefs];
 }
 
-// While a new button is pending, its gesture choices are stored under one
-// sentinel identifier across all gesture stores; on save they are re-keyed to
-// the button's real identifier.
+// While a new button is pending, its gesture choices and sub-actions are
+// stored under one sentinel identifier across all stores; on save they are
+// re-keyed to the button's real identifier.
 - (void)rekeyPendingGestureEntriesToIdentifier:(NSString *)identifier prefs:(NSMutableDictionary *)prefs {
-    for (NSInteger gesture = DXShortcutGestureLongPress; gesture <= DXShortcutGestureTap; gesture++) {
-        NSString *key = DXCustomActionsKeyForGesture((int)gesture, self.configuration);
+    for (NSString *key in [self perButtonPreferenceKeys]) {
         NSArray *entries = prefs[key];
         if (![entries isKindOfClass:[NSArray class]]) continue;
         NSMutableArray *mutableEntries = [entries mutableCopy];
@@ -410,6 +421,13 @@ static NSBundle *tweakBundle;
             [snippetEntrySpecifiers addObject:gestureSpec];
         }
 
+        PSSpecifier *subActionGroup = [PSSpecifier preferenceSpecifierNamed:LOCALIZED(@"ADD_SUB_ACTION") target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
+        [snippetEntrySpecifiers addObject:subActionGroup];
+
+        PSSpecifier *subActionSpec = [PSSpecifier preferenceSpecifierNamed:LOCALIZED(@"SUB_ACTIONS") target:nil set:nil get:nil detail:NSClassFromString(@"DXPSubActionsController") cell:PSLinkListCell edit:nil];
+        [subActionSpec setProperty:LOCALIZED(@"SUB_ACTIONS") forKey:@"label"];
+        [snippetEntrySpecifiers addObject:subActionSpec];
+
         _specifiers = snippetEntrySpecifiers;
 
     }
@@ -430,6 +448,24 @@ static NSBundle *tweakBundle;
     if (editField) {
         [tableView deselectRowAtIndexPath:indexPath animated:YES];
         [editField becomeFirstResponder];
+        return;
+    }
+
+    // The sub-action row opens the ordered "添加子动作" editor.
+    if ([cell.textLabel.text isEqualToString:LOCALIZED(@"SUB_ACTIONS")]) {
+        DXPSubActionsController *subActionsController = [[DXPSubActionsController alloc] init];
+        subActionsController.fullOrder = self.fullOrder;
+        // While the new button is unsaved, sub-actions accumulate under one
+        // sentinel identifier and are re-keyed on Save.
+        subActionsController.identifier = self.pendingNewEntry ? kNewButtonPendingIdentifier : self.identifier;
+        subActionsController.configuration = self.configuration;
+        subActionsController.title = LOCALIZED(@"SUB_ACTIONS");
+
+        [subActionsController setRootController: [self rootController]];
+        [subActionsController setParentController: [self parentController]];
+        [self pushController:subActionsController];
+
+        [tableView deselectRowAtIndexPath:indexPath animated:YES];
         return;
     }
 

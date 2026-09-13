@@ -2,6 +2,8 @@
 #import <Preferences/PSSpecifier.h>
 #import "../common.h"
 
+@class DXSettingsRow;
+
 @interface DXPManageShortcutsController : PSViewController <UITableViewDelegate, UITableViewDataSource, UITextFieldDelegate>
 @property (strong, nonatomic) UITableView *tableView;
 @property (strong, nonatomic) UITextField *testInputField;
@@ -10,4 +12,9 @@
 @property(nonatomic, retain) UIBarButtonItem *addBtn;
 @property(nonatomic, copy) NSString *shortcutsPreferenceKey;
 @property(nonatomic, assign, getter=isTopConfiguration) BOOL topConfiguration;
+
+// Settings rows are built once per page load; every row resolves its
+// preference key for this page's toolbar scope.
+@property (nonatomic, copy) NSArray<DXSettingsRow *> *appearanceRows;
+@property (nonatomic, copy) NSArray<DXSettingsRow *> *offsetRows;
 @end

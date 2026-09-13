@@ -45,25 +45,22 @@
 #define kSwipeDownCustomActionskey @"swipedownactions"
 #define kSwipeLeftCustomActionskey @"swipeleftactions"
 #define kSwipeRightCustomActionskey @"swiperightactions"
+#define kSubActionskey @"subactions"
+#define kTopSubActionskey @"topsubactions"
 #define kShortcutsTintEnabled @"shortcutstintBOOL"
 #define kShortcutsBackgroundTintEnabled @"shortcutsbackgroundtintBOOL"
 #define kTopToolbarBackgroundTintKey @"toptoolbarbackgroundtint"
 #define kTopToolbarBackgroundTintEnabledKey @"toptoolbarbackgroundtintBOOL"
 #define kPasteAndGoEnabledkey @"pasteandgo"
-#define kTopInsetkey @"topinset"
-#define kBottomInsetkey @"bottominset"
-#define kLeftInsetkey @"leftinset"
-#define kRightInsetkey @"rightinset"
-#define kLeadinfOffsetkey @"leadingoffset"
-#define kTrailingOffsetkey @"trailingoffset"
 #define kHeightOffsetkey @"heightoffset"
-#define kBottomOffsetkey @"bottomoffset"
-#define kAttemptOffsetAutoAdjustInOneHandedkey @"rightinset"
 #define kEnabledSmartDeleteForwardkey @"smartdeleteforwardBOOL"
 #define kShortLabelEnabledKey @"shortLabelBOOL"
 #define kCellHeightkey @"shortcutheight"
 #define kCellRadiuskey @"shortcutradius"
 #define kCellSpacingkey @"shortcutspacing"
+#define kCellBorderEnabledkey @"shortcutborderBOOL"
+#define kCellBorderWidthkey @"shortcutborderwidth"
+#define kButtonWidthScalekey @"shortcutwidthscale"
 #define kSpongebobEntropyKey @"spongebobEntropy"
 
 #define kbuttonsImages12 0
@@ -74,31 +71,19 @@
 #define tweakVersion @"1.3.1"
 #define maxdefaultshortcuts 6
 #define maxshortcutpersection 6
-#define maxshortcutpersection_onehanded 6
 #define granularity 3
 
 
-#define topInsetDefault 22.0f
-#define bottomInsetDefault 0.0f
-#define leftInsetDefault 0.0f
-#define rightInsetDefault 0.0f
-
-#define leadingOffsetDefault 69.0f
-#define trailingOffsetDefault -60.0f
 #define heightOffsetDefault 60.0f
-#define bottomOffsetDefault -22.0f
-
-#define leadingOffsetHandBiasRightDefault 100.0f
-#define trailingOffsetHandBiasRightDefault -65.0f
-
-#define leadingOffsetHandBiasLeftDefault 69.0f
-#define trailingOffsetHandBiasLeftDefault -100.0f
 
 #define searchedCountEaster 100
 
 #define spacingBetweenCellsDefault 3
 #define cellsHeightDefault 30
 #define cellsRadiusDefault 5
+
+#define buttonBorderWidthDefault 1.0f
+#define buttonWidthScaleDefault 100.0f
 
 // The shared snapshot must live where sandboxed app hosts can read it.  The
 // jailbreak root (/var/jb on rootless, resolved by DX_ROOT_PATH_NS) is readable
@@ -274,14 +259,4 @@ typedef NS_ENUM(NSInteger, DXStudlyCapsType){
 @interface FBSSystemService : NSObject
 + (id)sharedService;
 - (void)sendActions:(id)arg1 withResult:(/*^block*/id)arg2;
-@end
-
-@interface UIKeyboardPreferencesController : NSObject
-@property (assign) long long handBias;
-+(UIKeyboardPreferencesController *)sharedPreferencesController;
-+(id)valueForPreferenceKey:(id)arg1 domain:(id)arg2 ;
--(void)setHandBias:(long long)arg1 ; //0 -normal,2-left, 1-right
--(BOOL)boolForKey:(int)arg1 ;
--(void)setValue:(id)arg1 forKey:(int)arg2 ;
--(void)synchronizePreferences;
 @end

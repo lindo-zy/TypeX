@@ -95,23 +95,21 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 //=====================CUSTOM ACTIONS PAGE=====================
 "ACTION" = "Action";
 
-//=====================ADVANCED SETTINGS PAGE=====================
+//=====================TOOLBAR SETTINGS (top / bottom pages)=====================
 //Shortcuts
 "FOOTER_SPACING" = "Spacing between shortcuts";
 "FOOTER_HEIGHT" = "Height";
-"FOOTER_RADIUS" = "Radius";
+"FOOTER_RADIUS" = "Corner radius (applies when background tint or border is on)";
+//Button settings (per toolbar)
+"BUTTON_SETTINGS" = "Button Settings";
+"FOOTER_BUTTON_SETTINGS" = "These settings apply only to this toolbar; the top and bottom toolbars are styled independently. The border color adapts to light and dark mode. Button Size is the percentage of the cell width each button fills.";
+"BORDER_ENABLED" = "Show Border";
+"BORDER_WIDTH" = "Border Thickness";
+"BUTTON_WIDTH" = "Button Size";
+"TOOLBAR_HEIGHT" = "Toolbar Height";
 //Offsets
 "OFFSETS" = "Offsets";
-"FOOTER_OFFSETS_LEADING" = "Leading (Left)";
-"FOOTER_OFFSETS_TRAILING" = "Trailing (Right)";
-"FOOTER_OFFSETS_BOTTOM" = "Bottom (Vertical)";
-"FOOTER_OFFSETS_NOTICE" = "NOTE: Customized offsets might not work properly in one-handed keyboard mode.";
 //Insets
-"INSETS" = "Insets";
-"FOOTER_INSETS_TOP" = "Top";
-"FOOTER_INSETS_BOTTOM" = "Bottom";
-"FOOTER_INSETS_LEFT" = "Left";
-"FOOTER_INSETS_RIGHT" = "Right";
 
 //=====================KEYBOARD INPUT BEHAVIOR=====================
 "DISABLED_INPUT_TYPE" = "Disabled Input Type";
@@ -127,6 +125,14 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SWIPE_DOWN" = "Swipe Down";
 "SWIPE_LEFT" = "Swipe Left";
 "SWIPE_RIGHT" = "Swipe Right";
+
+//=====================SUB ACTIONS PAGE=====================
+"SUB_ACTIONS" = "Sub-actions";
+"ADD_SUB_ACTION" = "Add Sub-actions";
+"SUB_ACTION" = "Sub-action";
+"ADD" = "Add";
+"CHOOSE_ACTION" = "Choose Action";
+"FOOTER_SUB_ACTIONS" = "On tap, these sub-actions run in order after the button's tap action. Use the minus button to delete a sub-action and drag its handle to reorder.";
 
 "TEXT" = "Text";
 
@@ -158,17 +164,9 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "DEFAULT" = "Default";
 "ANSWER_YES" = "Yes";
 "ANSWER_NO" = "No";
-"SPACING" = "Spacing";
-"HEIGHT" = "Height";
-"RADIUS" = "Radius";
-"LEADING" = "Leading";
-"TRAILING" = "Trailing";
-"LEFT_OFFSET" = "Left Offset";
-"BOTTOM_OFFSET" = "Bottom Offset";
-"TOP_INSET" = "Top Inset";
-"BOTTOM_INSET" = "Bottom Inset";
-"LEFT_INSET" = "Left Inset";
-"RIGHT_INSET" = "Right Inset";
+"SPACING" = "Button Spacing";
+"HEIGHT" = "Button Height";
+"RADIUS" = "Corner Radius";
 "DESCRIPTION" = "Description";
 "ICON_TYPE" = "Icon Type";
 "ICON_PATH" = "Icon Path";

@@ -37,6 +37,19 @@ typedef NS_ENUM(NSInteger, direction) {
 @property (nonatomic, assign) BOOL isWordSender;
 @property (strong, nonatomic) DXShortcutsGenerator *shortcutsGenerator;
 
+// Per-toolbar button chrome. Every value is read from the configuration-
+// scoped preference key ("top"-prefixed for the top toolbar), so the two
+// toolbars can be styled independently.
+@property (nonatomic, assign) CGFloat buttonHeight;
+@property (nonatomic, assign) CGFloat buttonRadius;
+@property (nonatomic, assign) CGFloat buttonSpacing;
+@property (nonatomic, assign) BOOL borderEnabled;
+@property (nonatomic, assign) CGFloat borderWidth;
+@property (nonatomic, assign) CGFloat widthScale;
+
+-(void)reloadButtonChrome;
+- (BOOL)buttonChromeActive;
+
 /// Rebuilds the active shortcut/keyboard-type data from the current preference domain.
 /// iOS 17 keeps the collection view alive while Settings writes preferences, so
 /// invalidating only the on-disk cache is not sufficient.

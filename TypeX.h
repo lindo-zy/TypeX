@@ -85,7 +85,6 @@ static inline UIResponder *DXKeyboardInputDelegate(UIKeyboardImpl *keyboard) {
 
 -(void)shouldUpdateLayoutWithDelay:(float)delay;
 - (id)_keyboardLayoutView;
--(void)handBiasChanged;
 -(void)toggleTypeX:(NSNotification*)notification;
 -(void)_dockItemButtonWasTapped:(id)arg1 withEvent:(id)arg2;
 -(void)updateTypeXTint;

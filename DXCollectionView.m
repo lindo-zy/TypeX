@@ -10,7 +10,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     return ![DXShortcutsGenerator isVisibleShortcutSelector:selector];
 }
 
-
 @interface DXCollectionView ()
 @property (nonatomic, assign, readwrite) BOOL shortcutConfigurationAvailable;
 @end
@@ -66,6 +65,28 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     return MAX(1, MIN(configured, maxshortcutpersection));
 }
 
+// Button chrome is per toolbar: every value lives under the configuration-
+// scoped key ("top"-prefixed on top of the keyboard, unprefixed below), so
+// adjusting one toolbar never moves the other. Call after `prefs` reflects the
+// current preference snapshot.
+-(void)reloadButtonChrome {
+    BOOL isTop = [self.configuration isEqualToString:@"top"];
+    CGFloat heightFallback = isTop ? 33.33
+        : (currentBackgroundTintColor ? cellsHeightDefault + 5 : cellsHeightDefault);
+    self.buttonHeight = preferencesFloat([self scopedPreferenceKey:kCellHeightkey], heightFallback);
+    self.buttonRadius = preferencesFloat([self scopedPreferenceKey:kCellRadiuskey], cellsRadiusDefault);
+    self.buttonSpacing = preferencesFloat([self scopedPreferenceKey:kCellSpacingkey], spacingBetweenCellsDefault);
+    self.borderEnabled = preferencesBool([self scopedPreferenceKey:kCellBorderEnabledkey], NO);
+    self.borderWidth = preferencesFloat([self scopedPreferenceKey:kCellBorderWidthkey], buttonBorderWidthDefault);
+    self.widthScale = preferencesFloat([self scopedPreferenceKey:kButtonWidthScalekey], buttonWidthScaleDefault);
+}
+
+// Buttons get visible chrome (per-button spacing, corner radius, spacing-aware
+// insets) when either the shared background tint or this toolbar's border is on.
+- (BOOL)buttonChromeActive {
+    return currentBackgroundTintColor != nil || self.borderEnabled;
+}
+
 - (instancetype)initWithConfiguration:(NSString *)configuration{
     
     BOOL isTopConfiguration = [configuration isEqualToString:@"top"];
@@ -73,10 +94,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         ? [[DXTopShortcutFlowLayout alloc] init]
         : [[UICollectionViewFlowLayout alloc] init];
     flowLayout.scrollDirection = UICollectionViewScrollDirectionHorizontal;
-    flowLayout.minimumInteritemSpacing = currentBackgroundTintColor?buttonSpacing:0;
     flowLayout.minimumLineSpacing = 0;
-    
-    
+
+
     if (self = [super initWithFrame:CGRectZero collectionViewLayout:flowLayout]) {
         // Keep the configured array order stable before and after the view is
         // attached to the keyboard's accessory hierarchy.
@@ -89,6 +109,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         // preference snapshot.  There is no default/cache view that is later
         // covered by a second user-configured view.
         [self reloadShortcutConfiguration];
+        flowLayout.minimumInteritemSpacing = [self buttonChromeActive] ? self.buttonSpacing : 0;
         
         self.hapticType = 1;
         self.refreshView = YES;
@@ -552,6 +573,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
     self.shortcuts = @[images12, images13, selectors];
     //HBLogDebug(@"reloadShortcutConfiguration built shortcuts count=%lu for scope=%@", (unsigned long)images12.count, self.configuration);
+    [self reloadButtonChrome];
+    ((UICollectionViewFlowLayout *)self.collectionViewLayout).minimumInteritemSpacing = [self buttonChromeActive] ? self.buttonSpacing : 0;
     self.pagingEnabled = YES;
     self.indexArray = nil;
     self.sectionOffsetForwardArray = nil;
@@ -1636,45 +1659,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 -(NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section
 {
-    UIKeyboardPreferencesController *kbPrefsController = [objc_getClass("UIKeyboardPreferencesController") sharedPreferencesController];
-    if (kbPrefsController){
-        long long currentHandBias = kbPrefsController.handBias;
-        //HBLogDebug(@"currentHandBias: %lld",currentHandBias);
-        if (currentHandBias > 0){
-            //self.pagingEnabled = YES;
-            //HBLogDebug(@"numberOfItemsInSection: %lu", ((NSArray *)_shortcuts[kbuttonsImages12]).count>5?5:((NSArray *)_shortcuts[kbuttonsImages12]).count);
-            //return ((NSArray *)_shortcuts[kbuttonsImages12]).count>5?5:((NSArray *)_shortcuts[kbuttonsImages12]).count;
-            //if (([self numberOfSectionsInCollectionView:collectionView] -1) == section){
-            if (([self numberOfSectionsInCollectionView:collectionView] -1) == section){
-                return ((NSArray *)_shortcuts[kbuttonsImages12]).count-[self shortcutsPerSection]*(section);
-            }else{
-                return ((NSArray *)_shortcuts[kbuttonsImages12]).count>[self shortcutsPerSection]?[self shortcutsPerSection]:((NSArray *)_shortcuts[kbuttonsImages12]).count;
-            }
-        }else{
-            //if (section == ceil((float)(((NSArray *)_shortcuts[kbuttonsImages12]).count)/6.0f)){
-            //return ((NSArray *)_shortcuts[kbuttonsImages12]).count - 6*(section);
-            //}else{
-            //self.pagingEnabled = NO;
-            //return ((NSArray *)_shortcuts[kbuttonsImages12]).count>6?6:((NSArray *)_shortcuts[kbuttonsImages12]).count-6*(section);
-            if (([self numberOfSectionsInCollectionView:collectionView] -1) == section){
-                //HBLogDebug(@"NUM: %ld, SECTION: %ld", ((NSArray *)_shortcuts[kbuttonsImages12]).count-preferencesInt(kShortcutsPerSection, maxshortcutpersection)*(section), section );
-                return ((NSArray *)_shortcuts[kbuttonsImages12]).count-[self shortcutsPerSection]*(section);
-            }else{
-                //HBLogDebug(@"NUM: %ld, SECTION: %ld", ((NSArray *)_shortcuts[kbuttonsImages12]).count>preferencesInt(kShortcutsPerSection, maxshortcutpersection)?preferencesInt(kShortcutsPerSection, maxshortcutpersection):((NSArray *)_shortcuts[kbuttonsImages12]).count, section );
-                
-                return ((NSArray *)_shortcuts[kbuttonsImages12]).count>[self shortcutsPerSection]?[self shortcutsPerSection]:((NSArray *)_shortcuts[kbuttonsImages12]).count;
-            }
-            //return ((NSArray *)_shortcuts[kbuttonsImages12]).count-6*(section);
-            //}
-            //return ((NSArray *)_shortcuts[kbuttonsImages12]).count;
-            //HBLogDebug(@"numberOfItemsInSection: %lu", ((NSArray *)_shortcuts[kbuttonsImages12]).count);
-            
-        }}
-    //HBLogDebug(@"ITEMS: %ld",((NSArray *)_shortcuts[kbuttonsImages12]).count>preferencesInt(kShortcutsPerSection, maxshortcutpersection)?preferencesInt(kShortcutsPerSection, maxshortcutpersection):((NSArray *)_shortcuts[kbuttonsImages12]).count-preferencesInt(kShortcutsPerSection, maxshortcutpersection)*(section) );
-    //return ((NSArray *)_shortcuts[kbuttonsImages12]).count>6?6:((NSArray *)_shortcuts[kbuttonsImages12]).count-6*(section);
-    //HBLogDebug(@"XXXX");
-    
-    if (([self numberOfSectionsInCollectionView:collectionView] -1 )== section){
+    if (([self numberOfSectionsInCollectionView:collectionView] -1) == section){
         return ((NSArray *)_shortcuts[kbuttonsImages12]).count-[self shortcutsPerSection]*(section);
     }else{
         return ((NSArray *)_shortcuts[kbuttonsImages12]).count>[self shortcutsPerSection]?[self shortcutsPerSection]:((NSArray *)_shortcuts[kbuttonsImages12]).count;
@@ -1744,6 +1729,34 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     // store leaves the historical TouchUpInside selector untouched.
     NSString *selectorName = preferencesSelectorForIdentifierScoped(sender.accessibilityIdentifier, 1, DXShortcutGestureTap, @"", self.configuration);
     if (selectorName.length == 0) selectorName = sender.accessibilityIdentifier;
+
+    // Configured sub-actions chain after the tap action in stored order, so a
+    // single tap runs a whole sequence. Draft buttons (no intrinsic action)
+    // stay inert except for their sub-actions.
+    NSArray<NSString *> *subActions = preferencesSubActionSelectorsForIdentifier(sender.accessibilityIdentifier, self.configuration);
+    if (subActions.count > 0) {
+        NSMutableArray<NSString *> *chain = [NSMutableArray arrayWithArray:subActions];
+        if (!DXIsDraftActionSelector(selectorName) && [DXShortcutsGenerator isVisibleShortcutSelector:selectorName]) {
+            [chain insertObject:selectorName atIndex:0];
+        }
+
+        SEL tapAction = NSSelectorFromString(chain.firstObject);
+        if (![self respondsToSelector:tapAction]) {
+            HBLogWarn(@"TypeX ignoring unimplemented single-tap %@", chain.firstObject);
+            return;
+        }
+        ((void(*)(id, SEL, id))objc_msgSend)(self, tapAction, sender);
+        for (NSUInteger index = 1; index < chain.count; index++) {
+            SEL action = NSSelectorFromString(chain[index]);
+            if (![self respondsToSelector:action]) {
+                HBLogWarn(@"TypeX ignoring unimplemented sub-action %@", chain[index]);
+                continue;
+            }
+            ((void(*)(id, SEL, id))objc_msgSend)(self, action, sender);
+        }
+        return;
+    }
+
     // Draft buttons have no action yet: they render but taps stay inert.
     if (DXIsDraftActionSelector(selectorName)) return;
     if (![DXShortcutsGenerator isVisibleShortcutSelector:selectorName]) return;
@@ -1832,7 +1845,14 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     //self.layer.masksToBounds = NO;
     
     if (useShortenedLabel) cell.btn.clipsToBounds = YES; else cell.btn.clipsToBounds = NO;
-    if (currentBackgroundTintColor)  cell.btn.layer.cornerRadius = 5;
+
+    // Button chrome: corner radius and the optional outlined border. The border
+    // color follows the system label color so it stays visible on both light
+    // and dark keyboards.
+    cell.btn.layer.cornerRadius = [self buttonChromeActive] ? self.buttonRadius : 0;
+    cell.btn.layer.borderWidth = self.borderEnabled ? self.borderWidth : 0;
+    cell.btn.layer.borderColor = self.borderEnabled ? [UIColor labelColor].CGColor : NULL;
+    [cell applyButtonWidthMultiplier:self.widthScale / buttonWidthScaleDefault];
     cell.btn.backgroundColor = currentBackgroundTintColor ? : [UIColor clearColor];
     cell.btn.tintColor = currentTintColor;
     [cell.btn setTitleColor:currentTintColor forState:UIControlStateNormal];
@@ -1851,43 +1871,39 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     //CGFloat useableWidth = collectionView.frame.size.width / ((NSArray *)_shortcuts[kbuttonsImages12]).count;
     //CGFloat useableWidth = collectionView.frame.size.width / ([self numberOfItemsInSection:indexPath.section] <= preferencesInt(kShortcutsPerSection, maxshortcutpersection) ? (((NSArray *)_shortcuts[kbuttonsImages12]).count <=preferencesInt(kShortcutsPerSection, maxshortcutpersection) ? ((NSArray *)_shortcuts[kbuttonsImages12]).count : preferencesInt(kShortcutsPerSection, maxshortcutpersection)) :  [self numberOfItemsInSection:indexPath.section]);
     if ([self.configuration isEqualToString:@"top"]) {
-        CGFloat width = collectionView.frame.size.width / MAX(1, [self numberOfItemsInSection:indexPath.section]);
-        return CGSizeMake(width, 33.33);
+        NSInteger items = MAX(1, [self numberOfItemsInSection:indexPath.section]);
+        CGFloat gaps = [self buttonChromeActive] ? self.buttonSpacing * (items - 1) : 0;
+        CGFloat width = MAX(0, (collectionView.frame.size.width - gaps) / items);
+        return CGSizeMake(width, self.buttonHeight);
     }
-    UIKeyboardPreferencesController *kbPrefsController = [objc_getClass("UIKeyboardPreferencesController") sharedPreferencesController];
-    if (kbPrefsController){
-        long long currentHandBias = kbPrefsController.handBias;
-        //HBLogDebug(@"currentHandBias: %lld",currentHandBias);
-        if (currentHandBias > 0){
-            int shortcutsPerSectionOneHanded = MIN([self shortcutsPerSection], maxshortcutpersection_onehanded);
-            CGFloat useableWidth = ((currentBackgroundTintColor && collectionView.frame.size.width-4*buttonSpacing >0) ? collectionView.frame.size.width - 4*buttonSpacing : collectionView.frame.size.width) / ([self numberOfItemsInSection:indexPath.section] <= maxshortcutpersection_onehanded ? (((NSArray *)_shortcuts[kbuttonsImages12]).count <= maxshortcutpersection_onehanded ? ((NSArray *)_shortcuts[kbuttonsImages12]).count : shortcutsPerSectionOneHanded) :  shortcutsPerSectionOneHanded);
-            return CGSizeMake(useableWidth, buttonHeight);
-            
-        }
-    }
-    
-    CGFloat useableWidth = ((currentBackgroundTintColor && collectionView.frame.size.width-4*buttonSpacing >0) ? collectionView.frame.size.width - 4*buttonSpacing : collectionView.frame.size.width) / ([self numberOfItemsInSection:indexPath.section] <= [self shortcutsPerSection] ? (((NSArray *)_shortcuts[kbuttonsImages12]).count <= [self shortcutsPerSection] ? ((NSArray *)_shortcuts[kbuttonsImages12]).count : [self shortcutsPerSection]) :  [self numberOfItemsInSection:indexPath.section]);
-    
-    return CGSizeMake(useableWidth, buttonHeight);
+
+    CGFloat useableWidth = (([self buttonChromeActive] && collectionView.frame.size.width-4*self.buttonSpacing >0) ? collectionView.frame.size.width - 4*self.buttonSpacing : collectionView.frame.size.width) / ([self numberOfItemsInSection:indexPath.section] <= [self shortcutsPerSection] ? (((NSArray *)_shortcuts[kbuttonsImages12]).count <= [self shortcutsPerSection] ? ((NSArray *)_shortcuts[kbuttonsImages12]).count : [self shortcutsPerSection]) :  [self numberOfItemsInSection:indexPath.section]);
+
+    return CGSizeMake(useableWidth, self.buttonHeight);
 }
 
 - (UIEdgeInsets)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout insetForSectionAtIndex:(NSInteger)section {
     if ([self.configuration isEqualToString:@"top"]) {
-        return UIEdgeInsetsMake(8.0, 0.0, 0.0, 0.0);
+        if (![self buttonChromeActive]) return UIEdgeInsetsMake(8.0, 0.0, 0.0, 0.0);
+        // Half a gap on each side keeps N slots plus N-1 gaps centered in the bar.
+        CGFloat halfGap = self.buttonSpacing / 2.0;
+        return UIEdgeInsetsMake(8.0, halfGap, 0.0, halfGap);
     }
-    if (currentBackgroundTintColor){
+    // Bottom bar insets are fixed (22pt top padding; the chrome spacing keeps
+    // the tinted buttons clear of the dock's edge buttons).
+    if ([self buttonChromeActive]){
         if (section == 0){
-            return UIEdgeInsetsMake(topInset, leftInset+2*buttonSpacing, bottomInset, rightInset);
-            
+            return UIEdgeInsetsMake(22.0, 2*self.buttonSpacing, 0.0, 0.0);
+
         }
-        return UIEdgeInsetsMake(topInset, leftInset+buttonSpacing, bottomInset, rightInset);
-        
+        return UIEdgeInsetsMake(22.0, self.buttonSpacing, 0.0, 0.0);
+
     }
-    return UIEdgeInsetsMake(topInset, leftInset, bottomInset, rightInset);
+    return UIEdgeInsetsMake(22.0, 0.0, 0.0, 0.0);
 }
 
 - (CGFloat)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout*)collectionViewLayout minimumLineSpacingForSectionAtIndex:(NSInteger)section{
-    return currentBackgroundTintColor?buttonSpacing:0;
+    return [self buttonChromeActive]?self.buttonSpacing:0;
 }
 
 @end

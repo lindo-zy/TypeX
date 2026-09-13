@@ -30,25 +30,7 @@ extern NSBundle *tweakBundle;
 extern BOOL firstInit;
 extern DXStudlyCapsType spongebobEntropy;
 
-extern float topInset;
-extern float bottomInset;
-extern float leftInset;
-extern float rightInset;
-
-extern float buttonRadius;
-extern float buttonHeight;
-extern float buttonSpacing;
-
-extern CGFloat leadingOffset;
-extern CGFloat trailingOffset;
 extern CGFloat heightOffset;
-extern CGFloat bottomOffset;
-
-extern CGFloat leadingHBRightOffset;
-extern CGFloat trailingHBRightOffset;
-
-extern CGFloat leadingHBLeftOffset;
-extern CGFloat trailingHBLeftOffset;
 
 #ifdef __cplusplus
 extern "C" {
@@ -59,6 +41,7 @@ float preferencesFloat(NSString* key, float fallback);
 int preferencesInt(NSString* key, int fallback);
 NSString *preferencesSelectorForIdentifier(NSString* identifier, int selectorNum, int gestureType, NSString *fallback);
 NSString *preferencesSelectorForIdentifierScoped(NSString* identifier, int selectorNum, int gestureType, NSString *fallback, NSString *configuration);
+NSArray<NSString *> *preferencesSubActionSelectorsForIdentifier(NSString* identifier, NSString *configuration);
 
 #ifdef __cplusplus
 }

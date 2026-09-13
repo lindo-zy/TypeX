@@ -96,23 +96,21 @@
 //=====================CUSTOM ACTIONS PAGE=====================
 "ACTION" = "动作";
 
-//=====================ADVANCED SETTINGS PAGE=====================
+//=====================TOOLBAR SETTINGS (top / bottom pages)=====================
 //Shortcuts
 "FOOTER_SPACING" = "快捷方式之间的间距";
 "FOOTER_HEIGHT" = "高度";
-"FOOTER_RADIUS" = "半径";
+"FOOTER_RADIUS" = "按钮圆角半径（开启背景或边框后生效）";
+//Button settings (per toolbar)
+"BUTTON_SETTINGS" = "按钮设置";
+"FOOTER_BUTTON_SETTINGS" = "以下设置仅对当前工具栏生效，顶部与底部工具栏相互独立。边框颜色自动适配深浅色模式；按钮大小为按钮宽度占单元格宽度的百分比。";
+"BORDER_ENABLED" = "显示边框";
+"BORDER_WIDTH" = "边框粗细";
+"BUTTON_WIDTH" = "按钮大小";
+"TOOLBAR_HEIGHT" = "工具栏高度";
 //Offsets
 "OFFSETS" = "偏移";
-"FOOTER_OFFSETS_LEADING" = "左侧偏移";
-"FOOTER_OFFSETS_TRAILING" = "右侧偏移";
-"FOOTER_OFFSETS_BOTTOM" = "垂直偏移";
-"FOOTER_OFFSETS_NOTICE" = "注意：在单手键盘模式下，自定义偏移量可能无法正常工作。";
 //Insets
-"INSETS" = "内边距";
-"FOOTER_INSETS_TOP" = "上边距";
-"FOOTER_INSETS_BOTTOM" = "下边距";
-"FOOTER_INSETS_LEFT" = "左边距";
-"FOOTER_INSETS_RIGHT" = "右边距";
 
 //=====================KEYBOARD INPUT BEHAVIOR=====================
 "DISABLED_INPUT_TYPE" = "已禁用的输入法";
@@ -128,6 +126,14 @@
 "SWIPE_DOWN" = "下滑";
 "SWIPE_LEFT" = "左滑";
 "SWIPE_RIGHT" = "右滑";
+
+//=====================SUB ACTIONS PAGE=====================
+"SUB_ACTIONS" = "子动作";
+"ADD_SUB_ACTION" = "添加子动作";
+"SUB_ACTION" = "子动作";
+"ADD" = "添加";
+"CHOOSE_ACTION" = "选择动作";
+"FOOTER_SUB_ACTIONS" = "点按按钮时，这些子动作将在点按动作之后按顺序执行。点左侧减号删除子动作，拖动右侧手柄调整顺序。";
 
 "TEXT" = "文本";
 
@@ -157,17 +163,9 @@
 "SPONGEBOB_ALTERNATE" = "交替";
 "SPONGEBOB_VOWEL" = "元音";
 "SPONGEBOB_CONSONENT" = "辅音";
-"SPACING" = "间距";
-"HEIGHT" = "高度";
+"SPACING" = "按钮间距";
+"HEIGHT" = "按钮高度";
 "RADIUS" = "圆角半径";
-"LEADING" = "左侧偏移";
-"TRAILING" = "右侧偏移";
-"LEFT_OFFSET" = "左侧偏移";
-"BOTTOM_OFFSET" = "底部偏移";
-"TOP_INSET" = "顶部内缩";
-"BOTTOM_INSET" = "底部内缩";
-"LEFT_INSET" = "左侧内缩";
-"RIGHT_INSET" = "右侧内缩";
 "DESCRIPTION" = "描述";
 "ICON_TYPE" = "图标类型";
 "ICON_PATH" = "图标路径";

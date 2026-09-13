@@ -270,25 +270,10 @@ static void DXRefreshActiveTopToolbar(void) {
 
 static DXTopToolbarLifecycleObserver *topToolbarLifecycleObserver;
 
-float topInset = topInsetDefault;
-float bottomInset = bottomInsetDefault;
-float leftInset = leftInsetDefault;
-float rightInset = rightInsetDefault;
+// Button chrome (height/radius/spacing/border/width scale) is read per
+// configuration inside DXCollectionView; there are no shared globals for it.
 
-float buttonRadius = cellsRadiusDefault;
-float buttonHeight = cellsHeightDefault;
-float buttonSpacing = spacingBetweenCellsDefault;
-
-CGFloat leadingOffset = leadingOffsetDefault;
-CGFloat trailingOffset = trailingOffsetDefault;
 CGFloat heightOffset = heightOffsetDefault;
-CGFloat bottomOffset = bottomOffsetDefault;
-
-CGFloat leadingHBRightOffset = leadingOffsetHandBiasRightDefault;
-CGFloat trailingHBRightOffset = trailingOffsetHandBiasRightDefault;
-
-CGFloat leadingHBLeftOffset = leadingOffsetHandBiasLeftDefault;
-CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
 
 #pragma mark hook
 %group TypeX
@@ -392,58 +377,48 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
         
         [dockView addSubview:self.typex];
         
-        float leading = leadingOffset;
-        float trailing = trailingOffset;
-        
-        //HBLogDebug(@"BEFORE leading: %f, trailing: %f",leading, trailing );
-        
+        // The dock mode decides which stock dock buttons survive; the toolbar
+        // insets clear the buttons that remain (69/-60 keep both stock buttons,
+        // 5/-5 stretch the bar to the dock's edge).
+        float leading = 69.0f;
+        float trailing = -60.0f;
+
         switch (preferencesInt(kDockModekey, 0)){
             case 1:
-                if (fabs(leading - leadingOffsetDefault) > 0.5f) break;
                 leading = 5.0f;
                 break;
             case 2:
-                if (fabs(trailing - trailingOffsetDefault) > 0.5f) break;
                 trailing = -5.0f;
                 break;
             case 3:
-                if (fabs(leading - leadingOffsetDefault) > 0.5f){
-                }else{
-                    leading = 5.0f;
-                }
-                if (fabs(trailing - trailingOffsetDefault) > 0.5f){
-                }else{
-                    trailing = -5.0f;
-                }
+                leading = 5.0f;
+                trailing = -5.0f;
                 break;
         }
-        //HBLogDebug(@"AFTER leading: %f, trailing: %f",leading, trailing );
-        
+
         NSLayoutConstraint *leadingConstraint = [NSLayoutConstraint constraintWithItem:self.typex attribute:NSLayoutAttributeLeading relatedBy:NSLayoutRelationEqual toItem:dockView attribute:NSLayoutAttributeLeading multiplier:1.0 constant:leading];
         leadingConstraint.identifier = @"TypeX";
         [dockView addConstraint:leadingConstraint];
-        
+
         NSLayoutConstraint *trailingConstraint = [NSLayoutConstraint constraintWithItem:self.typex attribute:NSLayoutAttributeTrailing relatedBy:NSLayoutRelationEqual toItem:dockView attribute:NSLayoutAttributeTrailing multiplier:1.0 constant:trailing];
         trailingConstraint.identifier = @"TypeX";
         [dockView addConstraint:trailingConstraint];
-        
+
         NSLayoutConstraint *heightConstraint = [NSLayoutConstraint constraintWithItem:self.typex attribute:NSLayoutAttributeHeight relatedBy:NSLayoutRelationEqual toItem:nil attribute:NSLayoutAttributeNotAnAttribute multiplier:1.0 constant:heightOffset];
         heightConstraint.identifier = @"TypeX";
         [dockView addConstraint:heightConstraint];
-        
-        NSLayoutConstraint *bottomConstraint = [NSLayoutConstraint constraintWithItem:self.typex attribute:NSLayoutAttributeBottom relatedBy:NSLayoutRelationEqual toItem:dockView attribute:NSLayoutAttributeBottom multiplier:1.0 constant:bottomOffset];
+
+        // Fixed lift above the dock's bottom edge (the former vertical-offset default).
+        NSLayoutConstraint *bottomConstraint = [NSLayoutConstraint constraintWithItem:self.typex attribute:NSLayoutAttributeBottom relatedBy:NSLayoutRelationEqual toItem:dockView attribute:NSLayoutAttributeBottom multiplier:1.0 constant:-22.0f];
         bottomConstraint.identifier = @"TypeX";
         [dockView addConstraint:bottomConstraint];
-        
+
         dispatch_async(dispatch_get_main_queue(), ^{
-            
+
             kbImpl = [objc_getClass("UIKeyboardImpl") activeInstance];
             delegate = DXKeyboardInputDelegate(kbImpl);
-            [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handBiasChanged) name:@"handBiasChanged" object:nil];
             [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(toggleTypeX:) name:@"toggleTypeX" object:nil];
-            
-            [self handBiasChanged];
-            
+
             // The keyboard can finish creating its private subviews after UIKeyboardImpl's
             // first layout pass. Refresh once the dock has joined the hierarchy as well.
             DXRefreshActiveTopToolbar();
@@ -575,141 +550,6 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
     }
     DXRefreshActiveTopToolbar();
     [self layoutSubviews];
-    
-}
-
-%new
--(void)handBiasChanged{
-    UIKeyboardPreferencesController *kbPrefsController = [%c(UIKeyboardPreferencesController) sharedPreferencesController];
-    if (kbPrefsController){
-        int constraintsAdjust = 0;
-        long long currentHandBias = kbPrefsController.handBias;
-        
-        float leading = leadingOffset;
-        float trailing = trailingOffset;
-        //HBLogDebug(@"HANDBIAS BEFORE leading: %f, trailing: %f",leading, trailing );
-        //HBLogDebug(@"fabs(leading - leadingOffsetDefault): %f", fabs(leading - leadingOffsetDefault));
-        //HBLogDebug(@"fabs(trailing - trailingOffsetDefault): %f", fabs(trailing - trailingOffsetDefault));
-        if (currentHandBias == 0){
-            switch (preferencesInt(kDockModekey, 0)){
-                case 1:
-                    if (fabs(leading - leadingOffsetDefault) > 0.5f) break;
-                    leading = 5.0f;
-                    break;
-                case 2:
-                    if (fabs(trailing - trailingOffsetDefault) > 0.5f) break;
-                    trailing = -5.0f;
-                    break;
-                case 3:
-                    if (fabs(leading - leadingOffsetDefault) > 0.5f){
-                    }else{
-                        leading = 5.0f;
-                    }
-                    if (fabs(trailing - trailingOffsetDefault) > 0.5f){
-                    }else{
-                        trailing = -5.0f;
-                    }
-                    break;
-            }
-        }else if (currentHandBias == 1){
-            leading = leadingHBRightOffset;
-            trailing = trailingHBRightOffset;
-            switch (preferencesInt(kDockModekey, 0)){
-                case 1:
-                    leading = 50;
-                    break;
-                case 2:
-                    trailing = -5;
-                    break;
-                case 3:
-                    leading = 50;
-                    trailing = -5;
-                    break;
-            }
-        }else if (currentHandBias == 2){
-            leading = leadingHBLeftOffset;
-            trailing = trailingHBLeftOffset;
-            switch (preferencesInt(kDockModekey, 0)){
-                case 1:
-                    leading = 5;
-                    break;
-                case 2:
-                    trailing = -45;
-                    break;
-                case 3:
-                    leading = 5;
-                    trailing = -45;
-                    break;
-            }
-        }
-        //HBLogDebug(@"HANDBIAS AFTER leading: %f, trailing: %f",leading, trailing );
-        
-        //HBLogDebug(@"received handbiaschangednotification: %lld", currentHandBias);
-        //if (currentHandBias == 0){
-        for (NSLayoutConstraint *constraint in self.constraints) {
-            if (constraint.firstAttribute == NSLayoutAttributeLeading && [constraint.identifier isEqualToString:@"TypeX"]) {
-                [self removeConstraint:constraint];
-                
-                NSLayoutConstraint *leadingConstraint = [NSLayoutConstraint constraintWithItem:self.typex attribute:NSLayoutAttributeLeading relatedBy:NSLayoutRelationEqual toItem:self attribute:NSLayoutAttributeLeading multiplier:1.0 constant:leading];
-                leadingConstraint.identifier = @"TypeX";
-                [self addConstraint:leadingConstraint];
-                constraintsAdjust = constraintsAdjust +1;
-            }else if (constraint.firstAttribute == NSLayoutAttributeTrailing && [constraint.identifier isEqualToString:@"TypeX"]) {
-                [self removeConstraint:constraint];
-                NSLayoutConstraint *trailingConstraint = [NSLayoutConstraint constraintWithItem:self.typex attribute:NSLayoutAttributeTrailing relatedBy:NSLayoutRelationEqual toItem:self attribute:NSLayoutAttributeTrailing multiplier:1.0 constant:trailing];
-                trailingConstraint.identifier = @"TypeX";
-                [self addConstraint:trailingConstraint];
-                constraintsAdjust = constraintsAdjust +1;
-            }
-            if (constraintsAdjust == 2){
-                break;
-            }
-            //self.typex.pagingEnabled = YES;
-        }
-        /*
-         }else if (currentHandBias == 1 ){
-         for (NSLayoutConstraint *constraint in self.constraints) {
-         if (constraint.firstAttribute == NSLayoutAttributeLeading && [constraint.identifier isEqualToString:@"TypeX"]) {
-         [self removeConstraint:constraint];
-         [self addConstraint:[NSLayoutConstraint constraintWithItem:self.typex attribute:NSLayoutAttributeLeading relatedBy:NSLayoutRelationEqual toItem:self attribute:NSLayoutAttributeLeading multiplier:1.0 constant:leading]];
-         constraintsAdjust = constraintsAdjust +1;
-         }else if (constraint.firstAttribute == NSLayoutAttributeTrailing && [constraint.identifier isEqualToString:@"TypeX"]) {
-         [self removeConstraint:constraint];
-         //[self addConstraint:[NSLayoutConstraint constraintWithItem:self.typex attribute:NSLayoutAttributeTrailing relatedBy:NSLayoutRelationEqual toItem:self attribute:NSLayoutAttributeTrailing multiplier:1.0 constant:((NSArray *)self.typex.shortcuts[kbuttonsImages12]).count>5?-19:-60]];
-         [self addConstraint:[NSLayoutConstraint constraintWithItem:self.typex attribute:NSLayoutAttributeTrailing relatedBy:NSLayoutRelationEqual toItem:self attribute:NSLayoutAttributeTrailing multiplier:1.0 constant:trailing]];
-         
-         constraintsAdjust = constraintsAdjust +1;
-         }
-         if (constraintsAdjust == 2){
-         break;
-         }
-         }}else if (currentHandBias == 2 ){
-         for (NSLayoutConstraint *constraint in self.constraints) {
-         if (constraint.firstAttribute == NSLayoutAttributeLeading && [constraint.identifier isEqualToString:@"TypeX"]) {
-         [self removeConstraint:constraint];
-         [self addConstraint:[NSLayoutConstraint constraintWithItem:self.typex attribute:NSLayoutAttributeLeading relatedBy:NSLayoutRelationEqual toItem:self attribute:NSLayoutAttributeLeading multiplier:1.0 constant:leading]];
-         constraintsAdjust = constraintsAdjust +1;
-         }else if (constraint.firstAttribute == NSLayoutAttributeTrailing && [constraint.identifier isEqualToString:@"TypeX"]) {
-         [self removeConstraint:constraint];
-         //[self addConstraint:[NSLayoutConstraint constraintWithItem:self.typex attribute:NSLayoutAttributeTrailing relatedBy:NSLayoutRelationEqual toItem:self attribute:NSLayoutAttributeTrailing multiplier:1.0 constant:((NSArray *)self.typex.shortcuts[kbuttonsImages12]).count>5?-60:-95]];
-         [self addConstraint:[NSLayoutConstraint constraintWithItem:self.typex attribute:NSLayoutAttributeTrailing relatedBy:NSLayoutRelationEqual toItem:self attribute:NSLayoutAttributeTrailing multiplier:1.0 constant:trailing]];
-         
-         constraintsAdjust = constraintsAdjust +1;
-         }
-         if (constraintsAdjust == 2){
-         break;
-         }
-         }}
-         */
-        
-    }else{
-        //self.pagingEnabled = NO;
-        //return _buttons.count;
-    }
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"typeXLayoutChanged" object:nil userInfo:@{@"fullreload":@YES}];
-    //NSNotification * note = [NSNotification notificationWithName:@"typeXLayoutChanged" object:nil userInfo:@{@"fullreload":@YES}];
-    //[[NSNotificationQueue defaultQueue] enqueueNotification:note postingStyle:NSPostASAP coalesceMask:NSNotificationCoalescingOnName forModes:nil];
-    
     
 }
 
@@ -867,17 +707,6 @@ CGFloat trailingHBLeftOffset = trailingOffsetHandBiasLeftDefault;
     
 }
 
-
-%end
-
-%hook UIKeyboardPreferencesController
--(void)setHandBias:(long long)arg1{ //0 -normal,2-left, 1-right
-    %orig;
-    if (preferencesBool(kEnabledkey,YES)){
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"handBiasChanged" object:nil];
-    }
-    
-}
 
 %end
 
@@ -1088,24 +917,12 @@ static void reloadPrefs(void) {
     singleTapDictationEnabled = (((preferencesInt(kDockModekey, 0) == 0 || preferencesInt(kDockModekey, 0) == 1)) && (preferencesInt(kDedicatedGestureButtonkey,0) == 2 || preferencesInt(kDedicatedGestureButtonkey,0) == 3) && (preferencesInt(kGestureTypekey,0) == 0)) ? YES : NO;
     
     useShortenedLabel = preferencesBool(kShortLabelEnabledKey, NO);
-    
-    
-    topInset = preferencesFloat(kTopInsetkey, topInsetDefault);
-    bottomInset = preferencesFloat(kBottomInsetkey, bottomInsetDefault);
-    leftInset = preferencesFloat(kLeftInsetkey, leftInsetDefault);
-    rightInset = preferencesFloat(kRightInsetkey, rightInsetDefault);
-    
-    leadingOffset = preferencesFloat(kLeadinfOffsetkey,leadingOffsetDefault);
-    leadingOffset = currentBackgroundTintColor ? leadingOffset-9.0f : leadingOffset;
-    trailingOffset = preferencesFloat(kTrailingOffsetkey, trailingOffsetDefault);
+
+
     heightOffset = preferencesFloat(kHeightOffsetkey, heightOffsetDefault);
-    bottomOffset = preferencesFloat(kBottomOffsetkey, bottomOffsetDefault);
-    
-    buttonHeight = preferencesFloat(kCellHeightkey, currentBackgroundTintColor?cellsHeightDefault+5:cellsHeightDefault);
-    buttonRadius = preferencesFloat(kCellRadiuskey, currentBackgroundTintColor?cellsRadiusDefault+10:cellsRadiusDefault);
-    buttonSpacing = preferencesFloat(kCellSpacingkey, spacingBetweenCellsDefault);
-    
-    //attemptOneHandedOffsetAdjust = preferencesBool(kAttemptOffsetAutoAdjustInOneHandedkey, YES);
+
+    // Button chrome (height/radius/spacing/border/width scale) is scoped per
+    // toolbar and recomputed inside DXCollectionView's reloadShortcutConfiguration.
 
     shouldPerformBatchUpdate = NO;
     spongebobEntropy = (DXStudlyCapsType)preferencesInt(kSpongebobEntropyKey, DXStudlyCapsTypeRandom);

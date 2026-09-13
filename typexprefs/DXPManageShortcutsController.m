@@ -2,14 +2,51 @@
 #import "DXPGesturePickerController.h"
 #import "../DXShortcutsGenerator.h"
 #import "../DXHelper.h"
+#import <objc/runtime.h>
 
 static NSBundle *tweakBundle;
 
-#define kTestFieldHeaderHeight 78.0
+// Height of the section header hosting the test field above the
+// button-settings rows: field title + field + section title + padding.
+#define kTestFieldSectionHeaderHeight 110.0
 
 static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     return ![DXShortcutsGenerator isVisibleShortcutSelector:selector];
 }
+
+// One row of the toolbar-scoped settings sections. Sliders snap to `step` and
+// fall back to `defaultValue` while the preference key is unset.
+@interface DXSettingsRow : NSObject
+@property (nonatomic, copy) NSString *key;
+@property (nonatomic, copy) NSString *label;
+@property (nonatomic, assign) BOOL isSwitch;
+@property (nonatomic, assign) float minValue;
+@property (nonatomic, assign) float maxValue;
+@property (nonatomic, assign) float step;
+@property (nonatomic, assign) float defaultValue;
+@end
+
+@implementation DXSettingsRow
++ (DXSettingsRow *)switchRowWithKey:(NSString *)key label:(NSString *)label defaultValue:(BOOL)defaultValue {
+    DXSettingsRow *row = [[DXSettingsRow alloc] init];
+    row.key = key;
+    row.label = label;
+    row.isSwitch = YES;
+    row.defaultValue = defaultValue ? 1.0 : 0.0;
+    return row;
+}
+
++ (DXSettingsRow *)sliderRowWithKey:(NSString *)key label:(NSString *)label minValue:(float)minValue maxValue:(float)maxValue step:(float)step defaultValue:(float)defaultValue {
+    DXSettingsRow *row = [[DXSettingsRow alloc] init];
+    row.key = key;
+    row.label = label;
+    row.minValue = minValue;
+    row.maxValue = maxValue;
+    row.step = step > 0 ? step : 1.0;
+    row.defaultValue = defaultValue;
+    return row;
+}
+@end
 
 static void DXAppendUniqueShortcuts(NSArray *shortcuts,
                                     NSMutableArray *destination,
@@ -45,23 +82,37 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
 
 #pragma mark - Table view: configured buttons only
 
+// Section 0 lists the toolbar's buttons; section 1 holds the button appearance
+// settings of THIS toolbar (independent from the other toolbar). The bottom
+// page additionally carries the toolbar-height section.
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 1;
+    return self.topConfiguration ? 2 : 3;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    if (section == 1) return LOCALIZED(@"BUTTON_SETTINGS");
+    if (section == 2) return LOCALIZED(@"OFFSETS");
     return nil;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return [self.currentOrder[0] count];
+    switch (section) {
+        case 1: return self.appearanceRows.count;
+        case 2: return self.offsetRows.count;
+        default: return [self.currentOrder[0] count];
+    }
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    return [NSString stringWithFormat:LOCALIZED(@"FOOTER_TOOLBAR_BUTTONS"), (int)maxshortcutpersection];
+    if (section == 0)
+        return [NSString stringWithFormat:LOCALIZED(@"FOOTER_TOOLBAR_BUTTONS"), (int)maxshortcutpersection];
+    if (section == 1) return LOCALIZED(@"FOOTER_BUTTON_SETTINGS");
+    return nil;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (indexPath.section > 0) return [self settingsCellForRowAtIndexPath:indexPath];
+
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"TypeXItemCell" forIndexPath:indexPath];
 
     if (cell == nil)
@@ -105,6 +156,7 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath{
+    if (indexPath.section != 0) return;
     DXPGesturePickerController *gesturePickerController = [[DXPGesturePickerController alloc] init];
 
     gesturePickerController.fullOrder = self.fullOrder;
@@ -178,22 +230,25 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
 
 #pragma mark - Test input field
 
-// A text field pinned above the list: tapping it pops the keyboard with the
-// TypeX toolbar attached (the tweak loads into UIKit, Settings included), so
-// freshly saved buttons can be tried without leaving the page.
-- (void)buildTestFieldHeader {
+// The test field is the header of the button-settings section, i.e. the middle
+// of the page: the sliders being tuned and the field stay on screen together,
+// so tapping the field summons the keyboard (with the TypeX toolbar attached)
+// right below them for a live preview.
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+    if (section != 1) return nil;
+
     CGFloat width = CGRectGetWidth(self.tableView.bounds);
-    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, kTestFieldHeaderHeight)];
-    header.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    UIView *block = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, kTestFieldSectionHeaderHeight)];
+    block.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 
-    UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(16, 12, MAX(0, width - 32), 18)];
-    title.text = LOCALIZED(@"TEST_INPUT_FIELD");
-    title.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
-    title.textColor = [UIColor secondaryLabelColor];
-    title.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    [header addSubview:title];
+    UILabel *fieldTitle = [[UILabel alloc] initWithFrame:CGRectMake(16, 10, MAX(0, width - 32), 16)];
+    fieldTitle.text = LOCALIZED(@"TEST_INPUT_FIELD");
+    fieldTitle.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
+    fieldTitle.textColor = [UIColor secondaryLabelColor];
+    fieldTitle.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    [block addSubview:fieldTitle];
 
-    self.testInputField = [[UITextField alloc] initWithFrame:CGRectMake(16, 36, MAX(0, width - 32), 36)];
+    self.testInputField = [[UITextField alloc] initWithFrame:CGRectMake(16, 30, MAX(0, width - 32), 36)];
     self.testInputField.placeholder = LOCALIZED(@"TEST_INPUT_FIELD_PLACEHOLDER");
     self.testInputField.font = [UIFont systemFontOfSize:15];
     self.testInputField.borderStyle = UITextBorderStyleRoundedRect;
@@ -201,25 +256,246 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     self.testInputField.returnKeyType = UIReturnKeyDone;
     self.testInputField.clearButtonMode = UITextFieldViewModeWhileEditing;
     self.testInputField.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    [header addSubview:self.testInputField];
+    [block addSubview:self.testInputField];
 
-    self.tableView.tableHeaderView = header;
+    UILabel *sectionTitle = [[UILabel alloc] initWithFrame:CGRectMake(16, 78, MAX(0, width - 32), 18)];
+    sectionTitle.text = LOCALIZED(@"BUTTON_SETTINGS");
+    sectionTitle.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
+    sectionTitle.textColor = [UIColor secondaryLabelColor];
+    sectionTitle.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    [block addSubview:sectionTitle];
+
+    return block;
 }
 
-- (void)viewDidLayoutSubviews {
-    [super viewDidLayoutSubviews];
-    // Rotation support: keep the header as wide as the table.
-    CGFloat width = CGRectGetWidth(self.tableView.bounds);
-    UIView *header = self.tableView.tableHeaderView;
-    if (header && fabs(CGRectGetWidth(header.frame) - width) > 0.5) {
-        header.frame = CGRectMake(0, 0, width, kTestFieldHeaderHeight);
-        self.tableView.tableHeaderView = header;
-    }
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+    return section == 1 ? kTestFieldSectionHeaderHeight : UITableViewAutomaticDimension;
+}
+
+// On keyboard show the table scrolls the test field to the top and pads the
+// bottom inset by the keyboard height, so the button-settings sliders stay
+// above the keyboard instead of being covered by it.
+- (void)handleKeyboardWillShow:(NSNotification *)notification {
+    if (!self.testInputField.isFirstResponder) return;
+    [self applyKeyboardInfo:notification.userInfo scrollTestFieldToTop:YES];
+}
+
+// Interactive dismissal drags fire repeated frame changes: track the keyboard
+// with the inset but never re-scroll mid-drag.
+- (void)handleKeyboardFrameWillChange:(NSNotification *)notification {
+    if (!self.testInputField.isFirstResponder) return;
+    [self applyKeyboardInfo:notification.userInfo scrollTestFieldToTop:NO];
+}
+
+- (void)handleKeyboardWillHide:(NSNotification *)notification {
+    CGFloat duration = [notification.userInfo[UIKeyboardAnimationDurationUserInfoKey] floatValue];
+    UIViewAnimationOptions options = [notification.userInfo[UIKeyboardAnimationCurveUserInfoKey] unsignedIntegerValue] << 16;
+    [UIView animateWithDuration:duration delay:0 options:options | UIViewAnimationOptionBeginFromCurrentState animations:^{
+        UIEdgeInsets inset = self.tableView.contentInset;
+        inset.bottom = 0;
+        self.tableView.contentInset = inset;
+        self.tableView.scrollIndicatorInsets = inset;
+    } completion:nil];
+}
+
+- (void)applyKeyboardInfo:(NSDictionary *)info scrollTestFieldToTop:(BOOL)scroll {
+    CGRect endFrame = [info[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+    if (CGRectIsNull(endFrame) || CGRectGetHeight(endFrame) <= 0) return;
+
+    CGFloat duration = [info[UIKeyboardAnimationDurationUserInfoKey] floatValue];
+    UIViewAnimationOptions options = [info[UIKeyboardAnimationCurveUserInfoKey] unsignedIntegerValue] << 16;
+    CGRect localFrame = [self.tableView convertRect:endFrame fromView:nil];
+    CGFloat overlap = MAX(0, CGRectGetMaxY(self.tableView.bounds) - CGRectGetMinY(localFrame));
+
+    [UIView animateWithDuration:duration delay:0 options:options | UIViewAnimationOptionBeginFromCurrentState animations:^{
+        UIEdgeInsets inset = self.tableView.contentInset;
+        inset.bottom = overlap;
+        self.tableView.contentInset = inset;
+        self.tableView.scrollIndicatorInsets = inset;
+
+        if (scroll) {
+            UIView *block = [self.tableView headerViewForSection:1];
+            if (block) {
+                CGFloat maxOffset = self.tableView.contentSize.height
+                    + self.tableView.adjustedContentInset.bottom
+                    - CGRectGetHeight(self.tableView.bounds);
+                CGFloat target = MAX(-self.tableView.adjustedContentInset.top,
+                                     MIN(CGRectGetMinY(block.frame) - 4.0, MAX(0.0, maxOffset)));
+                [self.tableView setContentOffset:CGPointMake(0, target) animated:NO];
+            }
+        }
+    } completion:nil];
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
     [textField resignFirstResponder];
     return YES;
+}
+
+#pragma mark - Toolbar-scoped button settings
+
+// Every appearance key is scoped: the top page writes "top"-prefixed keys, the
+// bottom page writes the unprefixed ones. The tweak reads the same scoped keys
+// per toolbar, so the two toolbars are styled independently.
+- (NSString *)scopedAppearanceKey:(NSString *)baseKey {
+    return self.topConfiguration ? [@"top" stringByAppendingString:baseKey] : baseKey;
+}
+
+- (BOOL)storedBoolForKey:(NSString *)key fallback:(BOOL)fallback {
+    id value = [[DXPrefsManager sharedInstance] getValueForKey:key];
+    return [value respondsToSelector:@selector(boolValue)] ? [value boolValue] : fallback;
+}
+
+- (void)buildSettingsRows {
+    // The runtime adds +5 to the unprefixed height fallback while the shared
+    // background tint is on; mirror that so the slider shows the effective
+    // default instead of silently jumping on first drag.
+    BOOL backgroundTintOn = [self storedBoolForKey:kColorEnabledkey fallback:NO] &&
+                            [self storedBoolForKey:kShortcutsBackgroundTintEnabled fallback:YES];
+    float heightDefault = self.topConfiguration ? 33.33
+        : (backgroundTintOn ? cellsHeightDefault + 5 : cellsHeightDefault);
+
+    self.appearanceRows = @[
+        [DXSettingsRow switchRowWithKey:[self scopedAppearanceKey:kCellBorderEnabledkey]
+                                  label:LOCALIZED(@"BORDER_ENABLED") defaultValue:NO],
+        [DXSettingsRow sliderRowWithKey:[self scopedAppearanceKey:kCellBorderWidthkey]
+                                  label:LOCALIZED(@"BORDER_WIDTH") minValue:0.5 maxValue:10 step:0.5
+                            defaultValue:buttonBorderWidthDefault],
+        [DXSettingsRow sliderRowWithKey:[self scopedAppearanceKey:kButtonWidthScalekey]
+                                  label:LOCALIZED(@"BUTTON_WIDTH") minValue:30 maxValue:100 step:0.5
+                            defaultValue:buttonWidthScaleDefault],
+        [DXSettingsRow sliderRowWithKey:[self scopedAppearanceKey:kCellHeightkey]
+                                  label:LOCALIZED(@"HEIGHT") minValue:25 maxValue:50 step:0.5
+                            defaultValue:heightDefault],
+        [DXSettingsRow sliderRowWithKey:[self scopedAppearanceKey:kCellRadiuskey]
+                                  label:LOCALIZED(@"RADIUS") minValue:0 maxValue:30 step:0.5
+                            defaultValue:cellsRadiusDefault],
+        [DXSettingsRow sliderRowWithKey:[self scopedAppearanceKey:kCellSpacingkey]
+                                  label:LOCALIZED(@"SPACING") minValue:0 maxValue:20 step:0.5
+                            defaultValue:spacingBetweenCellsDefault],
+    ];
+
+    if (self.topConfiguration) return;
+
+    // The toolbar height is the only remaining positioning control; the
+    // leading/trailing/vertical offsets and the insets are fixed in the tweak.
+    self.offsetRows = @[
+        [DXSettingsRow sliderRowWithKey:kHeightOffsetkey label:LOCALIZED(@"TOOLBAR_HEIGHT") minValue:50 maxValue:80 step:1 defaultValue:heightOffsetDefault],
+    ];
+}
+
+- (DXSettingsRow *)settingsRowForIndexPath:(NSIndexPath *)indexPath {
+    switch (indexPath.section) {
+        case 1: return self.appearanceRows[indexPath.row];
+        default: return self.offsetRows[indexPath.row];
+    }
+}
+
+- (float)storedFloatForRow:(DXSettingsRow *)row {
+    id value = [[DXPrefsManager sharedInstance] getValueForKey:row.key];
+    return [value respondsToSelector:@selector(floatValue)] ? [value floatValue] : row.defaultValue;
+}
+
+static NSString *DXFormatSettingsValue(float value, float step) {
+    if (step < 0.99f) return [NSString stringWithFormat:@"%.1f", value];
+    return [NSString stringWithFormat:@"%.0f", value];
+}
+
+// Snap to the row's step so the stored value matches what the slider showed.
+- (void)persistRowValue:(DXSettingsRow *)row rawValue:(float)rawValue {
+    float stepped = row.minValue + roundf((rawValue - row.minValue) / row.step) * row.step;
+    stepped = MIN(row.maxValue, MAX(row.minValue, stepped));
+    [[DXPrefsManager sharedInstance] setValue:@(stepped) forKey:row.key];
+}
+
+- (UITableViewCell *)settingsCellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    DXSettingsRow *row = [self settingsRowForIndexPath:indexPath];
+    if (row.isSwitch) return [self switchCellForRow:row];
+
+    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:@"TypeXSettingsSlider" forIndexPath:indexPath];
+    cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    cell.textLabel.text = nil;
+
+    UILabel *titleLabel = (UILabel *)[cell viewWithTag:1];
+    UILabel *valueLabel = (UILabel *)[cell viewWithTag:2];
+    UISlider *slider = (UISlider *)[cell viewWithTag:3];
+    if (!titleLabel) {
+        titleLabel = [[UILabel alloc] init];
+        titleLabel.tag = 1;
+        titleLabel.font = [UIFont systemFontOfSize:15];
+        titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        [cell.contentView addSubview:titleLabel];
+
+        valueLabel = [[UILabel alloc] init];
+        valueLabel.tag = 2;
+        valueLabel.font = [UIFont monospacedDigitSystemFontOfSize:14 weight:UIFontWeightRegular];
+        valueLabel.textColor = [UIColor secondaryLabelColor];
+        valueLabel.textAlignment = NSTextAlignmentRight;
+        valueLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        [cell.contentView addSubview:valueLabel];
+
+        slider = [[UISlider alloc] init];
+        slider.tag = 3;
+        slider.translatesAutoresizingMaskIntoConstraints = NO;
+        [slider addTarget:self action:@selector(settingsSliderChanged:) forControlEvents:UIControlEventValueChanged];
+        [slider addTarget:self action:@selector(settingsSliderReleased:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside];
+        [cell.contentView addSubview:slider];
+
+        [NSLayoutConstraint activateConstraints:@[
+            [titleLabel.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor constant:16],
+            [titleLabel.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
+            [titleLabel.widthAnchor constraintLessThanOrEqualToConstant:110],
+            [valueLabel.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-16],
+            [valueLabel.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
+            [valueLabel.widthAnchor constraintEqualToConstant:50],
+            [slider.leadingAnchor constraintEqualToAnchor:titleLabel.trailingAnchor constant:8],
+            [slider.trailingAnchor constraintEqualToAnchor:valueLabel.leadingAnchor constant:-8],
+            [slider.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
+        ]];
+    }
+
+    titleLabel.text = row.label;
+    slider.minimumValue = row.minValue;
+    slider.maximumValue = row.maxValue;
+    slider.value = MIN(row.maxValue, MAX(row.minValue, [self storedFloatForRow:row]));
+    valueLabel.text = DXFormatSettingsValue(slider.value, row.step);
+    objc_setAssociatedObject(slider, @selector(key), row, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return cell;
+}
+
+- (UITableViewCell *)switchCellForRow:(DXSettingsRow *)row {
+    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:@"TypeXSettingsSwitch"];
+    cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    cell.textLabel.text = row.label;
+    cell.textLabel.font = [UIFont systemFontOfSize:15];
+
+    UISwitch *switchView = (UISwitch *)cell.accessoryView;
+    if (![switchView isKindOfClass:[UISwitch class]]) {
+        switchView = [[UISwitch alloc] init];
+        cell.accessoryView = switchView;
+        [switchView addTarget:self action:@selector(settingsSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+    }
+    [switchView setOn:[self storedFloatForRow:row] >= 0.5 animated:NO];
+    objc_setAssociatedObject(switchView, @selector(key), row, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return cell;
+}
+
+- (void)settingsSwitchChanged:(UISwitch *)sender {
+    DXSettingsRow *row = objc_getAssociatedObject(sender, @selector(key));
+    [[DXPrefsManager sharedInstance] setValue:@(sender.isOn) forKey:row.key];
+}
+
+- (void)settingsSliderChanged:(UISlider *)sender {
+    // Live label feedback; the preference write itself waits for touch-up so
+    // dragging does not spam the preference domain and reload notifications.
+    UILabel *valueLabel = (UILabel *)[(UIView *)sender.superview viewWithTag:2];
+    DXSettingsRow *row = objc_getAssociatedObject(sender, @selector(key));
+    valueLabel.text = DXFormatSettingsValue(sender.value, row.step);
+}
+
+- (void)settingsSliderReleased:(UISlider *)sender {
+    DXSettingsRow *row = objc_getAssociatedObject(sender, @selector(key));
+    [self persistRowValue:row rawValue:sender.value];
 }
 
 #pragma mark - Add button
@@ -253,16 +529,22 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     [[DXPrefsManager sharedInstance] setValue:self.currentOrder forKey:self.shortcutsPreferenceKey ?: kShortcutskey];
 }
 
-// Removes the per-gesture custom actions recorded for a deleted button so a
-// later re-add starts clean instead of silently inheriting old gestures.
+// Removes the per-gesture custom actions and the ordered sub-actions recorded
+// for a deleted button so a later re-add starts clean instead of silently
+// inheriting old gestures.
 - (void)removeCustomActionsForIdentifier:(NSString *)identifier {
     if (![identifier isKindOfClass:[NSString class]] || identifier.length == 0) return;
     NSString *configuration = self.topConfiguration ? @"top" : @"bottom";
 
+    NSMutableArray<NSString *> *keys = [NSMutableArray array];
+    for (NSInteger gesture = DXShortcutGestureLongPress; gesture <= DXShortcutGestureTap; gesture++) {
+        [keys addObject:DXCustomActionsKeyForGesture((int)gesture, configuration)];
+    }
+    [keys addObject:DXScopedPreferenceKey(kSubActionskey, configuration)];
+
     NSMutableDictionary *prefs = [[[DXPrefsManager sharedInstance] readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
     BOOL changed = NO;
-    for (NSInteger gesture = DXShortcutGestureLongPress; gesture <= DXShortcutGestureTap; gesture++) {
-        NSString *key = DXCustomActionsKeyForGesture((int)gesture, configuration);
+    for (NSString *key in keys) {
         NSArray *entries = prefs[key];
         if (![entries isKindOfClass:[NSArray class]]) continue;
         NSArray *filtered = [entries filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"identifier != %@", identifier]];
@@ -358,16 +640,30 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     self.tableView.dataSource = self;
     [self.tableView setAutoresizingMask:UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight];
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"TypeXItemCell"];
+    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"TypeXSettingsSwitch"];
+    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"TypeXSettingsSlider"];
+    [self buildSettingsRows];
     [self.tableView setEditing:YES];
     self.tableView.allowsSelectionDuringEditing=YES;
+
+    // Keyboard avoidance for the mid-page test field: track show/frame-change/
+    // hide so the button-settings sliders stay above the keyboard while it is
+    // open; dragging the table can dismiss the keyboard to see the full list.
+    self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
+    NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+    [center addObserver:self selector:@selector(handleKeyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
+    [center addObserver:self selector:@selector(handleKeyboardFrameWillChange:) name:UIKeyboardWillChangeFrameNotification object:nil];
+    [center addObserver:self selector:@selector(handleKeyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
 
     ((UIViewController *)self).title = self.topConfiguration ? @"顶部设置" : @"底部设置";
     self.view = self.tableView;
 
-    [self buildTestFieldHeader];
-
     self.addBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addButtonTapped)];
     self.navigationItem.rightBarButtonItem = self.addBtn;
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 @end
