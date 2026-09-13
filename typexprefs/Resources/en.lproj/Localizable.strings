@@ -107,6 +107,9 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "BORDER_WIDTH" = "Border Thickness";
 "BUTTON_WIDTH" = "Button Size";
 "TOOLBAR_HEIGHT" = "Toolbar Height";
+"PANEL_SETTINGS" = "Panel Settings";
+"PANEL_SIZE" = "Panel Size";
+"FOOTER_PANEL_SETTINGS" = "Adjust the size of the sub-action panel opened from this toolbar. Top and bottom settings are independent.";
 //Offsets
 "OFFSETS" = "Offsets";
 //Insets

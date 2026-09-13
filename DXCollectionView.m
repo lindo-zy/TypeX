@@ -7,6 +7,69 @@
 #import <objc/message.h>
 
 static const NSInteger DXCustomActionToastTag = 0x54584341;
+static const NSInteger DXSubActionPanelOverlayTag = 0x54585341;
+static __weak DXCollectionView *DXActiveSubActionPanelOwner;
+
+@interface DXSubActionPanelItem : UIControl
+@property (nonatomic, strong) UIImageView *iconView;
+@property (nonatomic, strong) UILabel *nameLabel;
+@property (nonatomic, copy) NSString *actionSelector;
+@property (nonatomic, assign) CGFloat panelScale;
+- (void)configureWithTitle:(NSString *)title image:(UIImage *)image;
+@end
+
+@implementation DXSubActionPanelItem
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (!self) return nil;
+
+    self.iconView = [[UIImageView alloc] initWithFrame:CGRectZero];
+    self.iconView.contentMode = UIViewContentModeScaleAspectFit;
+    self.iconView.tintColor = UIColor.labelColor;
+    [self addSubview:self.iconView];
+
+    self.nameLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.nameLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightRegular];
+    self.nameLabel.textColor = UIColor.labelColor;
+    self.nameLabel.textAlignment = NSTextAlignmentCenter;
+    self.nameLabel.numberOfLines = 2;
+    self.nameLabel.adjustsFontSizeToFitWidth = YES;
+    self.nameLabel.minimumScaleFactor = 0.8;
+    [self addSubview:self.nameLabel];
+
+    self.isAccessibilityElement = YES;
+    self.accessibilityTraits = UIAccessibilityTraitButton;
+    return self;
+}
+
+- (void)configureWithTitle:(NSString *)title image:(UIImage *)image {
+    self.nameLabel.text = title;
+    self.iconView.image = [image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    self.accessibilityLabel = title;
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGFloat scale = self.panelScale > 0 ? self.panelScale : 1.0;
+    CGFloat iconSide = MIN(CGRectGetWidth(self.bounds) - 12.0, 38.0 * scale);
+    CGFloat iconTop = 10.0 * scale;
+    self.iconView.frame = CGRectMake((CGRectGetWidth(self.bounds) - iconSide) / 2.0, iconTop,
+                                     iconSide, iconSide);
+    CGFloat labelY = CGRectGetMaxY(self.iconView.frame) + 7.0 * scale;
+    self.nameLabel.frame = CGRectMake(4.0, labelY, CGRectGetWidth(self.bounds) - 8.0,
+                                      MAX(0.0, CGRectGetHeight(self.bounds) - labelY - 4.0));
+}
+
+- (void)setHighlighted:(BOOL)highlighted {
+    [super setHighlighted:highlighted];
+    [UIView animateWithDuration:0.08 animations:^{
+        self.alpha = highlighted ? 0.45 : 1.0;
+        self.transform = highlighted ? CGAffineTransformMakeScale(0.94, 0.94) : CGAffineTransformIdentity;
+    }];
+}
+
+@end
 
 static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     return ![DXShortcutsGenerator isVisibleShortcutSelector:selector];
@@ -14,6 +77,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 @interface DXCollectionView ()
 @property (nonatomic, assign, readwrite) BOOL shortcutConfigurationAvailable;
+@property (nonatomic, strong) UIControl *subActionPanelOverlay;
+@property (nonatomic, strong) UIButton *subActionPanelSourceButton;
 @end
 
 // Shortcut order is a user-authored, physical left-to-right order. Keyboard
@@ -131,6 +196,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(typeXLayoutChanged:) name:@"typeXLayoutChanged" object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardRotated:) name:UIDeviceOrientationDidChangeNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHideForSubActionPanel:) name:UIKeyboardWillHideNotification object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(scrollBackward:) name:@"scrollBackward" object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(scrollForward:) name:@"scrollForward" object:nil];
         
@@ -152,8 +218,11 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 
 - (void)dealloc {
+    [self.subActionPanelOverlay removeFromSuperview];
+    if (DXActiveSubActionPanelOwner == self) DXActiveSubActionPanelOwner = nil;
     [[NSNotificationCenter defaultCenter] removeObserver:self name:@"typeXLayoutChanged" object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:UIDeviceOrientationDidChangeNotification object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIKeyboardWillHideNotification object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:@"scrollBackward" object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:@"scrollForward" object:nil];
     //[[NSNotificationCenter defaultCenter] removeObserver:self name:UITextFieldTextDidBeginEditingNotification object:nil];
@@ -651,6 +720,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 - (void)keyboardRotated:(NSNotification *)notification {
+    if (notification) [self dismissSubActionPanelAnimated:NO completion:nil];
     
     if (toggledOn){
         UIInterfaceOrientation orientation = DXCurrentInterfaceOrientation();
@@ -701,6 +771,11 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
      }
      }
      */
+}
+
+-(void)keyboardWillHideForSubActionPanel:(NSNotification *)notification {
+    (void)notification;
+    [self dismissSubActionPanelAnimated:NO completion:nil];
 }
 
 
@@ -1825,32 +1900,201 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     [self dispatchConfiguredActionSelector:selectorName sender:sender];
 }
 
--(void)presentSubActionChooserForButton:(UIButton *)button selectors:(NSArray<NSString *> *)selectors {
-    // Bottom action sheet: no title, the cancel row sits detached at the
-    // bottom, and tapping outside the dimmed area dismisses it natively.
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-    for (NSString *selectorName in selectors) {
-        NSDictionary *linkAction = preferencesLinkActionForSelector(selectorName);
-        NSString *actionTitle = linkAction[@"name"];
-        if (![actionTitle isKindOfClass:[NSString class]] || actionTitle.length == 0) {
-            actionTitle = [DXHelper localizedStringForActionNamed:selectorName shortName:NO bundle:tweakBundle];
+-(NSString *)subActionPanelTitleForSelector:(NSString *)selectorName {
+    NSDictionary *linkAction = preferencesLinkActionForSelector(selectorName);
+    NSString *title = [linkAction[@"name"] isKindOfClass:[NSString class]] ? linkAction[@"name"] : @"";
+    if (title.length == 0) {
+        title = [DXHelper localizedStringForActionNamed:selectorName shortName:NO bundle:tweakBundle];
+    }
+    return title.length ? title : selectorName;
+}
+
+-(UIImage *)subActionPanelImageForSelector:(NSString *)selectorName {
+    NSDictionary *linkAction = preferencesLinkActionForSelector(selectorName);
+    if (linkAction) {
+        NSString *iconName = [linkAction[@"icon"] isKindOfClass:[NSString class]] ? linkAction[@"icon"] : @"";
+        UIImage *image = [UIImage systemImageNamed:(iconName.length ? iconName : @"link")];
+        return image ?: [UIImage systemImageNamed:@"link"];
+    }
+
+    NSArray<NSString *> *actionSelectors = [self.shortcutsGenerator selectorNames];
+    NSUInteger index = [actionSelectors indexOfObject:selectorName];
+    if (index != NSNotFound) {
+        NSInteger imageVersion = 0;
+        if (@available(iOS 13.0, *)) imageVersion = 1;
+        NSArray<NSString *> *imageNames = [self.shortcutsGenerator imageNameArrayForiOS:imageVersion];
+        if (index < imageNames.count) {
+            UIImage *image = [DXHelper imageForName:imageNames[index] withSystemColor:NO completion:nil];
+            if (image) return image;
         }
-        [alert addAction:[UIAlertAction actionWithTitle:(actionTitle.length ? actionTitle : selectorName)
-                                                  style:UIAlertActionStyleDefault
-                                                handler:^(__unused UIAlertAction *action) {
-            [self dispatchSubActionSelector:selectorName sender:button];
-        }]];
     }
-    [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_CANCEL") style:UIAlertActionStyleCancel handler:nil]];
+    return [UIImage systemImageNamed:@"square.grid.2x2"];
+}
 
-    // iPad presents action sheets as a popover and raises without an anchor.
-    if (button.window && alert.popoverPresentationController) {
-        alert.popoverPresentationController.sourceView = button;
-        alert.popoverPresentationController.sourceRect = button.bounds;
+-(CGFloat)subActionPanelAnchorYInWindow:(UIWindow *)window {
+    CGRect toolbarFrame = [self convertRect:self.bounds toView:window];
+    CGFloat anchorY = CGRectGetMinY(toolbarFrame);
+    CGFloat minimumUsefulY = window.safeAreaInsets.top + 40.0;
+    CGFloat minimumWideWidth = CGRectGetWidth(window.bounds) * 0.72;
+
+    // The bottom toolbar lives near the keyboard's bottom. Walk through its
+    // full-width keyboard ancestors to find the keyboard's upper edge. The top
+    // accessory toolbar is already at that edge, so its own frame wins.
+    for (UIView *ancestor = self.superview; ancestor && ancestor != window; ancestor = ancestor.superview) {
+        CGRect frame = [ancestor convertRect:ancestor.bounds toView:window];
+        CGFloat candidateY = CGRectGetMinY(frame);
+        if (CGRectGetWidth(frame) >= minimumWideWidth && candidateY > minimumUsefulY && candidateY < anchorY) {
+            anchorY = candidateY;
+        }
+    }
+    return anchorY;
+}
+
+-(void)dismissSubActionPanelAnimated:(BOOL)animated completion:(void (^)(void))completion {
+    UIControl *overlay = self.subActionPanelOverlay;
+    if (!overlay) {
+        if (completion) completion();
+        return;
     }
 
-    UIViewController *presenter = [self keyWindow].rootViewController;
-    [presenter presentViewController:alert animated:YES completion:nil];
+    self.subActionPanelOverlay = nil;
+    self.subActionPanelSourceButton = nil;
+    if (DXActiveSubActionPanelOwner == self) DXActiveSubActionPanelOwner = nil;
+
+    void (^removePanel)(void) = ^{
+        [overlay removeFromSuperview];
+        if (completion) completion();
+    };
+    if (!animated) {
+        removePanel();
+        return;
+    }
+
+    UIView *panel = [overlay viewWithTag:DXSubActionPanelOverlayTag + 1];
+    [UIView animateWithDuration:0.14 animations:^{
+        overlay.alpha = 0.0;
+        panel.transform = CGAffineTransformConcat(CGAffineTransformMakeTranslation(0, 8),
+                                                   CGAffineTransformMakeScale(0.97, 0.97));
+    } completion:^(__unused BOOL finished) {
+        removePanel();
+    }];
+}
+
+-(void)subActionPanelBackgroundTapped:(UIControl *)sender {
+    (void)sender;
+    [self dismissSubActionPanelAnimated:YES completion:nil];
+}
+
+-(void)subActionPanelItemTapped:(DXSubActionPanelItem *)item {
+    NSString *selectorName = [item.actionSelector copy];
+    UIButton *sourceButton = self.subActionPanelSourceButton;
+    [self dismissSubActionPanelAnimated:YES completion:^{
+        if (selectorName.length > 0) {
+            [self dispatchSubActionSelector:selectorName sender:sourceButton];
+        }
+    }];
+}
+
+-(void)presentSubActionChooserForButton:(UIButton *)button selectors:(NSArray<NSString *> *)selectors {
+    if (selectors.count == 0) return;
+    UIWindow *window = button.window ?: self.window ?: [self keyWindow];
+    if (!window) return;
+
+    if (DXActiveSubActionPanelOwner && DXActiveSubActionPanelOwner != self) {
+        [DXActiveSubActionPanelOwner dismissSubActionPanelAnimated:NO completion:nil];
+    }
+    [self dismissSubActionPanelAnimated:NO completion:nil];
+
+    UIControl *overlay = [[UIControl alloc] initWithFrame:window.bounds];
+    overlay.tag = DXSubActionPanelOverlayTag;
+    overlay.backgroundColor = UIColor.clearColor;
+    overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [overlay addTarget:self action:@selector(subActionPanelBackgroundTapped:) forControlEvents:UIControlEventTouchUpInside];
+    [window addSubview:overlay];
+
+    CGFloat windowWidth = CGRectGetWidth(window.bounds);
+    CGFloat panelScale = preferencesFloat([self scopedPreferenceKey:kSubActionPanelScaleKey],
+                                          subActionPanelScaleDefault) / 100.0;
+    panelScale = MIN(1.2, MAX(0.5, panelScale));
+    CGFloat horizontalMargin = 8.0;
+    CGFloat defaultPanelWidth = MIN(460.0, MAX(240.0, windowWidth - 24.0));
+    // The size setting scales panel content and height only. Keep the panel's
+    // horizontal footprint stable so changing the slider never shifts columns
+    // or makes the floating panel narrower/wider.
+    CGFloat panelWidth = MIN(windowWidth - horizontalMargin * 2.0, defaultPanelWidth);
+    NSInteger columns = windowWidth >= 320.0 ? 4 : 3;
+    CGFloat panelPadding = 10.0 * panelScale;
+    CGFloat itemHeight = 92.0 * panelScale;
+    CGFloat itemWidth = (panelWidth - panelPadding * 2.0) / columns;
+    NSInteger rows = (selectors.count + columns - 1) / columns;
+    CGFloat contentHeight = panelPadding * 2.0 + rows * itemHeight;
+
+    CGFloat safeTop = window.safeAreaInsets.top + 8.0;
+    CGFloat anchorY = [self subActionPanelAnchorYInWindow:window];
+    CGFloat availableHeight = MAX(itemHeight + panelPadding * 2.0, anchorY - safeTop - 8.0);
+    CGFloat panelHeight = MIN(contentHeight, MIN(availableHeight, 300.0 * panelScale));
+    CGFloat panelY = MAX(safeTop, anchorY - panelHeight - 8.0);
+
+    UIView *panel = [[UIView alloc] initWithFrame:CGRectMake((windowWidth - panelWidth) / 2.0,
+                                                             panelY, panelWidth, panelHeight)];
+    panel.tag = DXSubActionPanelOverlayTag + 1;
+    panel.layer.cornerRadius = 18.0 * panelScale;
+    panel.layer.shadowColor = UIColor.blackColor.CGColor;
+    panel.layer.shadowOpacity = 0.2;
+    panel.layer.shadowRadius = 14.0 * panelScale;
+    panel.layer.shadowOffset = CGSizeMake(0, 5.0 * panelScale);
+    [overlay addSubview:panel];
+
+    UIBlurEffect *effect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial];
+    UIVisualEffectView *background = [[UIVisualEffectView alloc] initWithEffect:effect];
+    background.frame = panel.bounds;
+    background.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    background.layer.cornerRadius = panel.layer.cornerRadius;
+    background.layer.masksToBounds = YES;
+    [panel addSubview:background];
+
+    UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:panel.bounds];
+    scrollView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    scrollView.contentSize = CGSizeMake(panelWidth, contentHeight);
+    scrollView.alwaysBounceVertical = contentHeight > panelHeight;
+    scrollView.showsVerticalScrollIndicator = NO;
+    [panel addSubview:scrollView];
+
+    // Cover the scrollable content behind the action items so gaps, padding,
+    // and the unused cells in the final row dismiss the panel as well.
+    UIControl *blankArea = [[UIControl alloc] initWithFrame:CGRectMake(0, 0, panelWidth,
+                                                                       MAX(contentHeight, panelHeight))];
+    blankArea.backgroundColor = UIColor.clearColor;
+    [blankArea addTarget:self action:@selector(subActionPanelBackgroundTapped:) forControlEvents:UIControlEventTouchUpInside];
+    [scrollView addSubview:blankArea];
+
+    [selectors enumerateObjectsUsingBlock:^(NSString *selectorName, NSUInteger index, __unused BOOL *stop) {
+        NSInteger row = index / columns;
+        NSInteger column = index % columns;
+        DXSubActionPanelItem *item = [[DXSubActionPanelItem alloc] initWithFrame:CGRectMake(panelPadding + column * itemWidth,
+                                                                                            panelPadding + row * itemHeight,
+                                                                                            itemWidth, itemHeight)];
+        item.actionSelector = selectorName;
+        item.panelScale = panelScale;
+        item.nameLabel.font = [UIFont systemFontOfSize:MAX(10.0, 13.0 * panelScale)
+                                                weight:UIFontWeightRegular];
+        [item configureWithTitle:[self subActionPanelTitleForSelector:selectorName]
+                           image:[self subActionPanelImageForSelector:selectorName]];
+        [item addTarget:self action:@selector(subActionPanelItemTapped:) forControlEvents:UIControlEventTouchUpInside];
+        [scrollView addSubview:item];
+    }];
+
+    self.subActionPanelOverlay = overlay;
+    self.subActionPanelSourceButton = button;
+    DXActiveSubActionPanelOwner = self;
+
+    overlay.alpha = 0.0;
+    panel.transform = CGAffineTransformConcat(CGAffineTransformMakeTranslation(0, 8),
+                                               CGAffineTransformMakeScale(0.97, 0.97));
+    [UIView animateWithDuration:0.18 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
+        overlay.alpha = 1.0;
+        panel.transform = CGAffineTransformIdentity;
+    } completion:nil];
 }
 
 - (void)activateSwipeActions:(UISwipeGestureRecognizer *)recognizer {

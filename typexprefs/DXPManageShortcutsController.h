@@ -16,5 +16,6 @@
 // Settings rows are built once per page load; every row resolves its
 // preference key for this page's toolbar scope.
 @property (nonatomic, copy) NSArray<DXSettingsRow *> *appearanceRows;
+@property (nonatomic, copy) NSArray<DXSettingsRow *> *panelRows;
 @property (nonatomic, copy) NSArray<DXSettingsRow *> *offsetRows;
 @end

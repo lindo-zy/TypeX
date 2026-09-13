@@ -1,7 +1,7 @@
 Package: com.lindo.typex
 Name: TypeX
 Depends: mobilesubstrate, preferenceloader, firmware(>=14.0)
-Version: 2.7.94
+Version: 2.7.100
 Architecture: iphoneos-arm64
 Description: TypeX 是一款可自定义键盘快捷操作栏的ios插件.
 Maintainer: lindo

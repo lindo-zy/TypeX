@@ -26,6 +26,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 @property (nonatomic, assign) float maxValue;
 @property (nonatomic, assign) float step;
 @property (nonatomic, assign) float defaultValue;
+@property (nonatomic, copy) NSString *valueSuffix;
 @end
 
 @implementation DXSettingsRow
@@ -96,23 +97,25 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
 
 #pragma mark - Table view: configured buttons only
 
-// Section 0 lists the toolbar's buttons; section 1 holds the button appearance
-// settings of THIS toolbar (independent from the other toolbar). The bottom
-// page additionally carries the toolbar-height section.
+// Section 0 lists buttons, section 1 controls button appearance, and section 2
+// controls the sub-action panel. The bottom page additionally carries the
+// toolbar-height section at index 3.
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return self.topConfiguration ? 2 : 3;
+    return self.topConfiguration ? 3 : 4;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     if (section == 1) return LOCALIZED(@"BUTTON_SETTINGS");
-    if (section == 2) return LOCALIZED(@"OFFSETS");
+    if (section == 2) return LOCALIZED(@"PANEL_SETTINGS");
+    if (section == 3) return LOCALIZED(@"OFFSETS");
     return nil;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     switch (section) {
         case 1: return self.appearanceRows.count;
-        case 2: return self.offsetRows.count;
+        case 2: return self.panelRows.count;
+        case 3: return self.offsetRows.count;
         default: return [self.currentOrder[0] count];
     }
 }
@@ -121,6 +124,7 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     if (section == 0)
         return [NSString stringWithFormat:LOCALIZED(@"FOOTER_TOOLBAR_BUTTONS"), (int)maxshortcutpersection];
     if (section == 1) return LOCALIZED(@"FOOTER_BUTTON_SETTINGS");
+    if (section == 2) return LOCALIZED(@"FOOTER_PANEL_SETTINGS");
     return nil;
 }
 
@@ -443,6 +447,13 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
                             defaultValue:spacingBetweenCellsDefault],
     ];
 
+    DXSettingsRow *panelScaleRow = [DXSettingsRow sliderRowWithKey:[self scopedAppearanceKey:kSubActionPanelScaleKey]
+                                                              label:LOCALIZED(@"PANEL_SIZE")
+                                                           minValue:50 maxValue:120 step:5
+                                                        defaultValue:subActionPanelScaleDefault];
+    panelScaleRow.valueSuffix = @"%";
+    self.panelRows = @[panelScaleRow];
+
     if (self.topConfiguration) return;
 
     // The toolbar height is the only remaining positioning control; the
@@ -455,6 +466,7 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
 - (DXSettingsRow *)settingsRowForIndexPath:(NSIndexPath *)indexPath {
     switch (indexPath.section) {
         case 1: return self.appearanceRows[indexPath.row];
+        case 2: return self.panelRows[indexPath.row];
         default: return self.offsetRows[indexPath.row];
     }
 }
@@ -464,9 +476,10 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     return [value respondsToSelector:@selector(floatValue)] ? [value floatValue] : row.defaultValue;
 }
 
-static NSString *DXFormatSettingsValue(float value, float step) {
-    if (step < 0.99f) return [NSString stringWithFormat:@"%.1f", value];
-    return [NSString stringWithFormat:@"%.0f", value];
+static NSString *DXFormatSettingsValue(float value, float step, NSString *suffix) {
+    NSString *number = step < 0.99f ? [NSString stringWithFormat:@"%.1f", value]
+                                   : [NSString stringWithFormat:@"%.0f", value];
+    return suffix.length ? [number stringByAppendingString:suffix] : number;
 }
 
 // Snap to the row's step so the stored value matches what the slider showed.
@@ -527,7 +540,7 @@ static NSString *DXFormatSettingsValue(float value, float step) {
     slider.minimumValue = row.minValue;
     slider.maximumValue = row.maxValue;
     slider.value = MIN(row.maxValue, MAX(row.minValue, [self storedFloatForRow:row]));
-    valueLabel.text = DXFormatSettingsValue(slider.value, row.step);
+    valueLabel.text = DXFormatSettingsValue(slider.value, row.step, row.valueSuffix);
     objc_setAssociatedObject(slider, @selector(key), row, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     return cell;
 }
@@ -595,7 +608,7 @@ static NSString *DXFormatSettingsValue(float value, float step) {
     // dragging does not spam the preference domain and reload notifications.
     UILabel *valueLabel = (UILabel *)[(UIView *)sender.superview viewWithTag:2];
     DXSettingsRow *row = objc_getAssociatedObject(sender, @selector(key));
-    valueLabel.text = DXFormatSettingsValue(sender.value, row.step);
+    valueLabel.text = DXFormatSettingsValue(sender.value, row.step, row.valueSuffix);
 }
 
 - (void)settingsSliderReleased:(UISlider *)sender {

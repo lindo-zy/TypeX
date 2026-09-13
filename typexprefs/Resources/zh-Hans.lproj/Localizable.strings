@@ -108,6 +108,9 @@
 "BORDER_WIDTH" = "边框粗细";
 "BUTTON_WIDTH" = "按钮大小";
 "TOOLBAR_HEIGHT" = "工具栏高度";
+"PANEL_SETTINGS" = "面板设置";
+"PANEL_SIZE" = "面板大小";
+"FOOTER_PANEL_SETTINGS" = "调整当前工具栏打开的子动作弹出面板大小，顶部与底部设置相互独立。";
 //Offsets
 "OFFSETS" = "偏移";
 //Insets

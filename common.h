@@ -68,6 +68,7 @@
 #define kCellBorderEnabledkey @"shortcutborderBOOL"
 #define kCellBorderWidthkey @"shortcutborderwidth"
 #define kButtonWidthScalekey @"shortcutwidthscale"
+#define kSubActionPanelScaleKey @"subactionpanelscale"
 #define kSpongebobEntropyKey @"spongebobEntropy"
 
 #define kbuttonsImages12 0
@@ -94,6 +95,7 @@
 
 #define buttonBorderWidthDefault 1.0f
 #define buttonWidthScaleDefault 100.0f
+#define subActionPanelScaleDefault 100.0f
 
 // The shared snapshot must live where sandboxed app hosts can read it.  The
 // jailbreak root (/var/jb on rootless, resolved by DX_ROOT_PATH_NS) is readable
