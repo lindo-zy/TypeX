@@ -24,7 +24,6 @@ BOOL isSafari = NO;
 BOOL shouldPerformBatchUpdate = YES;
 //BOOL shouldSendScrollExecution = YES;
 UIKeyboardDockView *dockV;
-BOOL useShortenedLabel = NO;
 NSBundle *tweakBundle;
 BOOL firstInit = YES;
 DXStudlyCapsType spongebobEntropy;
@@ -915,8 +914,6 @@ static void reloadPrefs(void) {
     toggledOn = preferencesBool(kToggledOnkey,YES);
     singleTapGlobeEnabled = (((preferencesInt(kDockModekey, 0) == 0 || preferencesInt(kDockModekey, 0) == 2)) && (preferencesInt(kDedicatedGestureButtonkey,0) == 1 || preferencesInt(kDedicatedGestureButtonkey,0) == 3) && (preferencesInt(kGestureTypekey,0) == 0)) ? YES : NO;
     singleTapDictationEnabled = (((preferencesInt(kDockModekey, 0) == 0 || preferencesInt(kDockModekey, 0) == 1)) && (preferencesInt(kDedicatedGestureButtonkey,0) == 2 || preferencesInt(kDedicatedGestureButtonkey,0) == 3) && (preferencesInt(kGestureTypekey,0) == 0)) ? YES : NO;
-    
-    useShortenedLabel = preferencesBool(kShortLabelEnabledKey, NO);
 
 
     heightOffset = preferencesFloat(kHeightOffsetkey, heightOffsetDefault);

@@ -132,8 +132,19 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SUB_ACTION" = "Sub-action";
 "ADD" = "Add";
 "CHOOSE_ACTION" = "Choose Action";
-"FOOTER_SUB_ACTIONS" = "On tap, these sub-actions run in order after the button's tap action. Use the minus button to delete a sub-action and drag its handle to reorder.";
+"FOOTER_SUB_ACTIONS" = "On tap, these sub-actions run in order after the button's tap action. On long press, a single sub-action fires directly, while several open a chooser to pick one. Use the minus button to delete a sub-action and drag its handle to reorder.";
+"TAP_TRIGGERS_SUB_ACTIONS" = "Tap Triggers Sub-actions";
+"FOOTER_TAP_SUB_ACTIONS" = "When on, tapping the button runs its sub-actions exactly like a long press, and the button's own tap action is skipped. When off, tap runs only the action configured under Tap; sub-actions fire on long press only.";
 
+"DISPLAY_STYLE" = "Display Style";
+"ICON" = "Icon";
+"NAME" = "Name";
+"ACTION_LINK" = "Action Link";
+"CUSTOM_ACTIONS" = "Custom Actions";
+"CUSTOM_ACTION" = "Custom Action";
+"EDIT" = "Edit";
+"CUSTOM_LINK_ACTION_FOOTER" = "Enter an SF Symbol name for the icon. The action link accepts a web URL, app URL scheme, or bundle ID; use @@@ to insert the current input field's text.";
+"CUSTOM_ACTION_LINK_ERROR" = "The action link is invalid";
 "TEXT" = "Text";
 
 //=====================SHELL COMMAND BEHAVIOR=====================
@@ -174,10 +185,12 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "GESTURE_TAP" = "Tap";
 "NEW_BUTTON" = "New Button";
 "MAX_BUTTONS_REACHED" = "A toolbar can hold up to %d buttons";
+"MAX_ENABLED_REACHED" = "Up to %d buttons can be enabled at once";
 "DUPLICATE_ACTION" = "This action is already in the toolbar";
 "CHOOSE_TAP_FIRST" = "Set the tap action first";
-"FOOTER_TOOLBAR_BUTTONS" = "Tap a button to edit its gestures, drag to reorder, up to %d buttons. Use “+” to add a new button.";
+"FOOTER_TOOLBAR_BUTTONS" = "Tap a button to edit its gestures, drag to reorder. The switch controls whether the button shows on the toolbar; up to %d can be enabled at once, and the number of buttons is unlimited. Use “+” to add a new button.";
 "ANSWER_OK" = "OK";
+"ANSWER_CANCEL" = "Cancel";
 "SAVE" = "Save";
 "DEFAULT_BUTTON_NAME" = "Action";
 "TEST_INPUT_FIELD" = "Test Field (tap to try the toolbar buttons)";

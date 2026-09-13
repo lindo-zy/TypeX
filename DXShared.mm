@@ -18,6 +18,23 @@ int preferencesInt(NSString* key, int fallback) {
     return value ? [value intValue] : fallback;
 }
 
+NSDictionary *preferencesLinkActionForSelector(NSString *selector) {
+    if (!DXIsLinkActionSelector(selector)) return nil;
+    id stored = prefs[kLinkActionskey];
+    if (![stored isKindOfClass:[NSArray class]]) return nil;
+    for (NSDictionary *entry in (NSArray *)stored) {
+        if ([entry isKindOfClass:[NSDictionary class]] && [entry[@"selector"] isEqual:selector]) {
+            return entry;
+        }
+    }
+    return nil;
+}
+
+BOOL preferencesIsConfiguredActionSelector(NSString *selector) {
+    return [DXShortcutsGenerator isVisibleShortcutSelector:selector] ||
+           preferencesLinkActionForSelector(selector) != nil;
+}
+
 NSString *preferencesSelectorForIdentifierScoped(NSString* identifier, int selectorNum, int gestureType, NSString *fallback, NSString *configuration) {
     //HBLogDebug(@"identifier: %@", identifier);
     //0-long press, 1-swipe up, 2-swipe down, 3-swipe left, 4-swipe right
@@ -38,11 +55,32 @@ NSString *preferencesSelectorForIdentifierScoped(NSString* identifier, int selec
     }
     // Reject unknown selectors while still allowing supported legacy actions
     // that are intentionally hidden from the current picker.
-    return [DXShortcutsGenerator isAvailableShortcutSelector:selector] ? selector : fallback;
+    return ([DXShortcutsGenerator isAvailableShortcutSelector:selector] ||
+            preferencesLinkActionForSelector(selector) != nil) ? selector : fallback;
 }
 
 NSString *preferencesSelectorForIdentifier(NSString* identifier, int selectorNum, int gestureType, NSString *fallback) {
     return preferencesSelectorForIdentifierScoped(identifier, selectorNum, gestureType, fallback, @"bottom");
+}
+
+// Whether the "点按触发子动作" switch is on for one button. The flag is a
+// field on the button's own shortcut entry (both the enabled and disabled
+// sections are searched) so it follows the entry everywhere its identifier
+// does, exactly like the name/icon overrides.
+BOOL preferencesTapRunsSubActionsForIdentifier(NSString *identifier, NSString *configuration) {
+    if (![identifier isKindOfClass:[NSString class]] || identifier.length == 0) return NO;
+    id stored = prefs[DXScopedPreferenceKey(kShortcutskey, configuration)];
+    if (![stored isKindOfClass:[NSArray class]]) return NO;
+
+    for (NSArray *section in (NSArray *)stored) {
+        if (![section isKindOfClass:[NSArray class]]) continue;
+        for (NSDictionary *entry in section) {
+            if ([entry isKindOfClass:[NSDictionary class]] && [entry[@"selector"] isEqual:identifier]) {
+                return [entry[kTapSubActionsEntryKey] boolValue];
+            }
+        }
+    }
+    return NO;
 }
 
 // Ordered sub-actions configured for one button ("添加子动作" page). Each
@@ -58,7 +96,7 @@ NSArray<NSString *> *preferencesSubActionSelectorsForIdentifier(NSString* identi
         if (![entry isKindOfClass:[NSDictionary class]] || ![entry[@"identifier"] isEqual:identifier]) continue;
         NSString *selector = entry[@"selector"];
         if (![selector isKindOfClass:[NSString class]] || selector.length == 0) continue;
-        if (![DXShortcutsGenerator isVisibleShortcutSelector:selector]) continue;
+        if (!preferencesIsConfiguredActionSelector(selector)) continue;
         [selectors addObject:selector];
     }
     return selectors;

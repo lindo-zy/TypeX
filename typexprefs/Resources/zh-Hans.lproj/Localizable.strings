@@ -133,8 +133,19 @@
 "SUB_ACTION" = "子动作";
 "ADD" = "添加";
 "CHOOSE_ACTION" = "选择动作";
-"FOOTER_SUB_ACTIONS" = "点按按钮时，这些子动作将在点按动作之后按顺序执行。点左侧减号删除子动作，拖动右侧手柄调整顺序。";
+"FOOTER_SUB_ACTIONS" = "点按按钮时，这些子动作将在点按动作之后按顺序执行。长按按钮时，只配置了一个子动作会直接触发它，配置了多个则弹出列表选择要执行的动作。点左侧减号删除子动作，拖动右侧手柄调整顺序。";
+"TAP_TRIGGERS_SUB_ACTIONS" = "点按触发子动作";
+"FOOTER_TAP_SUB_ACTIONS" = "开启后，点按按钮和长按一样直接触发子动作，原本的点按动作不再执行；关闭时，点按只执行“点按”里设置的动作，子动作仅由长按触发。";
 
+"DISPLAY_STYLE" = "显示样式";
+"ICON" = "图标";
+"NAME" = "名称";
+"ACTION_LINK" = "动作链接";
+"CUSTOM_ACTIONS" = "自定义动作";
+"CUSTOM_ACTION" = "自定义动作";
+"EDIT" = "编辑";
+"CUSTOM_LINK_ACTION_FOOTER" = "图标请填写 SF Symbols 名称。动作链接支持网页 URL、App URL Scheme 或 Bundle ID；使用 @@@ 可传入当前输入框的内容。";
+"CUSTOM_ACTION_LINK_ERROR" = "动作链接设置错误";
 "TEXT" = "文本";
 
 //=====================SHELL COMMAND BEHAVIOR=====================
@@ -173,10 +184,12 @@
 "GESTURE_TAP" = "点按";
 "NEW_BUTTON" = "新建按钮";
 "MAX_BUTTONS_REACHED" = "工具栏最多支持 %d 个按钮";
+"MAX_ENABLED_REACHED" = "最多同时开启 %d 个按钮";
 "DUPLICATE_ACTION" = "该动作已添加到工具栏";
 "CHOOSE_TAP_FIRST" = "请先设置点按动作";
-"FOOTER_TOOLBAR_BUTTONS" = "点击按钮可编辑手势，拖动可调整顺序，最多 %d 个。点击右上角“+”新建按钮。";
+"FOOTER_TOOLBAR_BUTTONS" = "点击按钮可编辑手势，拖动可调整顺序。开关控制按钮是否显示在工具栏上，最多同时开启 %d 个，添加数量不限。点击右上角“+”新建按钮。";
 "ANSWER_OK" = "好";
+"ANSWER_CANCEL" = "取消";
 "SAVE" = "保存";
 "DEFAULT_BUTTON_NAME" = "动作";
 "TEST_INPUT_FIELD" = "测试输入框（点击弹出键盘试试按钮）";

@@ -6,10 +6,8 @@
 "DISABLED" = "停用";
 "SHORTCUTS" = "快捷方式";
 "HAPTIC" = "触感反馈";
-"SHAKE_SHORTCUT" = "摇动显示快捷方式";
 "ICON" = "图标";
 "TEXT" = "文本";
-"FOOTER_SHORTCUT_NUM" = "设置每页显示的快捷方式数量。";
 "TOP_SETTINGS" = "顶部设置";
 "BOTTOM_SETTINGS" = "底部设置";
 "FOOTER_DISPLAY_STYLE" = "设置快捷方式的显示样式。";
@@ -37,10 +35,4 @@
 "TOP_TOOLBAR_BACKGROUND_TINT" = "顶部工具栏背景颜色";
 "ADVANCED" = "高级";
 "ADVANCED_SETTINGS" = "高级设置";
-"DEVELOPMENT" = "开发";
-"SUPPORT" = "支持开发者";
-"CONTACT" = "联系作者";
-"TWITTER" = "Twitter";
-"REDDIT" = "Reddit";
-"FOOTER_CREATED" = "由 udevs 创建";
-"FOOTER_CREDITS" = "特别感谢\nAransh";
+"FOOTER_CREDITS" = "特别感谢\nudevs、lclrc乌贼、Aransh";

@@ -13,6 +13,9 @@
 // Pending (unsaved) name/icon typed on the new-button page.
 @property (nonatomic, copy) NSString *pendingName;
 @property (nonatomic, copy) NSString *pendingIcon;
+// Pending "点按触发子动作" choice on the new-button page; persisted onto the
+// entry at save time.
+@property (nonatomic, assign) BOOL pendingTapSubActions;
 @end
 
 @interface PSSpecifier (DXPGesturePickerController)

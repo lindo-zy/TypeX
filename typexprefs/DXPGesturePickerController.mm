@@ -107,7 +107,8 @@ static NSBundle *tweakBundle;
 }
 
 // All preference stores that carry per-button entries: the six gesture stores
-// plus the ordered sub-action list. Pending new buttons stage under one
+// (the long-press one is legacy but old installs may still hold entries) plus
+// the ordered sub-action list. Pending new buttons stage under one
 // sentinel identifier in every store; cleanup/re-key must cover all of them.
 - (NSArray<NSString *> *)perButtonPreferenceKeys {
     NSMutableArray<NSString *> *keys = [NSMutableArray array];
@@ -159,6 +160,20 @@ static NSBundle *tweakBundle;
     for (NSDictionary *item in self.fullOrder) {
         if ([item isKindOfClass:[NSDictionary class]] && [item[@"selector"] isEqualToString:selector]) {
             return item;
+        }
+    }
+    if (DXIsLinkActionSelector(selector)) {
+        NSDictionary *prefs = [[DXPrefsManager sharedInstance] readPrefs];
+        for (NSDictionary *action in prefs[kLinkActionskey]) {
+            if (![action isKindOfClass:[NSDictionary class]] || ![action[@"selector"] isEqual:selector]) continue;
+            NSString *name = [action[@"name"] isKindOfClass:[NSString class]] ? action[@"name"] : @"";
+            NSString *icon = [action[@"icon"] isKindOfClass:[NSString class]] ? action[@"icon"] : @"";
+            return @{
+                @"selector": selector,
+                @"label": name.length ? name : LOCALIZED(@"DEFAULT_BUTTON_NAME"),
+                @"images12": @"UIButtonBarListIcon",
+                @"images13": icon.length ? icon : @"link",
+            };
         }
     }
     return nil;
@@ -262,7 +277,8 @@ static NSBundle *tweakBundle;
 
 - (void)saveNewButton {
     NSString *tapAction = [self selectedActionForGesture:DXShortcutGestureTap identifier:kNewButtonPendingIdentifier] ?: @"";
-    BOOL hasTap = [DXShortcutsGenerator isVisibleShortcutSelector:tapAction];
+    BOOL hasTap = [DXShortcutsGenerator isVisibleShortcutSelector:tapAction] ||
+                  [self canonicalEntryForSelector:tapAction] != nil;
 
     NSMutableDictionary *prefs = [[[DXPrefsManager sharedInstance] readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
     NSString *shortcutsKey = [self scopedShortcutsKey];
@@ -273,9 +289,11 @@ static NSBundle *tweakBundle;
     NSMutableArray *enabled = [mutableSections[0] isKindOfClass:[NSArray class]]
         ? [mutableSections[0] mutableCopy] : [NSMutableArray array];
 
-    if (enabled.count >= maxshortcutpersection) {
-        [self showSaveFailureAlertWithMessage:[NSString stringWithFormat:LOCALIZED(@"MAX_BUTTONS_REACHED"), (int)maxshortcutpersection]];
-        return;
+    // Adding is unlimited. A button saved while 8 are already switched on
+    // joins the toolbar switched off instead of being rejected.
+    NSInteger enabledCount = 0;
+    for (NSDictionary *item in enabled) {
+        if ([item isKindOfClass:[NSDictionary class]] && ![item[@"disabled"] boolValue]) enabledCount++;
     }
 
     // Every saved button gets its own synthetic identifier (draft prefix), so
@@ -295,6 +313,8 @@ static NSBundle *tweakBundle;
     entry[@"icon"] = icon;
     if (!entry[@"images12"]) entry[@"images12"] = canonical[@"images12"] ?: @"UIButtonBarListIcon";
     if (!entry[@"images13"]) entry[@"images13"] = icon;
+    if (self.pendingTapSubActions) entry[kTapSubActionsEntryKey] = @YES;
+    if (enabledCount >= maxshortcutpersection) entry[@"disabled"] = @YES;
     [enabled addObject:entry];
     mutableSections[0] = enabled;
     prefs[shortcutsKey] = mutableSections;
@@ -310,6 +330,28 @@ static NSBundle *tweakBundle;
 
 #pragma mark - Specifier value handlers
 
+// "点按触发子动作" switch: while the new button is unsaved the choice is held
+// in memory; on a saved button it reads and writes the entry field directly.
+- (id)readTapSubActionsValue:(PSSpecifier *)specifier {
+    if (self.pendingNewEntry) return @(self.pendingTapSubActions);
+    return @([[self storedShortcutEntry][kTapSubActionsEntryKey] boolValue]);
+}
+
+- (void)setTapSubActionsValue:(id)value specifier:(PSSpecifier *)specifier {
+    BOOL on = [value isKindOfClass:[NSNumber class]] ? [value boolValue] : NO;
+    if (self.pendingNewEntry) {
+        self.pendingTapSubActions = on;
+        return;
+    }
+    // Off removes the field so entries stay clean; on stores @YES. The write
+    // is immediate (like the enable toggle on the manage page) and posts the
+    // prefs-changed notification, so open toolbars pick it up at once.
+    [self updateStoredShortcutEntryWithMutator:^(NSMutableDictionary *entry) {
+        if (on) entry[kTapSubActionsEntryKey] = @YES;
+        else [entry removeObjectForKey:kTapSubActionsEntryKey];
+    }];
+}
+
 - (id)readNameValue:(PSSpecifier *)specifier {
     if (self.pendingNewEntry) {
         NSString *tapAction = [self selectedActionForGesture:DXShortcutGestureTap identifier:kNewButtonPendingIdentifier] ?: @"";
@@ -317,8 +359,10 @@ static NSBundle *tweakBundle;
         // save time. With both fields empty, a configured tap action mirrors
         // its name/icon into the fields instead.
         BOOL bothEmpty = self.pendingName.length == 0 && self.pendingIcon.length == 0;
-        if (tapAction.length > 0 && bothEmpty)
-            return [DXHelper localizedStringForActionNamed:tapAction shortName:NO bundle:tweakBundle] ?: @"";
+        if (tapAction.length > 0 && bothEmpty) {
+            NSDictionary *canonical = [self canonicalEntryForSelector:tapAction];
+            return canonical[@"label"] ?: [DXHelper localizedStringForActionNamed:tapAction shortName:NO bundle:tweakBundle] ?: @"";
+        }
         return self.pendingName ?: @"";
     }
     // Unsaved edits are shown until saved or discarded by leaving the page.
@@ -381,11 +425,11 @@ static NSBundle *tweakBundle;
 #pragma mark - Specifiers
 
 // Gesture rows in display order: the tap action (which drives a new button's
-// identity), then long press, then the four swipes.
+// identity), then the four swipes. Long press has no row: it always runs the
+// button's sub-action configuration.
 - (NSArray<NSArray *> *)gestureRows {
     return @[
         @[@(DXShortcutGestureTap), @"GESTURE_TAP"],
-        @[@(DXShortcutGestureLongPress), @"LONG_PRESS"],
         @[@(DXShortcutGestureSwipeUp), @"SWIPE_UP"],
         @[@(DXShortcutGestureSwipeDown), @"SWIPE_DOWN"],
         @[@(DXShortcutGestureSwipeLeft), @"SWIPE_LEFT"],
@@ -422,7 +466,12 @@ static NSBundle *tweakBundle;
         }
 
         PSSpecifier *subActionGroup = [PSSpecifier preferenceSpecifierNamed:LOCALIZED(@"ADD_SUB_ACTION") target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
+        [subActionGroup setProperty:LOCALIZED(@"FOOTER_TAP_SUB_ACTIONS") forKey:@"footerText"];
         [snippetEntrySpecifiers addObject:subActionGroup];
+
+        PSSpecifier *tapSubActionSpec = [PSSpecifier preferenceSpecifierNamed:LOCALIZED(@"TAP_TRIGGERS_SUB_ACTIONS") target:self set:@selector(setTapSubActionsValue:specifier:) get:@selector(readTapSubActionsValue:) detail:nil cell:PSSwitchCell edit:nil];
+        [tapSubActionSpec setProperty:LOCALIZED(@"TAP_TRIGGERS_SUB_ACTIONS") forKey:@"label"];
+        [snippetEntrySpecifiers addObject:tapSubActionSpec];
 
         PSSpecifier *subActionSpec = [PSSpecifier preferenceSpecifierNamed:LOCALIZED(@"SUB_ACTIONS") target:nil set:nil get:nil detail:NSClassFromString(@"DXPSubActionsController") cell:PSLinkListCell edit:nil];
         [subActionSpec setProperty:LOCALIZED(@"SUB_ACTIONS") forKey:@"label"];
@@ -534,6 +583,7 @@ static NSBundle *tweakBundle;
         self.pendingIcon = nil;
         self.nameDirty = NO;
         self.iconDirty = NO;
+        self.pendingTapSubActions = NO;
     }
 }
 

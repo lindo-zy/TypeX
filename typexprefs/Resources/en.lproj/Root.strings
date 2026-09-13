@@ -6,10 +6,8 @@
 "DISABLED" = "Disabled";
 "SHORTCUTS" = "Shortcuts";
 "HAPTIC" = "Haptic";
-"SHAKE_SHORTCUT" = "Shake Shortcut";
 "ICON" = "Icon";
 "TEXT" = "Text";
-"FOOTER_SHORTCUT_NUM" = "Set number of shortcuts per page.";
 "TOP_SETTINGS" = "Top Settings";
 "BOTTOM_SETTINGS" = "Bottom Settings";
 "FOOTER_DISPLAY_STYLE" = "Set shortcuts displaying style.";
@@ -37,10 +35,4 @@
 "TOP_TOOLBAR_BACKGROUND_TINT" = "Top Toolbar Background Tint";
 "ADVANCED" = "Advanced";
 "ADVANCED_SETTINGS" = "Advanced Settings";
-"DEVELOPMENT" = "Development";
-"SUPPORT" = "Support Development";
-"CONTACT" = "Contact";
-"TWITTER" = "Twitter";
-"REDDIT" = "Reddit";
-"FOOTER_CREATED" = "Created by udevs";
-"FOOTER_CREDITS" = "Special thanks\nAransh";
+"FOOTER_CREDITS" = "Special thanks\nudevs, lclrc乌贼,Aransh";

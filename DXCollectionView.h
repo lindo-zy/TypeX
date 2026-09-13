@@ -46,6 +46,9 @@ typedef NS_ENUM(NSInteger, direction) {
 @property (nonatomic, assign) BOOL borderEnabled;
 @property (nonatomic, assign) CGFloat borderWidth;
 @property (nonatomic, assign) CGFloat widthScale;
+// Display style is per toolbar too: YES renders short text labels, NO renders
+// the stock icons (the default).
+@property (nonatomic, assign) BOOL useShortLabel;
 
 -(void)reloadButtonChrome;
 - (BOOL)buttonChromeActive;
@@ -55,8 +58,6 @@ typedef NS_ENUM(NSInteger, direction) {
 /// invalidating only the on-disk cache is not sufficient.
 -(void)reloadShortcutConfiguration;
 
--(void)shakeButton:(UIButton *)sender;
--(void)shakeView:(UIView *)sender;
 -(IBAction)selectAllAction:(UIButton*)sender;
 -(IBAction)copyAction:(UIButton*)sender;
 -(IBAction)pasteAction:(UIButton*)sender;

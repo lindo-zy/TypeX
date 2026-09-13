@@ -147,6 +147,43 @@ static CGFloat const DXSubActionContentLeading = 40.0;
     [self pushPickerForRow:indexPath.row];
 }
 
+- (NSDictionary *)linkActionForSelector:(NSString *)selector {
+    if (!DXIsLinkActionSelector(selector)) return nil;
+    NSDictionary *prefs = [[DXPrefsManager sharedInstance] readPrefs];
+    for (NSDictionary *entry in prefs[kLinkActionskey]) {
+        if ([entry isKindOfClass:[NSDictionary class]] && [entry[@"selector"] isEqual:selector]) return entry;
+    }
+    return nil;
+}
+
+// Built-in actions use localized selector names; link actions use the name
+// configured by the user. Never feed a private link-action selector through
+// the localization helper, otherwise it renders as LONG___TYPEX_... .
+- (NSString *)displayNameForSelector:(NSString *)selector {
+    NSDictionary *linkAction = [self linkActionForSelector:selector];
+    if (DXIsLinkActionSelector(selector)) {
+        NSString *name = [linkAction[@"name"] isKindOfClass:[NSString class]] ? linkAction[@"name"] : @"";
+        return name.length ? name : LOCALIZED(@"DEFAULT_BUTTON_NAME");
+    }
+    return [DXHelper localizedStringForActionNamed:selector shortName:NO bundle:tweakBundle];
+}
+
+- (UIImage *)displayImageForSelector:(NSString *)selector {
+    NSDictionary *linkAction = [self linkActionForSelector:selector];
+    if (DXIsLinkActionSelector(selector)) {
+        NSString *icon = [linkAction[@"icon"] isKindOfClass:[NSString class]] ? linkAction[@"icon"] : @"";
+        UIImage *image = [UIImage systemImageNamed:(icon.length ? icon : @"link")];
+        return image ?: [UIImage systemImageNamed:@"link"];
+    }
+
+    for (NSUInteger index = 0; index < self.fullOrder.count; index++) {
+        if ([[DXHelper actionNameFromArray:self.fullOrder atIndex:index] isEqualToString:selector]) {
+            return [DXHelper imageFromArray:self.fullOrder atIndex:index withSystemColor:YES completion:nil];
+        }
+    }
+    return nil;
+}
+
 #pragma mark - Table view
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
@@ -157,8 +194,11 @@ static CGFloat const DXSubActionContentLeading = 40.0;
     return LOCALIZED(@"ADD_SUB_ACTION");
 }
 
-- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    return LOCALIZED(@"FOOTER_SUB_ACTIONS");
+// Fixed standard row height: the add cell pins its label to the contentView's
+// top and bottom, so self-sizing would otherwise squash the row down to the
+// text height and clip the plus icon.
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return 44;
 }
 
 // The last row is the fixed "添加" row.
@@ -184,8 +224,11 @@ static CGFloat const DXSubActionContentLeading = 40.0;
 
     NSString *selector = self.entries[indexPath.row][@"selector"];
     cell.textLabel.text = [selector isKindOfClass:[NSString class]] && selector.length > 0
-        ? [DXHelper localizedStringForActionNamed:selector shortName:NO bundle:tweakBundle]
+        ? [self displayNameForSelector:selector]
         : LOCALIZED(@"SUB_ACTION");
+    cell.imageView.image = [selector isKindOfClass:[NSString class]] && selector.length > 0
+        ? [self displayImageForSelector:selector]
+        : nil;
     return cell;
 }
 
@@ -264,6 +307,14 @@ static CGFloat const DXSubActionContentLeading = 40.0;
 }
 
 #pragma mark - View lifecycle
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    // The unified action picker can delete a custom action globally. Reload so
+    // a sub-action that referenced the deleted definition disappears at once.
+    self.entries = [self entriesForIdentifier];
+    [self.tableView reloadData];
+}
 
 - (void)viewDidLoad {
     tweakBundle = [NSBundle bundleWithPath:bundlePath];

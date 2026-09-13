@@ -26,14 +26,11 @@
 
 #define kEnabledkey @"enabledBOOL"
 #define kEnabledHaptickey @"hapticBOOL"
-#define kShakeShortcutkey @"shakeBOOL"
 #define kShortcutskey @"shortcuts"
 #define kTopShortcutskey @"topshortcuts"
 #define kColorEnabledkey @"colorBOOL"
 #define kSpaceBarScrollingBOOL @"enabledSpaceBarScrollingBOOL"
 #define kGranularity @"granularityvalue"
-#define kShortcutsPerSection @"shortcutsnum"
-#define kTopShortcutsPerSection @"topshortcutsnum"
 #define kToggledOnkey @"toggledOnBOOL"
 #define kDockModekey @"dockmode"
 #define kDedicatedGestureButtonkey @"gesturebutton"
@@ -45,6 +42,16 @@
 #define kSwipeDownCustomActionskey @"swipedownactions"
 #define kSwipeLeftCustomActionskey @"swipeleftactions"
 #define kSwipeRightCustomActionskey @"swiperightactions"
+// User-defined URL actions shown below the built-in actions in every gesture
+// picker. Definitions are global so the same ordered list is available to the
+// top and bottom toolbar configurations.
+#define kLinkActionskey @"linkactions"
+#define kLinkActionSelectorPrefix @"__typex_link_action_"
+// Per-entry field on a shortcut dictionary: set to @YES when the button's tap
+// should run its sub-action chain (long-press behavior) instead of the tap
+// action configured for it.
+#define kTapSubActionsEntryKey @"tapsubactions"
+
 #define kSubActionskey @"subactions"
 #define kTopSubActionskey @"topsubactions"
 #define kShortcutsTintEnabled @"shortcutstintBOOL"
@@ -70,7 +77,10 @@
 
 #define tweakVersion @"1.3.1"
 #define maxdefaultshortcuts 6
-#define maxshortcutpersection 6
+// Button count is code-controlled, not a preference: each toolbar shows every
+// configured button, clamped to [0, maxshortcutpersection].  Both the toolbar
+// and the manage-shortcuts page cap at this value.
+#define maxshortcutpersection 8
 #define granularity 3
 
 
@@ -126,6 +136,10 @@ typedef NS_ENUM(NSInteger, DXShortcutGestureType) {
 
 static inline BOOL DXIsDraftActionSelector(NSString *selector) {
     return [selector isKindOfClass:[NSString class]] && [selector hasPrefix:kDraftActionPrefix];
+}
+
+static inline BOOL DXIsLinkActionSelector(NSString *selector) {
+    return [selector isKindOfClass:[NSString class]] && [selector hasPrefix:kLinkActionSelectorPrefix];
 }
 
 static inline NSString *DXCustomActionsKeyForGesture(int gestureType, NSString *configuration) {

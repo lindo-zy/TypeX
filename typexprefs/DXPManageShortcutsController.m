@@ -20,6 +20,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 @property (nonatomic, copy) NSString *key;
 @property (nonatomic, copy) NSString *label;
 @property (nonatomic, assign) BOOL isSwitch;
+@property (nonatomic, assign) BOOL isSegment;
+@property (nonatomic, copy) NSArray<NSString *> *segmentTitles;
 @property (nonatomic, assign) float minValue;
 @property (nonatomic, assign) float maxValue;
 @property (nonatomic, assign) float step;
@@ -33,6 +35,18 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     row.label = label;
     row.isSwitch = YES;
     row.defaultValue = defaultValue ? 1.0 : 0.0;
+    return row;
+}
+
+// Index-valued row rendered as a segmented control; the selected segment index
+// is the stored value.
++ (DXSettingsRow *)segmentRowWithKey:(NSString *)key label:(NSString *)label titles:(NSArray<NSString *> *)titles defaultValue:(float)defaultValue {
+    DXSettingsRow *row = [[DXSettingsRow alloc] init];
+    row.key = key;
+    row.label = label;
+    row.isSegment = YES;
+    row.segmentTitles = titles;
+    row.defaultValue = defaultValue;
     return row;
 }
 
@@ -150,9 +164,59 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     NSString *customIcon = [DXHelper customIconForShortcutItem:shortcutItem];
     if (customIcon) image = [DXHelper imageForName:customIcon withSystemColor:YES completion:nil];
 
+    // Enable switch: off keeps the button stored but hides it from the
+    // toolbar. The table lives in editing mode permanently, so the switch is
+    // mounted as the editing accessory view (the one actually displayed).
+    UISwitch *toggle = (UISwitch *)cell.editingAccessoryView;
+    if (![toggle isKindOfClass:[UISwitch class]]) {
+        toggle = [[UISwitch alloc] init];
+        [toggle addTarget:self action:@selector(buttonEnabledToggleChanged:) forControlEvents:UIControlEventValueChanged];
+    }
+    cell.accessoryView = nil;
+    cell.editingAccessoryView = toggle;
+    BOOL buttonDisabled = [shortcutItem[@"disabled"] boolValue];
+    toggle.on = !buttonDisabled;
+
     cell.textLabel.text = label;
+    cell.textLabel.textColor = buttonDisabled ? [UIColor secondaryLabelColor] : [UIColor labelColor];
     cell.imageView.image = image;
     return cell;
+}
+
+// Number of stored buttons that are currently switched on.
+- (NSInteger)enabledButtonCount {
+    NSInteger count = 0;
+    for (NSDictionary *item in self.currentOrder[0]) {
+        if ([item isKindOfClass:[NSDictionary class]] && ![item[@"disabled"] boolValue]) count++;
+    }
+    return count;
+}
+
+// Row recovered from the switch's cell: rows move and delete, so a cached
+// index would go stale.
+- (void)buttonEnabledToggleChanged:(UISwitch *)sender {
+    UIView *view = sender;
+    while (view && ![view isKindOfClass:[UITableViewCell class]]) view = view.superview;
+    NSIndexPath *indexPath = [self.tableView indexPathForCell:(UITableViewCell *)view];
+    if (!indexPath || indexPath.section != 0 || indexPath.row >= (NSInteger)[self.currentOrder[0] count]) return;
+
+    if (sender.on && [self enabledButtonCount] >= maxshortcutpersection) {
+        sender.on = NO;
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"TypeX"
+                                                                       message:[NSString stringWithFormat:LOCALIZED(@"MAX_ENABLED_REACHED"), (int)maxshortcutpersection]
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK") style:UIAlertActionStyleCancel handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+        return;
+    }
+
+    NSMutableDictionary *entry = [self.currentOrder[0][indexPath.row] mutableCopy];
+    if (sender.on) [entry removeObjectForKey:@"disabled"];
+    else entry[@"disabled"] = @YES;
+    self.currentOrder[0][indexPath.row] = entry;
+    UITableViewCell *cell = [self.tableView cellForRowAtIndexPath:indexPath];
+    cell.textLabel.textColor = sender.on ? [UIColor labelColor] : [UIColor secondaryLabelColor];
+    [self writeToFile];
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath{
@@ -356,6 +420,10 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
         : (backgroundTintOn ? cellsHeightDefault + 5 : cellsHeightDefault);
 
     self.appearanceRows = @[
+        [DXSettingsRow segmentRowWithKey:[self scopedAppearanceKey:kShortLabelEnabledKey]
+                                  label:LOCALIZED(@"DISPLAY_STYLE")
+                                 titles:@[LOCALIZED(@"ICON"), LOCALIZED(@"TEXT")]
+                           defaultValue:0],
         [DXSettingsRow switchRowWithKey:[self scopedAppearanceKey:kCellBorderEnabledkey]
                                   label:LOCALIZED(@"BORDER_ENABLED") defaultValue:NO],
         [DXSettingsRow sliderRowWithKey:[self scopedAppearanceKey:kCellBorderWidthkey]
@@ -411,6 +479,7 @@ static NSString *DXFormatSettingsValue(float value, float step) {
 - (UITableViewCell *)settingsCellForRowAtIndexPath:(NSIndexPath *)indexPath {
     DXSettingsRow *row = [self settingsRowForIndexPath:indexPath];
     if (row.isSwitch) return [self switchCellForRow:row];
+    if (row.isSegment) return [self segmentCellForRow:row indexPath:indexPath];
 
     UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:@"TypeXSettingsSlider" forIndexPath:indexPath];
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
@@ -480,9 +549,45 @@ static NSString *DXFormatSettingsValue(float value, float step) {
     return cell;
 }
 
+// Full-width segmented control row (PSSegmentCell style): the control spans
+// the cell so the two options are large and obvious, no leading label.
+- (UITableViewCell *)segmentCellForRow:(DXSettingsRow *)row indexPath:(NSIndexPath *)indexPath {
+    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:@"TypeXSettingsSegment" forIndexPath:indexPath];
+    cell.selectionStyle = UITableViewCellSelectionStyleNone;
+
+    UISegmentedControl *segment = (UISegmentedControl *)[cell.contentView viewWithTag:4];
+    if (!segment) {
+        segment = [[UISegmentedControl alloc] init];
+        segment.tag = 4;
+        segment.translatesAutoresizingMaskIntoConstraints = NO;
+        [segment addTarget:self action:@selector(settingsSegmentChanged:) forControlEvents:UIControlEventValueChanged];
+        [cell.contentView addSubview:segment];
+        [NSLayoutConstraint activateConstraints:@[
+            [segment.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor constant:16],
+            [segment.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-16],
+            [segment.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor constant:8],
+            [segment.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-8],
+            [segment.heightAnchor constraintGreaterThanOrEqualToConstant:32],
+        ]];
+    }
+    [segment removeAllSegments];
+    [row.segmentTitles enumerateObjectsUsingBlock:^(NSString *title, NSUInteger idx, BOOL *stop) {
+        [segment insertSegmentWithTitle:title atIndex:idx animated:NO];
+    }];
+    NSInteger selected = (NSInteger)[self storedFloatForRow:row];
+    segment.selectedSegmentIndex = MAX(0, MIN((NSInteger)row.segmentTitles.count - 1, selected));
+    objc_setAssociatedObject(segment, @selector(key), row, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return cell;
+}
+
 - (void)settingsSwitchChanged:(UISwitch *)sender {
     DXSettingsRow *row = objc_getAssociatedObject(sender, @selector(key));
     [[DXPrefsManager sharedInstance] setValue:@(sender.isOn) forKey:row.key];
+}
+
+- (void)settingsSegmentChanged:(UISegmentedControl *)sender {
+    DXSettingsRow *row = objc_getAssociatedObject(sender, @selector(key));
+    [[DXPrefsManager sharedInstance] setValue:@(sender.selectedSegmentIndex) forKey:row.key];
 }
 
 - (void)settingsSliderChanged:(UISlider *)sender {
@@ -501,15 +606,9 @@ static NSString *DXFormatSettingsValue(float value, float step) {
 #pragma mark - Add button
 
 - (void)addButtonTapped{
-    if ([self.currentOrder[0] count] >= maxshortcutpersection) {
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"TypeX"
-                                                                       message:[NSString stringWithFormat:LOCALIZED(@"MAX_BUTTONS_REACHED"), (int)maxshortcutpersection]
-                                                                preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK") style:UIAlertActionStyleCancel handler:nil]];
-        [self presentViewController:alert animated:YES completion:nil];
-        return;
-    }
-
+    // Adding is unlimited; only the number of switched-on buttons is capped
+    // (enforced at enable time, and new buttons join switched off when 8 are
+    // already on).
     DXPGesturePickerController *gesturePickerController = [[DXPGesturePickerController alloc] init];
     gesturePickerController.fullOrder = self.fullOrder;
     gesturePickerController.configuration = self.topConfiguration ? @"top" : @"bottom";
@@ -592,7 +691,9 @@ static NSString *DXFormatSettingsValue(float value, float step) {
     NSMutableSet *seenSelectors = [NSMutableSet set];
 
     if (hasStoredOrder) {
-        DXAppendUniqueShortcuts(storedEnabled, enabled, seenSelectors, maxshortcutpersection);
+        // The stored list holds every added button, switched on or off; the
+        // enable cap is enforced at toggle time, not by trimming the list.
+        DXAppendUniqueShortcuts(storedEnabled, enabled, seenSelectors, NSUIntegerMax);
     }
     // Defaults seed only a configuration that was never stored. An explicitly
     // emptied toolbar (user deleted every button) stays empty.
@@ -641,6 +742,7 @@ static NSString *DXFormatSettingsValue(float value, float step) {
     [self.tableView setAutoresizingMask:UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight];
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"TypeXItemCell"];
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"TypeXSettingsSwitch"];
+    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"TypeXSettingsSegment"];
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"TypeXSettingsSlider"];
     [self buildSettingsRows];
     [self.tableView setEditing:YES];

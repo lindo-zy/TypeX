@@ -6,6 +6,8 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
+static const NSInteger DXCustomActionToastTag = 0x54584341;
+
 static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     return ![DXShortcutsGenerator isVisibleShortcutSelector:selector];
 }
@@ -55,14 +57,10 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 - (int)shortcutsPerSection {
-    NSString *key = [self scopedPreferenceKey:kShortcutsPerSection];
-    // Top and bottom are fully decoupled: each scope uses its own key and falls
-    // back only to maxshortcutpersection (6).  The bottom key is never read
-    // when the top key is missing, so an unconfigured top toolbar defaults to 6
-    // regardless of the bottom toolbar's setting.
-    int fallback = maxshortcutpersection;
-    int configured = preferencesInt(key, fallback);
-    return MAX(1, MIN(configured, maxshortcutpersection));
+    // Button count is code-controlled, not a preference: the toolbar renders
+    // every configured button clamped to [0, maxshortcutpersection].  The cap
+    // equals the page size, so the toolbar always fits on a single section.
+    return maxshortcutpersection;
 }
 
 // Button chrome is per toolbar: every value lives under the configuration-
@@ -79,6 +77,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     self.borderEnabled = preferencesBool([self scopedPreferenceKey:kCellBorderEnabledkey], NO);
     self.borderWidth = preferencesFloat([self scopedPreferenceKey:kCellBorderWidthkey], buttonBorderWidthDefault);
     self.widthScale = preferencesFloat([self scopedPreferenceKey:kButtonWidthScalekey], buttonWidthScaleDefault);
+    self.useShortLabel = preferencesBool([self scopedPreferenceKey:kShortLabelEnabledKey], NO);
 }
 
 // Buttons get visible chrome (per-button spacing, corner radius, spacing-aware
@@ -260,7 +259,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     
     NSIndexPath *newIndexPath = [NSIndexPath indexPathForRow:[self.indexArray[y+allowedMaxY-(G+1)] intValue]  inSection:x - [self.sectionOffsetBackwardArray[y+allowedMaxY-(G+1)] intValue]];
     [self scrollToItemAtIndexPath:newIndexPath atScrollPosition:UICollectionViewScrollPositionLeft animated:YES];
-    //int firstCellGlobalIndex = preferencesInt(kShortcutsPerSection, maxshortcutpersection)*firstCellIndexPath.section + firstCellIndexPath.row;
+    //int firstCellGlobalIndex = [self shortcutsPerSection]*firstCellIndexPath.section + firstCellIndexPath.row;
     //int newRowIndex =  [fullIndexArray[rowIndex - G] intValue];
     
 }
@@ -308,7 +307,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     //HBLogDebug(@"After G: %d, y: %d", G, allowedMaxY);
     
     //int ymax = [self numberOfItemsInSection:firstCellIndexPath.section] -1;
-    //int allowedMaxY = preferencesInt(kShortcutsPerSection, maxshortcutpersection);
+    //int allowedMaxY = [self shortcutsPerSection];
     //NSArray *indexArray = @[@0, @1, @2, @3, @4, @5, @0, @1, @2, @3, @4, @5];
     //NSArray *sectionOffsetArray = @[@0, @0, @0, @0, @0, @0, @1, @1, @1, @1, @1, @1];
     if (!self.indexArray){
@@ -549,6 +548,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
             // Draft buttons (saved without a tap action) render inert on the
             // toolbar; everything else unknown stays filtered out.
             if (!DXIsDraftActionSelector(selector) && DXIsHiddenShortcutSelector(selector)) continue;
+            // Buttons switched off on the manage page stay stored but never render.
+            if ([item[@"disabled"] boolValue]) continue;
             if (item[@"images12"] && item[@"images13"] && selector) {
                 [self integrateShortcutItem:item intoImages12:images12 images13:images13 selectors:selectors names:customNames];
             }
@@ -703,54 +704,10 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 
--(void)shakeButton:(UIButton *)sender{
-    if (preferencesBool(kShakeShortcutkey,YES)){
-        self.refreshView = NO;
-        CABasicAnimation *shake = [CABasicAnimation animationWithKeyPath:@"position"];
-        [shake setDuration:0.05];
-        [shake setRepeatCount:2];
-        [shake setAutoreverses:YES];
-        [shake setFromValue:[NSValue valueWithCGPoint:
-                             CGPointMake(sender.center.x - 5,sender.center.y)]];
-        [shake setToValue:[NSValue valueWithCGPoint:
-                           CGPointMake(sender.center.x + 5, sender.center.y)]];
-        [sender.layer removeAllAnimations];
-        [sender.layer addAnimation:shake forKey:@"position"];
-        double delayInSeconds = 1;
-        dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, delayInSeconds * NSEC_PER_SEC);
-        dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
-            self.refreshView = YES;
-        });
-    }
-    //HBLogDebug(@"shakeButton: %@", sender);
-    
-}
-
--(void)shakeView:(UIView *)sender{
-    if (preferencesBool(kShakeShortcutkey,YES)){
-        self.refreshView = NO;
-        CABasicAnimation *shake = [CABasicAnimation animationWithKeyPath:@"position"];
-        [shake setDuration:0.05];
-        [shake setRepeatCount:2];
-        [shake setAutoreverses:YES];
-        [shake setFromValue:[NSValue valueWithCGPoint:
-                             CGPointMake(sender.center.x - 5,sender.center.y)]];
-        [shake setToValue:[NSValue valueWithCGPoint:
-                           CGPointMake(sender.center.x + 5, sender.center.y)]];
-        [sender.layer removeAllAnimations];
-        [sender.layer addAnimation:shake forKey:@"position"];
-        double delayInSeconds = 1;
-        dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, delayInSeconds * NSEC_PER_SEC);
-        dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
-            self.refreshView = YES;
-        });
-    }
-}
-
 -(void)triggerImpactAndAnimationWithButton:(UIButton *)sender{
     //haptic, 0=none, 1=once, 2==success(twice)
     if ( preferencesBool(kEnabledHaptickey,YES) && self.hapticType != 0){
-        
+
         if (self.hapticType == 1){
             [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
         }else{
@@ -758,7 +715,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
             self.hapticType = 1;
         }
     }
-    [self shakeButton:sender];
 }
 
 -(void)beginUpdateDelegate{
@@ -1652,8 +1608,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 -(NSInteger)numberOfSectionsInCollectionView:(UICollectionView *)collectionView
 {
-    
-    //HBLogDebug(@"NUM SEC: %f", ceil((float)(((NSArray *)_shortcuts[kbuttonsImages12]).count)/(float)preferencesInt(kShortcutsPerSection, maxshortcutpersection)));
     return ceil((float)(((NSArray *)_shortcuts[kbuttonsImages12]).count)/(float)[self shortcutsPerSection]);
 }
 
@@ -1666,29 +1620,237 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }
 }
 
--(void)activateLPActions:(UIGestureRecognizer *)recognizer {
-    if (recognizer.state != UIGestureRecognizerStateBegan) return;
+// Shared by the long-press gesture and the "点按触发子动作" tap mode: a single
+// sub-action fires directly, several open a chooser, none keeps the gesture
+// inert. The dedicated long-press action store is no longer consulted.
+-(void)runSubActionsForButton:(UIButton *)button {
     [self autoPaginationControl];
-    UIButton *button = (UIButton *)recognizer.view;
-    NSString *selectorName = preferencesSelectorForIdentifierScoped(button.accessibilityIdentifier, 1, 0, @"", self.configuration);
-    if (selectorName.length == 0) return;
+    NSArray<NSString *> *subActions = preferencesSubActionSelectorsForIdentifier(button.accessibilityIdentifier, self.configuration);
+    if (subActions.count == 0) return;
 
-    SEL action = NSSelectorFromString(selectorName);
-    if (![self respondsToSelector:action]) {
-        HBLogWarn(@"TypeX ignoring unimplemented %@ for %@", selectorName, button.accessibilityIdentifier);
+    self.hapticType = 2;
+
+    if (subActions.count == 1) {
+        [self dispatchSubActionSelector:subActions.firstObject sender:button];
         return;
     }
+    [self presentSubActionChooserForButton:button selectors:subActions];
+}
 
-    // Legacy selectors that have been hidden from the picker may still exist in
-    // old preferences. Do not dispatch them through the generic action path.
+-(void)activateLPActions:(UIGestureRecognizer *)recognizer {
+    if (recognizer.state != UIGestureRecognizerStateBegan) return;
+    [self runSubActionsForButton:(UIButton *)recognizer.view];
+}
+
+// Bundle identifiers use reverse-DNS notation. Limit the prefix to common
+// reverse-domain namespaces so scheme-less hosts such as "www.example.com"
+// continue through the web-link path.
+-(BOOL)isBundleIdentifier:(NSString *)value {
+    if (value.length == 0 || [value rangeOfString:@"://"].location != NSNotFound) return NO;
+    NSRegularExpression *expression = [NSRegularExpression regularExpressionWithPattern:@"^[A-Za-z][A-Za-z0-9-]*(\\.[A-Za-z0-9][A-Za-z0-9-]*){2,}$"
+                                                                                options:0
+                                                                                  error:nil];
+    if ([expression firstMatchInString:value options:0 range:NSMakeRange(0, value.length)] == nil) return NO;
+    NSString *prefix = [value componentsSeparatedByString:@"."].firstObject.lowercaseString;
+    return [@[@"com", @"org", @"net", @"io", @"co", @"me", @"cn", @"app", @"dev"] containsObject:prefix];
+}
+
+-(NSString *)currentInputTextForCustomAction {
+    if (![delegate respondsToSelector:@selector(beginningOfDocument)] ||
+        ![delegate respondsToSelector:@selector(endOfDocument)] ||
+        ![delegate respondsToSelector:@selector(textRangeFromPosition:toPosition:)] ||
+        ![delegate respondsToSelector:@selector(textInRange:)]) return @"";
+
+    @try {
+        UITextPosition *beginning = [delegate beginningOfDocument];
+        UITextPosition *end = [delegate endOfDocument];
+        UITextRange *range = [delegate textRangeFromPosition:beginning toPosition:end];
+        NSString *text = range ? [delegate textInRange:range] : nil;
+        return [text isKindOfClass:[NSString class]] ? text : @"";
+    } @catch (NSException *exception) {
+        HBLogWarn(@"TypeX could not read the current input for a custom action: %@", exception);
+        return @"";
+    }
+}
+
+-(NSString *)escapedCustomActionParameter:(NSString *)value {
+    NSMutableCharacterSet *allowed = [[NSCharacterSet alphanumericCharacterSet] mutableCopy];
+    [allowed addCharactersInString:@"-._~"];
+    return [value stringByAddingPercentEncodingWithAllowedCharacters:allowed] ?: @"";
+}
+
+-(void)showCustomActionLinkError {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIView *container = self.window ?: DXKeyWindow();
+        if (!container) return;
+
+        [[container viewWithTag:DXCustomActionToastTag] removeFromSuperview];
+        UILabel *toast = [[UILabel alloc] initWithFrame:CGRectZero];
+        toast.tag = DXCustomActionToastTag;
+        toast.text = LOCALIZED(@"CUSTOM_ACTION_LINK_ERROR");
+        if (toast.text.length == 0) toast.text = @"动作链接设置错误";
+        toast.textColor = UIColor.whiteColor;
+        toast.backgroundColor = [UIColor colorWithWhite:0.08 alpha:0.88];
+        toast.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+        toast.textAlignment = NSTextAlignmentCenter;
+        toast.numberOfLines = 0;
+        toast.layer.cornerRadius = 9;
+        toast.layer.masksToBounds = YES;
+
+        CGFloat maxWidth = MAX(120, MIN(CGRectGetWidth(container.bounds) - 40, 320));
+        CGSize textSize = [toast sizeThatFits:CGSizeMake(maxWidth - 28, CGFLOAT_MAX)];
+        CGFloat width = MIN(maxWidth, MAX(160, textSize.width + 28));
+        CGFloat height = MAX(42, textSize.height + 20);
+        CGFloat y = MAX(20, CGRectGetMidY(container.bounds) - height / 2.0);
+        toast.frame = CGRectMake((CGRectGetWidth(container.bounds) - width) / 2.0, y, width, height);
+        toast.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin |
+                                 UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleBottomMargin;
+        toast.alpha = 0;
+        [container addSubview:toast];
+
+        [UIView animateWithDuration:0.18 animations:^{
+            toast.alpha = 1;
+        } completion:^(BOOL finished) {
+            [UIView animateWithDuration:0.22 delay:1.6 options:UIViewAnimationOptionCurveEaseInOut animations:^{
+                toast.alpha = 0;
+            } completion:^(BOOL finished) {
+                [toast removeFromSuperview];
+            }];
+        }];
+    });
+}
+
+-(BOOL)openApplicationWithBundleIdentifier:(NSString *)bundleIdentifier {
+    Class proxyClass = objc_getClass("LSApplicationProxy");
+    SEL proxySelector = NSSelectorFromString(@"applicationProxyForIdentifier:");
+    id proxy = proxyClass && [proxyClass respondsToSelector:proxySelector]
+        ? ((id(*)(id, SEL, id))objc_msgSend)(proxyClass, proxySelector, bundleIdentifier)
+        : nil;
+    SEL installedSelector = NSSelectorFromString(@"isInstalled");
+    BOOL installed = proxy && [proxy respondsToSelector:installedSelector] &&
+        ((BOOL(*)(id, SEL))objc_msgSend)(proxy, installedSelector);
+    SEL prohibitedSelector = NSSelectorFromString(@"isLaunchProhibited");
+    if (!installed || ([proxy respondsToSelector:prohibitedSelector] &&
+        ((BOOL(*)(id, SEL))objc_msgSend)(proxy, prohibitedSelector))) return NO;
+
+    Class workspaceClass = objc_getClass("LSApplicationWorkspace");
+    SEL defaultWorkspaceSelector = NSSelectorFromString(@"defaultWorkspace");
+    id workspace = workspaceClass && [workspaceClass respondsToSelector:defaultWorkspaceSelector]
+        ? ((id(*)(id, SEL))objc_msgSend)(workspaceClass, defaultWorkspaceSelector)
+        : nil;
+    SEL openSelector = NSSelectorFromString(@"openApplicationWithBundleID:");
+    if (!workspace || ![workspace respondsToSelector:openSelector]) return NO;
+
+    @try {
+        ((void(*)(id, SEL, id))objc_msgSend)(workspace, openSelector, bundleIdentifier);
+        return YES;
+    } @catch (NSException *exception) {
+        HBLogWarn(@"TypeX failed to open application %@: %@", bundleIdentifier, exception);
+        return NO;
+    }
+}
+
+// Opens a user-defined web URL, URL scheme, or installed app bundle ID. The
+// @@@ placeholder receives the active input control's complete text.
+-(BOOL)dispatchLinkActionSelector:(NSString *)selectorName sender:(UIButton *)sender {
+    NSDictionary *entry = preferencesLinkActionForSelector(selectorName);
+    if (!entry) return NO;
+
+    NSString *link = [entry[@"link"] isKindOfClass:[NSString class]] ? entry[@"link"] : @"";
+    link = [link stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    [self autoPaginationControl];
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
+
+    if ([link containsString:@"@@@"]) {
+        NSString *parameter = [self escapedCustomActionParameter:[self currentInputTextForCustomAction]];
+        link = [link stringByReplacingOccurrencesOfString:@"@@@" withString:parameter];
+    }
+
+    if (link.length == 0) {
+        [self showCustomActionLinkError];
+        [self autoPaginationControl];
+        return YES;
+    }
+
+    if ([self isBundleIdentifier:link]) {
+        if (![self openApplicationWithBundleIdentifier:link]) {
+            HBLogWarn(@"TypeX failed to open custom action bundle identifier %@", link);
+            [self showCustomActionLinkError];
+        }
+        [self autoPaginationControl];
+        return YES;
+    }
+
+    NSURL *url = [NSURL URLWithString:link];
+    if (url.scheme.length == 0) {
+        url = [NSURL URLWithString:[@"https://" stringByAppendingString:link]];
+    }
+    BOOL webURLMissingHost = ([url.scheme.lowercaseString isEqualToString:@"http"] ||
+                              [url.scheme.lowercaseString isEqualToString:@"https"]) && url.host.length == 0;
+    if (!url || url.scheme.length == 0 || webURLMissingHost) {
+        HBLogWarn(@"TypeX ignoring invalid custom action link %@", link);
+        [self showCustomActionLinkError];
+        [self autoPaginationControl];
+        return YES;
+    }
+
+    [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:^(BOOL success) {
+        if (!success) {
+            HBLogWarn(@"TypeX failed to open custom action URL %@", url);
+            [self showCustomActionLinkError];
+        }
+    }];
+    [self autoPaginationControl];
+    return YES;
+}
+
+// Dispatches either one built-in selector or one user-defined link selector.
+-(void)dispatchConfiguredActionSelector:(NSString *)selectorName sender:(UIButton *)sender {
+    if ([self dispatchLinkActionSelector:selectorName sender:sender]) return;
     if (![DXShortcutsGenerator isVisibleShortcutSelector:selectorName]) {
         HBLogWarn(@"TypeX ignoring legacy/hidden selector %@", selectorName);
         return;
     }
 
-    self.hapticType = 2;
-    ((void(*)(id, SEL, id))objc_msgSend)(self, action, nil);
-    [self shakeView:recognizer.view];
+    SEL action = NSSelectorFromString(selectorName);
+    if (![self respondsToSelector:action]) {
+        HBLogWarn(@"TypeX ignoring unimplemented %@ for %@", selectorName, sender.accessibilityIdentifier);
+        return;
+    }
+
+    ((void(*)(id, SEL, id))objc_msgSend)(self, action, sender);
+}
+
+-(void)dispatchSubActionSelector:(NSString *)selectorName sender:(UIButton *)sender {
+    [self dispatchConfiguredActionSelector:selectorName sender:sender];
+}
+
+-(void)presentSubActionChooserForButton:(UIButton *)button selectors:(NSArray<NSString *> *)selectors {
+    // Bottom action sheet: no title, the cancel row sits detached at the
+    // bottom, and tapping outside the dimmed area dismisses it natively.
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    for (NSString *selectorName in selectors) {
+        NSDictionary *linkAction = preferencesLinkActionForSelector(selectorName);
+        NSString *actionTitle = linkAction[@"name"];
+        if (![actionTitle isKindOfClass:[NSString class]] || actionTitle.length == 0) {
+            actionTitle = [DXHelper localizedStringForActionNamed:selectorName shortName:NO bundle:tweakBundle];
+        }
+        [alert addAction:[UIAlertAction actionWithTitle:(actionTitle.length ? actionTitle : selectorName)
+                                                  style:UIAlertActionStyleDefault
+                                                handler:^(__unused UIAlertAction *action) {
+            [self dispatchSubActionSelector:selectorName sender:button];
+        }]];
+    }
+    [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_CANCEL") style:UIAlertActionStyleCancel handler:nil]];
+
+    // iPad presents action sheets as a popover and raises without an anchor.
+    if (button.window && alert.popoverPresentationController) {
+        alert.popoverPresentationController.sourceView = button;
+        alert.popoverPresentationController.sourceRect = button.bounds;
+    }
+
+    UIViewController *presenter = [self keyWindow].rootViewController;
+    [presenter presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)activateSwipeActions:(UISwipeGestureRecognizer *)recognizer {
@@ -1708,66 +1870,27 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     NSString *selectorName = preferencesSelectorForIdentifierScoped(button.accessibilityIdentifier, 1, gestureType, @"", self.configuration);
     if (selectorName.length == 0) return;
 
-    SEL action = NSSelectorFromString(selectorName);
-    if (![self respondsToSelector:action]) {
-        HBLogWarn(@"TypeX ignoring unimplemented %@ for %@", selectorName, button.accessibilityIdentifier);
-        return;
-    }
-
-    if (![DXShortcutsGenerator isVisibleShortcutSelector:selectorName]) {
-        HBLogWarn(@"TypeX ignoring legacy/hidden selector %@", selectorName);
-        return;
-    }
-
     self.hapticType = 2;
-    ((void(*)(id, SEL, id))objc_msgSend)(self, action, nil);
-    [self shakeView:recognizer.view];
+    [self dispatchConfiguredActionSelector:selectorName sender:button];
 }
 
 -(void)cellButtonTouchUpInside:(UIButton *)sender {
-    // A configured tap gesture overrides the button's own action; an empty tap
-    // store leaves the historical TouchUpInside selector untouched.
+    // "点按触发子动作" buttons: tap runs the sub-action chain exactly like a
+    // long press and the configured tap action is skipped entirely.
+    if (preferencesTapRunsSubActionsForIdentifier(sender.accessibilityIdentifier, self.configuration)) {
+        [self runSubActionsForButton:sender];
+        return;
+    }
+
+    // With the switch off, tap runs ONLY the tap action: the configured 点按
+    // action, or the button's own historical TouchUpInside selector. Sub-actions
+    // stay on the long press (and on tap only while the switch is on).
     NSString *selectorName = preferencesSelectorForIdentifierScoped(sender.accessibilityIdentifier, 1, DXShortcutGestureTap, @"", self.configuration);
     if (selectorName.length == 0) selectorName = sender.accessibilityIdentifier;
 
-    // Configured sub-actions chain after the tap action in stored order, so a
-    // single tap runs a whole sequence. Draft buttons (no intrinsic action)
-    // stay inert except for their sub-actions.
-    NSArray<NSString *> *subActions = preferencesSubActionSelectorsForIdentifier(sender.accessibilityIdentifier, self.configuration);
-    if (subActions.count > 0) {
-        NSMutableArray<NSString *> *chain = [NSMutableArray arrayWithArray:subActions];
-        if (!DXIsDraftActionSelector(selectorName) && [DXShortcutsGenerator isVisibleShortcutSelector:selectorName]) {
-            [chain insertObject:selectorName atIndex:0];
-        }
-
-        SEL tapAction = NSSelectorFromString(chain.firstObject);
-        if (![self respondsToSelector:tapAction]) {
-            HBLogWarn(@"TypeX ignoring unimplemented single-tap %@", chain.firstObject);
-            return;
-        }
-        ((void(*)(id, SEL, id))objc_msgSend)(self, tapAction, sender);
-        for (NSUInteger index = 1; index < chain.count; index++) {
-            SEL action = NSSelectorFromString(chain[index]);
-            if (![self respondsToSelector:action]) {
-                HBLogWarn(@"TypeX ignoring unimplemented sub-action %@", chain[index]);
-                continue;
-            }
-            ((void(*)(id, SEL, id))objc_msgSend)(self, action, sender);
-        }
-        return;
-    }
-
     // Draft buttons have no action yet: they render but taps stay inert.
     if (DXIsDraftActionSelector(selectorName)) return;
-    if (![DXShortcutsGenerator isVisibleShortcutSelector:selectorName]) return;
-
-    SEL action = NSSelectorFromString(selectorName);
-    if (![self respondsToSelector:action]) {
-        HBLogWarn(@"TypeX ignoring unimplemented single-tap %@", selectorName);
-        return;
-    }
-
-    ((void(*)(id, SEL, id))objc_msgSend)(self, action, sender);
+    [self dispatchConfiguredActionSelector:selectorName sender:sender];
 }
 
 -(UIWindow *)keyWindow {
@@ -1789,18 +1912,18 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     
     
     if (@available(iOS 13.0, *)){
-        imageOfName = useShortenedLabel
+        imageOfName = self.useShortLabel
             ? [(self.customNames[selectorName] ?: [DXHelper localizedStringForActionNamed:selectorName shortName:YES bundle:tweakBundle]) attributedString]
             : [((NSArray *)_shortcuts[kbuttonsImages13])[cellIndex] attributedString];
     }else{
-        imageOfName = useShortenedLabel
+        imageOfName = self.useShortLabel
             ? [(self.customNames[selectorName] ?: [DXHelper localizedStringForActionNamed:selectorName shortName:YES bundle:tweakBundle]) attributedString]
             : [((NSArray *)_shortcuts[kbuttonsImages12])[cellIndex] attributedString];
     }
-    if (!useShortenedLabel) {
+    if (!self.useShortLabel) {
         image = [DXHelper imageForName:imageOfName.string withSystemColor:NO completion:nil];
     }
-    if (useShortenedLabel){
+    if (self.useShortLabel){
         [cell.btn setImage:nil forState:UIControlStateNormal];
         [cell.btn setAttributedTitle:imageOfName forState:UIControlStateNormal];
     }else{
@@ -1810,16 +1933,22 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     cell.btn.accessibilityIdentifier = selectorName;
     [cell.btn removeTarget:nil action:NULL forControlEvents:UIControlEventAllEvents];
     
-    UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(activateLPActions:)];
-    longPress.minimumPressDuration = 0.5;
-
     // Single tap is the button's own TouchUpInside event: it fires on touch-up
     // with no gesture-recognizer window, so taps can be repeated as fast as the
     // user likes. No tap recognizer is mounted; one would delay every touch-up
     // until it fails.
     [cell.btn addTarget:self action:@selector(cellButtonTouchUpInside:) forControlEvents:UIControlEventTouchUpInside];
 
-    NSMutableArray<UIGestureRecognizer *> *recognizers = [NSMutableArray arrayWithObject:longPress];
+    // Long press runs the button's sub-action configuration, so it is mounted
+    // only for buttons that have sub-actions, mirroring the conditional swipe
+    // recognizers below.
+    NSMutableArray<UIGestureRecognizer *> *recognizers = [NSMutableArray array];
+    if ([preferencesSubActionSelectorsForIdentifier(cell.btn.accessibilityIdentifier, self.configuration) count] > 0) {
+        UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(activateLPActions:)];
+        longPress.minimumPressDuration = 0.5;
+        [recognizers addObject:longPress];
+    }
+
     // Swipe recognizers are mounted only for directions with a configured
     // action, mirroring the conditional double-tap approach: an always-mounted
     // horizontal swipe would win over the paging pan on flicks that start on a
@@ -1844,7 +1973,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     //}
     //self.layer.masksToBounds = NO;
     
-    if (useShortenedLabel) cell.btn.clipsToBounds = YES; else cell.btn.clipsToBounds = NO;
+    if (self.useShortLabel) cell.btn.clipsToBounds = YES; else cell.btn.clipsToBounds = NO;
 
     // Button chrome: corner radius and the optional outlined border. The border
     // color follows the system label color so it stays visible on both light
@@ -1869,7 +1998,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 - (CGSize)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout sizeForItemAtIndexPath:(NSIndexPath *)indexPath {
     //CGFloat useableWidth = collectionView.frame.size.width / ((NSArray *)_shortcuts[kbuttonsImages12]).count;
-    //CGFloat useableWidth = collectionView.frame.size.width / ([self numberOfItemsInSection:indexPath.section] <= preferencesInt(kShortcutsPerSection, maxshortcutpersection) ? (((NSArray *)_shortcuts[kbuttonsImages12]).count <=preferencesInt(kShortcutsPerSection, maxshortcutpersection) ? ((NSArray *)_shortcuts[kbuttonsImages12]).count : preferencesInt(kShortcutsPerSection, maxshortcutpersection)) :  [self numberOfItemsInSection:indexPath.section]);
     if ([self.configuration isEqualToString:@"top"]) {
         NSInteger items = MAX(1, [self numberOfItemsInSection:indexPath.section]);
         CGFloat gaps = [self buttonChromeActive] ? self.buttonSpacing * (items - 1) : 0;

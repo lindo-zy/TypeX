@@ -25,7 +25,6 @@ extern BOOL shouldPerformBatchUpdate;
 extern NSString *key;
 extern BOOL isDraggedGesture;
 extern UIKeyboardDockView *dockV;
-extern BOOL useShortenedLabel;
 extern NSBundle *tweakBundle;
 extern BOOL firstInit;
 extern DXStudlyCapsType spongebobEntropy;
@@ -42,6 +41,9 @@ int preferencesInt(NSString* key, int fallback);
 NSString *preferencesSelectorForIdentifier(NSString* identifier, int selectorNum, int gestureType, NSString *fallback);
 NSString *preferencesSelectorForIdentifierScoped(NSString* identifier, int selectorNum, int gestureType, NSString *fallback, NSString *configuration);
 NSArray<NSString *> *preferencesSubActionSelectorsForIdentifier(NSString* identifier, NSString *configuration);
+BOOL preferencesTapRunsSubActionsForIdentifier(NSString *identifier, NSString *configuration);
+NSDictionary *preferencesLinkActionForSelector(NSString *selector);
+BOOL preferencesIsConfiguredActionSelector(NSString *selector);
 
 #ifdef __cplusplus
 }
