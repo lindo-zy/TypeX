@@ -205,7 +205,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         
     }
     
-    //HBLogDebug(@"TypeX Init");
     //if (!prefs[@"prevState"]){
     
     /*
@@ -233,14 +232,12 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 - (void)collectionView:(UICollectionView *)collectionView willDisplayCell:(UICollectionViewCell *)cell forItemAtIndexPath:(NSIndexPath *)indexPath{
-    //HBLogDebug(@"willDisplayCell: %@", indexPath);
     if (indexPath.section == 0 && indexPath.row == 0){
         self.firstCellVisible = YES;
     }
 }
 
 - (void)collectionView:(UICollectionView *)collectionView didEndDisplayingCell:(UICollectionViewCell *)cell forItemAtIndexPath:(NSIndexPath *)indexPath{
-    //HBLogDebug(@"didEndDisplayingCell: %@", indexPath);
     if (indexPath.section == 0 && indexPath.row == 0){
         self.firstCellVisible = NO;
     }
@@ -262,7 +259,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 -(void)scrollBackward:(NSNotification*)notification{
-    //HBLogDebug(@"scrollBackward");
     
     NSArray *indexPaths = [self indexPathsForVisibleItems];
     //NSSortDescriptor *sort = [NSSortDescriptor sortDescriptorWithKey:@"row" ascending:YES];
@@ -281,12 +277,10 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     NSArray *orderedIndexPaths = [indexPaths sortedArrayUsingDescriptors:@[sort]];
     
     
-    //HBLogDebug(@"scrollBackward SORTED: %@", orderedIndexPaths);
     
     NSIndexPath *firstCellIndexPath = [orderedIndexPaths firstObject];
     
     //NSIndexPath *scrollToIndexPath;
-    //HBLogDebug(@"scrollBackwardINDEX: %@", firstCellIndexPath);
     
     /*
      if (self.touchEnded){
@@ -311,10 +305,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     int G = preferencesInt(kGranularity, granularity) -1;
     //int ymax = [self numberOfItemsInSection:firstCellIndexPath.section] -1;
     int allowedMaxY = [self shortcutsPerSection];
-    //HBLogDebug(@"G: %d, y: %d", G, allowedMaxY);
     G = G+1-allowedMaxY>0?allowedMaxY-1:G;
     G = G==0?1:G;
-    //HBLogDebug(@"After G: %d, y: %d", G, allowedMaxY);
     
     //NSArray *indexArray = @[@0, @1, @2, @3, @4, @5, @0, @1, @2, @3, @4, @5];
     //NSArray *sectionOffsetArray = @[@1, @1, @1, @1, @1, @1, @0, @0, @0, @0, @0, @0];
@@ -326,8 +318,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         self.sectionOffsetBackwardArray = [NSArray array];
         self.sectionOffsetBackwardArray = [self synthesizeIndexingForIndexOrOffset:NO descendingOffset:YES numberOfItems:[self shortcutsPerSection]];
     }
-    //HBLogDebug(@"index: %@", indexArray);
-    //HBLogDebug(@"offset: %@", sectionOffsetArray);
     
     NSIndexPath *newIndexPath = [NSIndexPath indexPathForRow:[self.indexArray[y+allowedMaxY-(G+1)] intValue]  inSection:x - [self.sectionOffsetBackwardArray[y+allowedMaxY-(G+1)] intValue]];
     [self scrollToItemAtIndexPath:newIndexPath atScrollPosition:UICollectionViewScrollPositionLeft animated:YES];
@@ -337,7 +327,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 -(void)scrollForward:(NSNotification*)notification{
-    //HBLogDebug(@"scrollForward");
     NSArray *indexPaths = [self indexPathsForVisibleItems];
     //NSSortDescriptor *sort = [NSSortDescriptor sortDescriptorWithKey:@"row" ascending:YES];
     //NSArray *orderedIndexPaths = [indexPaths sortedArrayUsingDescriptors:@[sort]];
@@ -358,9 +347,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     //NSInteger centerIndex = ceil((float)self.visibleCells.count/2.0f);
     NSIndexPath *firstCellIndexPath = [orderedIndexPaths firstObject];
     NSIndexPath *lastCellIndexPath = [orderedIndexPaths lastObject];
-    //HBLogDebug(@"LAST INDEX: %@", firstCellIndexPath);
-    ////HBLogDebug(@"%ld, %ld", self.numberOfSections -1, [self numberOfItemsInSection:lastCellIndexPath.section]);
-    //HBLogDebug(@"SORTED: %@", orderedIndexPaths);
     //NSIndexPath *scrollToIndexPath;
     
     
@@ -373,10 +359,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     int y = firstCellIndexPath.row;
     int G = preferencesInt(kGranularity, granularity) -1;
     int allowedMaxY = [self shortcutsPerSection];
-    //HBLogDebug(@"G: %d, y: %d", G, y);
     G = G+1-allowedMaxY>0?allowedMaxY-1:G;
     G = G==0?1:G;
-    //HBLogDebug(@"After G: %d, y: %d", G, allowedMaxY);
     
     //int ymax = [self numberOfItemsInSection:firstCellIndexPath.section] -1;
     //int allowedMaxY = [self shortcutsPerSection];
@@ -391,25 +375,18 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         self.sectionOffsetForwardArray = [self synthesizeIndexingForIndexOrOffset:NO descendingOffset:NO numberOfItems:[self shortcutsPerSection]];
     }
     NSIndexPath *newIndexPath = [NSIndexPath indexPathForRow:[self.indexArray[y+G+1] intValue] inSection:x + [self.sectionOffsetForwardArray[y+G+1] intValue]];
-    //HBLogDebug(@"index: %@", indexArray);
-    //HBLogDebug(@"offset: %@", sectionOffsetArray);
     
     [self scrollToItemAtIndexPath:newIndexPath atScrollPosition:UICollectionViewScrollPositionLeft animated:YES];
     
-    //HBLogDebug(@"x: %d, y: %d, ymax: %d, G: %d, allowedMaxY: %d", x, y, ymax, G, allowedMaxY);
     /*
      if (G-y == 0 && G+1==allowedMaxY){
      newIndexPath = [NSIndexPath indexPathForRow:0 inSection:x+1];
-     //HBLogDebug(@"Case 1");
      }else if (G+y > ymax){
      newIndexPath = [NSIndexPath indexPathForRow:[indexArray[y+G+1] intValue] inSection:x+1];
-     //HBLogDebug(@"Case 2");
      }else if (G+y < ymax){
      newIndexPath = [NSIndexPath indexPathForRow:[indexArray[y+G+1] intValue] inSection:x];
-     //HBLogDebug(@"Case 3");
      }else{
      newIndexPath = [NSIndexPath indexPathForRow:0 inSection:x+1];
-     //HBLogDebug(@"Case 4");
      }
      [self scrollToItemAtIndexPath:newIndexPath atScrollPosition:UICollectionViewScrollPositionLeft animated:YES];
      */
@@ -417,16 +394,12 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
      //if (firstCellIndexPath.section != 0){
      if (firstCellIndexPath.row ==  [self numberOfItemsInSection:firstCellIndexPath.section] -1){
      scrollToIndexPath =  [NSIndexPath indexPathForRow:preferencesInt(kGranularity, granularity) - 1 inSection:firstCellIndexPath.section + 1];
-     //HBLogDebug(@"1");
      }else if (preferencesInt(kGranularity, granularity) == [self shortcutsPerSection]){
      scrollToIndexPath =  [NSIndexPath indexPathForRow:0 inSection:firstCellIndexPath.section + 1];
-     //HBLogDebug(@"3");
      }else if (firstCellIndexPath.row + preferencesInt(kGranularity, granularity) > [self numberOfItemsInSection:firstCellIndexPath.section] -1){
      scrollToIndexPath =  [NSIndexPath indexPathForRow:preferencesInt(kGranularity, granularity) - ([self numberOfItemsInSection:firstCellIndexPath.section] - 1 - firstCellIndexPath.row) inSection:firstCellIndexPath.section + 1];
-     //HBLogDebug(@"2, %@ - %@",preferencesInt(kGranularity, granularity),([self numberOfItemsInSection:firstCellIndexPath.section] - 1 - firstCellIndexPath.row));
      }else{
      scrollToIndexPath =  [NSIndexPath indexPathForRow:firstCellIndexPath.row + preferencesInt(kGranularity, granularity) inSection:firstCellIndexPath.section];
-     //HBLogDebug(@"4");
      }
      //}
      */
@@ -593,7 +566,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     self.shortcutConfigurationAvailable = [currentPrefs isKindOfClass:[NSDictionary class]];
     if (!self.shortcutConfigurationAvailable) currentPrefs = @{};
     prefs = [currentPrefs mutableCopy];
-    //HBLogDebug(@"reloadShortcutConfiguration configuration=%@ shortcutsPerSection=%d scopedKey=%@", self.configuration, [self shortcutsPerSection], [self scopedPreferenceKey:kShortcutskey]);
     NSMutableArray *defaultImages12 = [[self.shortcutsGenerator imageNameArrayForiOS:0] mutableCopy];
     NSMutableArray *defaultImages13 = [[self.shortcutsGenerator imageNameArrayForiOS:1] mutableCopy];
     NSMutableArray *defaultSelectors = [[self.shortcutsGenerator selectorNames] mutableCopy];
@@ -645,7 +617,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }
 
     self.shortcuts = @[images12, images13, selectors];
-    //HBLogDebug(@"reloadShortcutConfiguration built shortcuts count=%lu for scope=%@", (unsigned long)images12.count, self.configuration);
     [self reloadButtonChrome];
     ((UICollectionViewFlowLayout *)self.collectionViewLayout).minimumInteritemSpacing = [self buttonChromeActive] ? self.buttonSpacing : 0;
     self.pagingEnabled = YES;
@@ -660,7 +631,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     //[self reloadData];
     if (toggledOn){
         if (self.refreshView){
-            //HBLogDebug(@"&&&&&&&&&& typeXLayoutChanged shouldPerformBatchUpdate: %d", shouldPerformBatchUpdate?1:0);
             [UIView performWithoutAnimation:^{
                 //[self reloadItemsAtIndexPaths:[self indexPathsForVisibleItems]];
                 if (shouldPerformBatchUpdate){
@@ -684,36 +654,30 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
          if (self.refreshView)
          [UIView performWithoutAnimation:^{
          if ([userInfo[@"fullreload"] boolValue]){
-         //HBLogDebug(@"BEFORE SHORTCUTS: %@", self.shortcuts);
          //[self reloadData];
          [self performBatchUpdates:^{
          [self reloadData];
          } completion:^(BOOL finished) {}];
          
-         //HBLogDebug(@"AFTER SHORTCUTS: %@", self.shortcuts);
          }else{
-         //HBLogDebug(@"BEFORE SHORTCUTS: %@", self.shortcuts);
          //[self reloadData];
-         //HBLogDebug(@"VISIBLECELLS: %@", [self indexPathsForVisibleItems]);
          [self performBatchUpdates:^{
          [self reloadData];
          } completion:^(BOOL finished) {}];
          
          //[self reloadItemsAtIndexPaths:[self indexPathsForVisibleItems]];
-         //HBLogDebug(@"AFTER SHORTCUTS: %@", self.shortcuts);
          
          }
          }];
          } @catch (NSException *exception) {
          if (self.refreshView)
          [UIView performWithoutAnimation:^{
-         //HBLogDebug(@"BEFORE SHORTCUTS: %@", self.shortcuts);
          //[self reloadData];
          [self performBatchUpdates:^{
          [self reloadData];
          } completion:^(BOOL finished) {}];
          
-         //HBLogDebug(@"AFTER SHORTCUTS: %@", self.shortcuts);                }];
+         }];
          } @finally {
          
          }
@@ -729,7 +693,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         UIInterfaceOrientation orientation = DXCurrentInterfaceOrientation();
         isLandscape = UIInterfaceOrientationIsLandscape(orientation);
         if (self.refreshView){
-            //HBLogDebug(@"&&&&&&&&&& keyboardRotated shouldPerformBatchUpdate: %d", shouldPerformBatchUpdate?1:0);
             [UIView performWithoutAnimation:^{
                 //[self reloadItemsAtIndexPaths:[self indexPathsForVisibleItems]];
                 if (shouldPerformBatchUpdate){
@@ -1146,57 +1109,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     [kbImpl setCaretBlinks:YES];
     [self autoPaginationControl];
 }
-
--(void)openLinkAction:(UIButton*)sender{
-    [self autoPaginationControl];
-    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
-
-    if (![delegate respondsToSelector:@selector(selectedTextRange)]) {
-        [self autoPaginationControl];
-        return;
-    }
-
-    // A selection is checked verbatim; otherwise scan the whole content for
-    // the first link. Text with an explicit scheme (https:// or an app scheme
-    // such as "myapp://...") is opened as-is — openURL routes http(s) to the
-    // browser and custom schemes to their app. Scheme-less hosts such as
-    // "www.example.com" fall back to NSDataDetector.
-    NSString *text = [delegate textInRange:[delegate selectedTextRange]];
-    if (text.length == 0) {
-        text = [delegate textInRange:[delegate textRangeFromPosition:[delegate beginningOfDocument]
-                                                         toPosition:[delegate endOfDocument]]];
-    }
-
-    NSURL *url = nil;
-    if (text.length > 0) {
-        NSString *candidate = [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        NSRange schemeRange = [candidate rangeOfString:@"^[a-zA-Z][a-zA-Z0-9+.-]*://" options:NSRegularExpressionSearch];
-        if (schemeRange.location == 0) {
-            url = [NSURL URLWithString:candidate];
-        }
-        if (!url && [self isValidURL:candidate]) {
-            url = [NSURL URLWithString:candidate];
-        }
-        if (!url) {
-            NSDataDetector *detector = [NSDataDetector dataDetectorWithTypes:NSTextCheckingTypeLink error:nil];
-            if (detector) {
-                for (NSTextCheckingResult *match in [detector matchesInString:candidate options:0 range:NSMakeRange(0, candidate.length)]) {
-                    url = match.URL;
-                    break;
-                }
-            }
-        }
-    }
-
-    if (url) {
-        [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
-    }
-    [self autoPaginationControl];
-}
-
-
-
-
 
 -(void)dismissKeyboardAction:(UIButton*)sender{
     [self autoPaginationControl];
@@ -1743,8 +1655,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         UITextRange *range = [delegate textRangeFromPosition:beginning toPosition:end];
         NSString *text = range ? [delegate textInRange:range] : nil;
         return [text isKindOfClass:[NSString class]] ? text : @"";
-    } @catch (NSException *exception) {
-        HBLogWarn(@"TypeX could not read the current input for a custom action: %@", exception);
+    } @catch (__unused NSException *exception) {
         return @"";
     }
 }
@@ -1803,41 +1714,117 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     });
 }
 
-// UIApplication is intentionally tried first: another injected tweak can
-// implement an in-process scheme (for example kayokox://) without registering
-// it with LaunchServices. App-extension hosts can reject ordinary external
-// URLs, so a failed request falls back to SpringBoardServices.
--(void)openCustomActionURL:(NSURL *)url completion:(DXCustomActionOpenCompletion)completion {
-    void (^openThroughSpringBoard)(void) = ^{
-        BOOL success = SBSOpenSensitiveURLAndUnlock((__bridge CFURLRef)url, 0);
-        [self finishCustomActionOpen:completion success:success];
-    };
+// Apple locks prefs:/App-Prefs:/itms-services: behind a process-origin check:
+// from inside a third-party app, UIApplication can report success while
+// SpringBoard silently drops the open later. That is why scheme links worked
+// on SpringBoard (no UIApplication there, the SpringBoardServices route ran
+// directly) but not in every app. These schemes are only ever handled by
+// SpringBoard itself, so they never go through UIApplication.
+-(BOOL)isSensitiveSystemURLScheme:(NSString *)scheme {
+    static NSSet *sensitiveSchemes;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        sensitiveSchemes = [NSSet setWithArray:@[@"prefs", @"app-prefs", @"itms-services"]];
+    });
+    if (scheme.length == 0) return NO;
+    return [sensitiveSchemes containsObject:scheme.lowercaseString];
+}
 
-    UIApplication *application = [UIApplication sharedApplication];
-    if (!application || ![application respondsToSelector:@selector(openURL:options:completionHandler:)]) {
-        openThroughSpringBoard();
-        return;
-    }
+// Resolves the application owning a URL scheme so the FrontBoard path can carry
+// the URL as a __LaunchURL option. The static table covers Apple schemes that
+// LaunchServices may refuse to answer for inside an injected process.
+-(NSString *)handlerBundleIdentifierForURLScheme:(NSString *)scheme {
+    static NSDictionary *knownHandlers;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        knownHandlers = @{@"prefs": @"com.apple.Preferences",
+                          @"app-prefs": @"com.apple.Preferences"};
+    });
+
+    if (scheme.length == 0) return nil;
+    NSString *known = knownHandlers[scheme.lowercaseString];
+    if (known.length > 0) return known;
+
+    Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
+    if (!workspaceClass) return nil;
+    id workspace = [workspaceClass performSelector:@selector(defaultWorkspace)];
+    SEL schemeSelector = @selector(applicationsAvailableForHandlingURLScheme:);
+    if (!workspace || ![workspace respondsToSelector:schemeSelector]) return nil;
 
     @try {
-        [application openURL:url options:@{} completionHandler:^(BOOL success) {
-            if (success) {
-                [self finishCustomActionOpen:completion success:YES];
-            } else {
-                openThroughSpringBoard();
+        NSArray *identifiers = ((NSArray *(*)(id, SEL, id))objc_msgSend)(workspace, schemeSelector, scheme);
+        if ([identifiers isKindOfClass:[NSArray class]]) {
+            for (NSString *identifier in identifiers) {
+                if ([identifier isKindOfClass:[NSString class]] && identifier.length > 0) return identifier;
             }
+        }
+    } @catch (__unused NSException *exception) {
+    }
+    return nil;
+}
+
+-(id)frontBoardOpenApplicationOptionsWithLaunchURL:(NSURL *)launchURL {
+    NSDictionary *dictionary = launchURL ? @{ @"__LaunchURL": launchURL } : @{};
+    Class optionsClass = NSClassFromString(@"FBSOpenApplicationOptions");
+    if (optionsClass && [optionsClass respondsToSelector:@selector(optionsWithDictionary:)]) {
+        return [optionsClass optionsWithDictionary:dictionary];
+    }
+    return dictionary;
+}
+
+// Single FrontBoard open request. Returns NO when the FrontBoard route is
+// unavailable on this system (handler left untouched); when YES, the handler
+// fires exactly once on the main queue with the final outcome.
+-(BOOL)frontBoardOpenApplication:(NSString *)bundleIdentifier
+                       launchURL:(NSURL *)launchURL
+                         handler:(void (^)(BOOL success))handler {
+    Class requestClass = NSClassFromString(@"FBSOpenApplicationRequest");
+    if (!requestClass || ![requestClass respondsToSelector:@selector(requestWithBundleIdentifier:)]) return NO;
+    Class serviceClass = NSClassFromString(@"FBSOpenApplicationService");
+    if (!serviceClass) return NO;
+
+    id request = [requestClass requestWithBundleIdentifier:bundleIdentifier];
+    if (!request) return NO;
+
+    id service = [serviceClass respondsToSelector:@selector(sharedService)]
+        ? [serviceClass sharedService]
+        : [[serviceClass alloc] init];
+    SEL openSelector = @selector(openApplication:options:withResultHandler:);
+    if (!service || ![service respondsToSelector:openSelector]) return NO;
+
+    id options = [self frontBoardOpenApplicationOptionsWithLaunchURL:launchURL];
+    @try {
+        [service openApplication:request options:options withResultHandler:^(NSError *error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                handler(!error);
+            });
         }];
-    } @catch (NSException *exception) {
-        HBLogWarn(@"TypeX UIApplication failed to open custom action URL %@: %@", url, exception);
-        openThroughSpringBoard();
+        return YES;
+    } @catch (__unused NSException *exception) {
+        return NO;
     }
 }
 
-// FBSSystemService is the FrontBoard client that accepts a bundle identifier.
-// Do not preflight with LSApplicationProxy: that lookup can fail in an injected
-// app even when the target application is installed.
--(void)openApplicationWithBundleIdentifier:(NSString *)bundleIdentifier
-                                 completion:(DXCustomActionOpenCompletion)completion {
+-(void)openURLThroughSpringBoard:(NSURL *)url completion:(DXCustomActionOpenCompletion)completion {
+    if (SBSOpenSensitiveURLAndUnlock((__bridge CFURLRef)url, 0)) {
+        [self finishCustomActionOpen:completion success:YES];
+        return;
+    }
+
+    NSString *bundleIdentifier = [self handlerBundleIdentifierForURLScheme:url.scheme];
+    BOOL scheduled = bundleIdentifier.length > 0 &&
+        [self frontBoardOpenApplication:bundleIdentifier launchURL:url handler:^(BOOL success) {
+            [self finishCustomActionOpen:completion success:success];
+        }];
+    if (!scheduled) [self finishCustomActionOpen:completion success:NO];
+}
+
+// Compatibility ladder for systems without FBSOpenApplicationRequest (iOS 12):
+// FBSSystemService still accepted a plain bundle identifier there, and below it
+// the SpringBoardServices launch needs the com.apple.springboard
+// .launchapplications entitlement that injected processes do not carry.
+-(void)openApplicationThroughSystemService:(NSString *)bundleIdentifier
+                                completion:(DXCustomActionOpenCompletion)completion {
     void (^openThroughSpringBoard)(void) = ^{
         int result = SBSLaunchApplicationWithIdentifierAndLaunchOptions(bundleIdentifier, @{}, @{}, NO);
         [self finishCustomActionOpen:completion success:(result == 0)];
@@ -1853,18 +1840,81 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
                     return;
                 }
 
-                HBLogWarn(@"TypeX FrontBoard could not open application %@: %@", bundleIdentifier, error);
                 openThroughSpringBoard();
             }];
             return;
-        } @catch (NSException *exception) {
-            HBLogWarn(@"TypeX FrontBoard raised while opening application %@: %@", bundleIdentifier, exception);
+        } @catch (__unused NSException *exception) {
         }
     }
 
-    // Compatibility fallback for systems where FBSSystemService is
-    // unavailable. SpringBoardServices returns zero when it accepts the launch.
     openThroughSpringBoard();
+}
+
+// FBSOpenApplicationService with a request object is the only FrontBoard entry
+// that accepts a plain bundle identifier on current iOS.
+-(void)openApplicationWithBundleIdentifier:(NSString *)bundleIdentifier
+                                 completion:(DXCustomActionOpenCompletion)completion {
+    void (^openThroughLegacy)(void) = ^{
+        [self openApplicationThroughSystemService:bundleIdentifier completion:completion];
+    };
+
+    BOOL scheduled = [self frontBoardOpenApplication:bundleIdentifier launchURL:nil handler:^(BOOL success) {
+        if (success) {
+            [self finishCustomActionOpen:completion success:YES];
+            return;
+        }
+        openThroughLegacy();
+    }];
+    if (!scheduled) openThroughLegacy();
+}
+
+// Ordering rationale (see isSensitiveSystemURLScheme:): sensitive Apple schemes
+// skip UIApplication entirely. Everything else still tries UIApplication first
+// so in-process scheme handlers provided by other injected tweaks keep working,
+// then falls back to SpringBoard, then FrontBoard. The watchdog covers host apps
+// that never invoke the completionHandler at all.
+-(void)openCustomActionURL:(NSURL *)url completion:(DXCustomActionOpenCompletion)completion {
+    if ([self isSensitiveSystemURLScheme:url.scheme]) {
+        [self openURLThroughSpringBoard:url completion:completion];
+        return;
+    }
+
+    UIApplication *application = [UIApplication sharedApplication];
+    SEL openSelector = @selector(openURL:options:completionHandler:);
+    if (!application || ![application respondsToSelector:openSelector]) {
+        [self openURLThroughSpringBoard:url completion:completion];
+        return;
+    }
+
+    __block BOOL resolved = NO;
+    void (^fallBackToSpringBoard)(void) = ^{
+        if (resolved) return;
+        resolved = YES;
+        [self openURLThroughSpringBoard:url completion:completion];
+    };
+
+    @try {
+        BOOL scheduled = ((BOOL (*)(id, SEL, id, id, id))objc_msgSend)(application, openSelector, url, @{}, ^(BOOL success) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (resolved) return;
+                resolved = YES;
+                if (success) {
+                    [self finishCustomActionOpen:completion success:YES];
+                } else {
+                    [self openURLThroughSpringBoard:url completion:completion];
+                }
+            });
+        });
+        if (!scheduled) {
+            fallBackToSpringBoard();
+            return;
+        }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            fallBackToSpringBoard();
+        });
+    } @catch (__unused NSException *exception) {
+        fallBackToSpringBoard();
+    }
 }
 
 // Opens a user-defined web URL, URL scheme, or installed app bundle ID. The
@@ -1899,7 +1949,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
             ([url.scheme.lowercaseString isEqualToString:@"http"] ||
              [url.scheme.lowercaseString isEqualToString:@"https"]);
         if (!validWebURL) {
-            HBLogWarn(@"TypeX ignoring invalid custom action web URL %@", link);
             [self showCustomActionLinkError];
             [self autoPaginationControl];
             return YES;
@@ -1907,7 +1956,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
         [self openCustomActionURL:url completion:^(BOOL success) {
             if (!success) {
-                HBLogWarn(@"TypeX failed to open custom action web URL %@", url);
                 [self showCustomActionLinkError];
             }
         }];
@@ -1920,7 +1968,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     if (schemeRange.location == 0) {
         NSURL *url = [NSURL URLWithString:link];
         if (!url || url.scheme.length == 0) {
-            HBLogWarn(@"TypeX ignoring invalid custom action URL scheme %@", link);
             [self showCustomActionLinkError];
             [self autoPaginationControl];
             return YES;
@@ -1928,7 +1975,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
         [self openCustomActionURL:url completion:^(BOOL success) {
             if (!success) {
-                HBLogWarn(@"TypeX failed to open custom action URL scheme %@", url);
                 [self showCustomActionLinkError];
             }
         }];
@@ -1939,7 +1985,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     if ([self isBundleIdentifier:link]) {
         [self openApplicationWithBundleIdentifier:link completion:^(BOOL success) {
             if (!success) {
-                HBLogWarn(@"TypeX failed to open custom action bundle identifier %@", link);
                 [self showCustomActionLinkError];
             }
         }];
@@ -1947,7 +1992,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         return YES;
     }
 
-    HBLogWarn(@"TypeX ignoring invalid custom action link %@", link);
     [self showCustomActionLinkError];
     [self autoPaginationControl];
     return YES;
@@ -1957,13 +2001,11 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 -(void)dispatchConfiguredActionSelector:(NSString *)selectorName sender:(UIButton *)sender {
     if ([self dispatchLinkActionSelector:selectorName sender:sender]) return;
     if (![DXShortcutsGenerator isVisibleShortcutSelector:selectorName]) {
-        HBLogWarn(@"TypeX ignoring legacy/hidden selector %@", selectorName);
         return;
     }
 
     SEL action = NSSelectorFromString(selectorName);
     if (![self respondsToSelector:action]) {
-        HBLogWarn(@"TypeX ignoring unimplemented %@ for %@", selectorName, sender.accessibilityIdentifier);
         return;
     }
 
@@ -2218,10 +2260,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 - (UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath {
     DXCell *cell = [collectionView dequeueReusableCellWithReuseIdentifier:@"kTypeXCellID" forIndexPath:indexPath];
-    //HBLogDebug(@"SECTION %ld, ROW: %ld", indexPath.section, indexPath.row);
     //cell.transform = CGAffineTransformMakeScale(-1, 1);
     int cellIndex = [self shortcutsPerSection]*indexPath.section + indexPath.row;
-    //HBLogDebug(@"cellINDEX: %d", cellIndex);
     //[cell.btn setTitle:_buttons[indexPath.row] forState:UIControlStateNormal];
     NSString* selectorName = ((NSArray *)_shortcuts[kselectors])[cellIndex];
     
@@ -2305,9 +2345,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     [cell.btn setTitleColor:currentTintColor forState:UIControlStateNormal];
     cell.btn.hidden = isLandscape||isDictating?YES:NO;
     //cell.btn.backgroundColor = [UIColor colorWithWhite:0.5 alpha:0.7];
-    //HBLogDebug(@"ITEMS: %@", ((NSArray *)_shortcuts[kselectors])[cellIndex]);
-    //HBLogDebug(@"INDEX PATH: %@", indexPath);
-    //HBLogDebug(@"");
     return cell;
     
     

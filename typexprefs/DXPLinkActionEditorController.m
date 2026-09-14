@@ -1,7 +1,14 @@
 #import "DXPLinkActionEditorController.h"
+#import "DXPAppPickerController.h"
+#import "DXPAppShortcutPickerController.h"
 #import "../common.h"
 
 static NSBundle *tweakBundle;
+
+// Rows below the text fields: "打开应用" backfills 名称/动作链接 from a
+// picked app; "快捷方式" only previews apps' long-press quick actions.
+static NSInteger const DXLinkActionRowOpenApp = 3;
+static NSInteger const DXLinkActionRowShortcut = 4;
 
 @interface DXPLinkActionEditorController ()
 @property (nonatomic, strong) UITableView *tableView;
@@ -17,7 +24,7 @@ static NSBundle *tweakBundle;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return 3;
+    return 5;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
@@ -33,10 +40,29 @@ static NSBundle *tweakBundle;
 - (NSString *)labelForRow:(NSInteger)row {
     if (row == 0) return LOCALIZED(@"NAME");
     if (row == 1) return LOCALIZED(@"ICON");
-    return LOCALIZED(@"ACTION_LINK");
+    if (row == 2) return LOCALIZED(@"ACTION_LINK");
+    if (row == DXLinkActionRowOpenApp) return LOCALIZED(@"OPEN_APP");
+    return LOCALIZED(@"SHORTCUTS");
+}
+
+- (UIImage *)pickerIconForRow:(NSInteger)row {
+    NSString *symbol = row == DXLinkActionRowOpenApp ? @"apps.iphone" : @"list.bullet.rectangle";
+    NSString *fallback = row == DXLinkActionRowOpenApp ? @"square.grid.2x2" : @"list.bullet";
+    return [UIImage systemImageNamed:symbol] ?: [UIImage systemImageNamed:fallback];
+}
+
+- (UITableViewCell *)pickerCellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:@"DXPLinkActionPickCell" forIndexPath:indexPath];
+    cell.textLabel.text = [self labelForRow:indexPath.row];
+    cell.textLabel.font = [UIFont systemFontOfSize:16];
+    cell.imageView.image = [self pickerIconForRow:indexPath.row];
+    cell.accessoryView = nil;
+    cell.editingAccessoryView = nil;
+    return cell;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (indexPath.row >= DXLinkActionRowOpenApp) return [self pickerCellForRowAtIndexPath:indexPath];
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPLinkActionFieldCell" forIndexPath:indexPath];
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
     cell.textLabel.text = [self labelForRow:indexPath.row];
@@ -45,6 +71,31 @@ static NSBundle *tweakBundle;
     UITextField *field = [self fieldForRow:indexPath.row];
     cell.accessoryView = field;
     return cell;
+}
+
+- (void)openAppPicker {
+    [self.view endEditing:YES];
+    DXPAppPickerController *picker = [[DXPAppPickerController alloc] init];
+    picker.currentLink = [self trimmedValue:self.linkField.text];
+    __weak typeof(self) weakSelf = self;
+    picker.completion = ^(NSString *name, NSString *bundleID) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        strongSelf.nameField.text = name;
+        strongSelf.linkField.text = bundleID;
+    };
+    [self pushController:picker];
+}
+
+- (void)openShortcutPicker {
+    [self.view endEditing:YES];
+    [self pushController:[[DXPAppShortcutPickerController alloc] init]];
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    if (indexPath.row == DXLinkActionRowOpenApp) [self openAppPicker];
+    else if (indexPath.row == DXLinkActionRowShortcut) [self openShortcutPicker];
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
@@ -107,6 +158,7 @@ static NSBundle *tweakBundle;
     self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPLinkActionFieldCell"];
+    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPLinkActionPickCell"];
     self.view = self.tableView;
 
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:LOCALIZED(@"SAVE")

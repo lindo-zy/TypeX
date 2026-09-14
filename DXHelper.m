@@ -135,7 +135,6 @@
     }else{
         actionName = [NSString stringWithFormat:@"LONG_%@", [actionName uppercaseString]];
     }
-    //HBLogDebug(@"localizedStringForActionNamed: %@", actionName);
     return [tweakBundle localizedStringForKey:actionName value:@"" table:nil];
 }
 

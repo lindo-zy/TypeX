@@ -33,7 +33,6 @@
 "SHORT_SELECT_SENTENCE" = "Stn";
 "SHORT_DELETE_FORWARD" = "DelFw";
 "SHORT_DELETE_ALL" = "Clear";
-"SHORT_OPEN_LINK" = "Link";
 "SHORT_COPY_LOG" = "CLog";
 "SHORT_SPONGEBOB" = "sPoNge";
 
@@ -69,7 +68,6 @@
 "LONG_SELECT_SENTENCE" = "Select Sentence";
 "LONG_DELETE_FORWARD" = "Delete Forward";
 "LONG_DELETE_ALL" = "Clear All";
-"LONG_OPEN_LINK" = "Open Link";
 "LONG_SPONGEBOB" = "sPonGeBob teXt";
 
 //=====================Manage Shortcuts=====================
@@ -149,6 +147,17 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "CUSTOM_LINK_ACTION_FOOTER" = "Enter an SF Symbol name for the icon.\nWeb link: must begin with http://, https://, or www., e.g. https://apple.com\nURL scheme: e.g. example://open\nBundle ID: e.g. com.apple.Preferences\nUse @@@ to insert the current input field's text.";
 "CUSTOM_ACTION_LINK_ERROR" = "The action link is invalid";
 "TEXT" = "Text";
+
+//=====================APP / SHORTCUT PICKERS=====================
+"OPEN_APP" = "Open App";
+"SELECT_APP" = "Select App";
+"SELECT_SHORTCUT" = "Select Shortcut";
+"SEARCH_PLACEHOLDER" = "Search";
+"SELECTED" = "Selected";
+"UNSELECTED" = "Not Selected";
+"NO_APP_SHORTCUTS" = "No app shortcuts found";
+"STATIC_SHORTCUTS_FOOTER" = "Only static quick actions declared in each app\u2019s Info.plist are listed. Quick actions an app registers at runtime cannot be shown here.";
+"NO_APP_SHORTCUTS_SCANNED" = "Scanned %ld apps; no static quick actions found. Dynamic items an app registers at runtime cannot be listed here.";
 
 //=====================SHELL COMMAND BEHAVIOR=====================
 "SHELL_TITLE" = "Title";

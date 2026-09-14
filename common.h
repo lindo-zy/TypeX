@@ -1,6 +1,5 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
-#import <HBLog.h>
 #if defined(THEOS_PACKAGE_SCHEME_ROOTHIDE)
 #import <roothide.h>
 #define DX_ROOT_PATH_NS(path) jbroot(path)
@@ -278,4 +277,21 @@ typedef NS_ENUM(NSInteger, DXStudlyCapsType){
 - (void)openApplication:(NSString *)bundleIdentifier
                 options:(NSDictionary *)options
              withResult:(void (^)(NSError *error))result;
+@end
+
+// FrontBoard open path that accepts an FBSOpenApplicationRequest; the raw
+// bundle-identifier string form on FBSSystemService is rejected on current iOS.
+@interface FBSOpenApplicationOptions : NSDictionary
++ (id)optionsWithDictionary:(NSDictionary *)dictionary;
+@end
+
+@interface FBSOpenApplicationRequest : NSObject
++ (id)requestWithBundleIdentifier:(NSString *)bundleIdentifier;
+@end
+
+@interface FBSOpenApplicationService : NSObject
++ (id)sharedService;
+- (void)openApplication:(id)request
+                options:(id)options
+      withResultHandler:(void (^)(NSError *error))resultHandler;
 @end

@@ -110,6 +110,28 @@ static inline BOOL DXResponderSupportsInputAccessoryView(UIResponder *responder)
            [responder respondsToSelector:@selector(inputAccessoryView)];
 }
 
+// Messages' ChatKit input manages its own keyboard accessory (the compose bar
+// stays visible with the keyboard dismissed and it validates its input session
+// state). Replacing such a responder's inputAccessoryView aborts keyboard
+// presentation, so the top toolbar must never take the accessory there. The
+// dock toolbar is unaffected. The class-prefix check also covers ChatKit inputs
+// hosted outside the Messages process (e.g. share-sheet composition).
+static BOOL DXResponderHasManagedInputBar(UIResponder *responder) {
+    static BOOL isMessagesProcess;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        isMessagesProcess = [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.MobileSMS"];
+    });
+    if (isMessagesProcess) return YES;
+
+    Class cls = [responder class];
+    for (NSInteger depth = 0; cls && depth < 4; depth++) {
+        if ([NSStringFromClass(cls) hasPrefix:@"CK"]) return YES;
+        cls = [cls superclass];
+    }
+    return NO;
+}
+
 static UIView *DXInputAccessoryView(UIResponder *responder) {
     if (!DXResponderSupportsInputAccessoryView(responder)) return nil;
     return [responder performSelector:@selector(inputAccessoryView)];
@@ -134,7 +156,8 @@ static BOOL DXShouldDisplayTopAccessory(DXTopAccessoryContainer *container) {
 
 static UIView *DXAccessoryByWrappingReplacement(UIResponder *responder, UIView *replacement) {
     DXTopAccessoryContainer *container = objc_getAssociatedObject(responder, &kDXTopAccessoryContainerKey);
-    if (!container || replacement == container || replacement == container.toolbar ||
+    if (!container || DXResponderHasManagedInputBar(responder) ||
+        replacement == container || replacement == container.toolbar ||
         !DXShouldDisplayTopAccessory(container)) {
         return replacement;
     }
@@ -152,7 +175,8 @@ static UIView *DXAccessoryByWrappingReplacement(UIResponder *responder, UIView *
 }
 
 static void DXInstallTopAccessoryForResponder(UIResponder *responder, BOOL reloadConfiguration) {
-    if (!responder || (!isApplication && !isSpringBoard) || !DXResponderSupportsInputAccessoryView(responder)) return;
+    if (!responder || (!isApplication && !isSpringBoard) ||
+        DXResponderHasManagedInputBar(responder) || !DXResponderSupportsInputAccessoryView(responder)) return;
 
     BOOL enabled = preferencesBool(kEnabledkey, YES);
     DXTopAccessoryContainer *container = objc_getAssociatedObject(responder, &kDXTopAccessoryContainerKey);
@@ -581,21 +605,17 @@ CGFloat heightOffset = heightOffsetDefault;
 
 - (void)layoutSubviews{
     %orig;
-    //HBLogDebug(@"isDictating %d, isLandscape: %d", isDictating?1:0, isLandscape?1:0);
     if (preferencesBool(kEnabledkey,YES)){
-        //HBLogDebug(@"toggledOn %d", toggledOn?1:0);
         if (toggledOn){
             //NSTimeInterval timeInterval = fabs([lastReloadDate timeIntervalSinceNow]);
             //if (lastReloadDate && timeInterval < 0.5f ) lastReloadDate = [NSDate date]; return;
             //if (!self.typex) return;
             if (isDictating || isLandscape || !DXToolbarHasShortcuts(self.typex)){
-                //HBLogDebug(@"Should Hide");
                 self.typex.hidden = YES;
                 return;
                 //NSNotification * note = [NSNotification notificationWithName:@"typeXLayoutChanged" object:nil];
                 //[[NSNotificationCenterQueue defaultQueue] enqueueNotification:note postingStyle:NSPostASAP coalesceMask:NSNotificationCoalescingOnName forModes:nil];
             }else{
-                //HBLogDebug(@"Shouldn't Hide");
                 [self updateTypeXTint];
                 self.typex.hidden = NO;
                 
@@ -660,7 +680,6 @@ CGFloat heightOffset = heightOffsetDefault;
 %hook UIKeyboardDockItem
 //iOS 13+
 -(void)setImageName:(NSString *)imageName{
-    //HBLogDebug(@"singleTapDictationEnabled: %d, singleTapGlobeEnabled: %d", singleTapDictationEnabled?1:0, singleTapGlobeEnabled?1:0);
     if (([imageName isEqualToString:@"mic"] && singleTapDictationEnabled) || ([imageName isEqualToString:@"globe"] && singleTapGlobeEnabled)){
         %orig(@"circle");
         return;
@@ -670,7 +689,6 @@ CGFloat heightOffset = heightOffsetDefault;
 
 //iOS 12
 -(id)initWithImageName:(id)imageName identifier:(id)identifier{
-    //HBLogDebug(@"imageName: %@, identifier: %@", imageName, identifier);
     if (@available(iOS 13.0, *)){
     }else{
         if ([identifier isEqualToString:@"dictation"] && singleTapDictationEnabled){
@@ -687,13 +705,11 @@ CGFloat heightOffset = heightOffsetDefault;
 -(void)switchToDictationInputMode{
     %orig;
     isDictating = YES;
-    //HBLogDebug(@"switchToDictationInputMode");
 }
 
 -(void)switchToDictationInputModeWithTouch:(id)arg1{
     %orig;
     isDictating = YES;
-    //HBLogDebug(@"switchToDictationInputModeWithTouch");
     
 }
 
@@ -702,7 +718,6 @@ CGFloat heightOffset = heightOffsetDefault;
     if (arg1){
         isDictating = NO;
     }
-    //HBLogDebug(@"stopDictation: %@", arg1?@"YES":@"NO");
     
 }
 
@@ -714,7 +729,6 @@ CGFloat heightOffset = heightOffsetDefault;
 
 %hook _UIKeyboardTextSelectionInteraction
 -(BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)recognizer{
-    //HBLogDebug(@"GESTURE: %@", recognizer);
     if (preferencesBool(kEnabledkey,YES) && [NSStringFromClass([recognizer.view class]) isEqualToString:@"UIKeyboardDockView"]){
         return NO;
     }
@@ -769,7 +783,6 @@ CGFloat heightOffset = heightOffsetDefault;
 %new
 - (void)leftSwipeHandle:(UISwipeGestureRecognizer*)recognizer
 {
-    //HBLogDebug(@"leftSwipeHandle");
     //if (recognizer.state == UIGestureRecognizerStateBegan) {
     //NSString *key = [[[self keyHitTest:[recognizer locationInView:recognizer.view]] representedString] lowercaseString];
     //if ([key isEqualToString:@" "]){
@@ -790,7 +803,6 @@ CGFloat heightOffset = heightOffsetDefault;
 %new
 - (void)rightSwipeHandle:(UISwipeGestureRecognizer*)recognizer
 {
-    //HBLogDebug(@"rightSwipeHandle");
     //if (recognizer.state == UIGestureRecognizerStateBegan) {
     //NSString *key = [[[self keyHitTest:[recognizer locationInView:recognizer.view]] representedString] lowercaseString];
     //if ([key isEqualToString:@" "]){
@@ -812,7 +824,6 @@ CGFloat heightOffset = heightOffsetDefault;
  %new
  - (void)upSwipeHandle:(UISwipeGestureRecognizer*)recognizer
  {
- //HBLogDebug(@"upSwipeHandle");
  //if (recognizer.state == UIGestureRecognizerStateBegan) {
  //NSString *key = [[[self keyHitTest:[recognizer locationInView:recognizer.view]] representedString] lowercaseString];
  //if ([key isEqualToString:@" "]){
@@ -842,7 +853,6 @@ CGFloat heightOffset = heightOffsetDefault;
 
 %hook UIKeyboardMenuView
 -(void)show{
-    //HBLogDebug(@"UIKeyboardMenuView: %@", [self inputView ].currentImage.description);
     //if (preferencesBool(kEnabledkey,YES) && !(preferencesInt(kDedicatedGestureButtonkey, 0) < 1)){
     // return;
     //}
@@ -979,16 +989,13 @@ static void reloadPrefsNotificationCallback(CFNotificationCenterRef center,
         
         if (args.count != 0){
             NSString *executablePath = args[0];
-            //HBLogDebug(@"executablePath: %@", executablePath);
             if (executablePath){
                 NSString *processName = [executablePath lastPathComponent];
-                //HBLogDebug(@"INIT: %@", processName);
                 isSpringBoard = [processName isEqualToString:@"SpringBoard"];
                 isApplication = [executablePath rangeOfString:@"/Application"].location != NSNotFound;
 				isApplication = isApplication ?: ([executablePath rangeOfString:@".appex/"].location != NSNotFound ?: isApplication);
                 //isApplication = [processName isEqualToString:@"MarkupPhotoExtension"] ?: isApplication;
                 isSafari = [processName isEqualToString:@"MobileSafari"];
-                //HBLogDebug(@"isSpringBoard: %d ** isApplication: %d ** isSafari: %d", isSpringBoard, isApplication, isSafari);
 				
                 if (isSpringBoard || isApplication){
                     tweakBundle = [NSBundle bundleWithPath:bundlePath];

@@ -36,7 +36,6 @@ BOOL preferencesIsConfiguredActionSelector(NSString *selector) {
 }
 
 NSString *preferencesSelectorForIdentifierScoped(NSString* identifier, int selectorNum, int gestureType, NSString *fallback, NSString *configuration) {
-    //HBLogDebug(@"identifier: %@", identifier);
     //0-long press, 1-swipe up, 2-swipe down, 3-swipe left, 4-swipe right
     NSString *k = DXCustomActionsKeyForGesture(gestureType, configuration);
     

@@ -101,9 +101,7 @@ static NSBundle *tweakBundle;
     
     
     NSArray *arrayWithEntryID = [settings[@"snippets"] valueForKey:@"entryID"];
-    HBLogDebug(@"array ID: %@", arrayWithEntryID);
     NSUInteger index = [arrayWithEntryID indexOfObject:self.entryID];
-    HBLogDebug(@"index: %lu", (unsigned long)index);
     NSMutableDictionary *settingsSnippet = index != NSNotFound ? settings[@"snippets"][index] : nil;
     
     return (settingsSnippet[specifier.properties[@"key"]]) ?: specifier.properties[@"default"];
@@ -113,7 +111,6 @@ static NSBundle *tweakBundle;
     //NSString *path = [NSString stringWithFormat:@"/User/Library/Preferences/%@.plist", specifier.properties[@"defaults"]];
     //NSMutableDictionary *settings = [NSMutableDictionary dictionary];
     //settings = [[[DXPrefsManager sharedInstance] readPrefs] mutableCopy];
-    HBLogDebug(@"settings: %@", settings);
     NSMutableArray *snippets;
     NSMutableDictionary *snippet;
     //[settings addEntriesFromDictionary:[NSDictionary dictionaryWithContentsOfFile:path]];
@@ -121,16 +118,13 @@ static NSBundle *tweakBundle;
         snippets = [settings[@"snippets"] mutableCopy];
         NSArray *arrayWithEntryID = [settings[@"snippets"] valueForKey:@"entryID"];
         NSUInteger index = [arrayWithEntryID indexOfObject:self.entryID];
-        HBLogDebug(@"index: %lu", (unsigned long)index);
         snippet = index != NSNotFound ? [[snippets objectAtIndex:index] mutableCopy] : [[NSMutableDictionary alloc] init];
-        HBLogDebug(@"value: %@", value);
         
         //[snippet setObject:value forKey:specifier.properties[@"key"]];
         //[snippets replaceObjectAtIndex:index withObject:snippet];
         //[settings setObject:snippets forKey:@"snippets"];
         snippet[specifier.properties[@"key"]] = value;
         snippet[@"entryID"] = self.entryID;
-        HBLogDebug(@"XXXXXXXX SNIPPET: %@", snippet);
         if (index != NSNotFound){
             [snippets replaceObjectAtIndex:index withObject:snippet];
         }else{
@@ -146,8 +140,6 @@ static NSBundle *tweakBundle;
     }
     
     settings[@"snippets"] = snippets;
-    HBLogDebug(@"settings: %@", settings);
-    HBLogDebug(@"snippets: %@", settings[@"snippets"]);
     //[settings setObject:value atIndex:index];
     //[settings writeToFile:path atomically:YES];
     [[DXPrefsManager sharedInstance] writePrefs:settings];
