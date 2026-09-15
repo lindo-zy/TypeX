@@ -21,7 +21,22 @@ static NSBundle *tweakBundle;
 @property (nonatomic, strong) UISearchController *searchController;
 @property (nonatomic, copy) NSString *searchText;
 @property (nonatomic, strong) NSArray<NSDictionary *> *groups;
+@property (nonatomic, strong) NSArray<NSString *> *shortcutRefreshBundleIDs;
+@property (nonatomic, assign) BOOL didRequestShortcutRefresh;
+- (void)loadGroups;
+- (void)requestSpringBoardShortcutRefreshIfNeeded;
 @end
+
+static void DXPShortcutSnapshotChanged(CFNotificationCenterRef center,
+                                       void *observer,
+                                       CFStringRef name,
+                                       const void *object,
+                                       CFDictionaryRef userInfo) {
+    DXPAppShortcutPickerController *controller = (__bridge DXPAppShortcutPickerController *)observer;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [controller loadGroups];
+    });
+}
 
 @implementation DXPAppShortcutPickerController
 
@@ -31,14 +46,38 @@ static NSBundle *tweakBundle;
     __weak typeof(self) weakSelf = self;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSArray<NSDictionary *> *groups = [DXPAppInfo appShortcutGroups] ?: @[];
+        NSMutableOrderedSet<NSString *> *bundleIDs = [NSMutableOrderedSet orderedSet];
+        for (DXPAppInfo *app in [DXPAppInfo installedApps]) {
+            if (DXIsValidBundleIdentifier(app.bundleID)) [bundleIDs addObject:app.bundleID];
+            if (bundleIDs.count >= 2048) break;
+        }
         dispatch_async(dispatch_get_main_queue(), ^{
             __strong typeof(weakSelf) strongSelf = weakSelf;
             if (!strongSelf) return;
             strongSelf.groups = groups;
+            strongSelf.shortcutRefreshBundleIDs = bundleIDs.array;
             [strongSelf.tableView reloadData];
             [strongSelf updateFooter];
+            [strongSelf requestSpringBoardShortcutRefreshIfNeeded];
         });
     });
+}
+
+// The Settings process can parse bundle metadata, but only SpringBoard has
+// full access to the final composed menu. Request one catalogue refresh after
+// the initial scan; the Darwin response reloads the picker with localized,
+// current SBSApplicationShortcutItem titles.
+- (void)requestSpringBoardShortcutRefreshIfNeeded {
+    if (self.didRequestShortcutRefresh) return;
+    self.didRequestShortcutRefresh = YES;
+
+    if (self.shortcutRefreshBundleIDs.count == 0) return;
+
+    NSDictionary *request = @{@"bundles": self.shortcutRefreshBundleIDs};
+    if (![request writeToFile:TypeXShortcutRefreshRequestPath atomically:YES]) return;
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                         (__bridge CFStringRef)kShortcutRefreshRequestIdentifier,
+                                         NULL, NULL, YES);
 }
 
 // Searching keeps groups whose app name/bundle identifier matches with all
@@ -212,6 +251,13 @@ static NSBundle *tweakBundle;
 
     self.title = LOCALIZED(@"SELECT_SHORTCUT");
 
+    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+                                    (__bridge const void *)self,
+                                    DXPShortcutSnapshotChanged,
+                                    (__bridge CFStringRef)kShortcutSnapshotChangedIdentifier,
+                                    NULL,
+                                    CFNotificationSuspensionBehaviorDeliverImmediately);
+
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
@@ -228,6 +274,13 @@ static NSBundle *tweakBundle;
     self.navigationItem.hidesSearchBarWhenScrolling = NO;
 
     [self loadGroups];
+}
+
+- (void)dealloc {
+    CFNotificationCenterRemoveObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+                                       (__bridge const void *)self,
+                                       (__bridge CFStringRef)kShortcutSnapshotChangedIdentifier,
+                                       NULL);
 }
 
 @end

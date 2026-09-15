@@ -167,6 +167,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "TYPE_FOOTER_OPEN_APP" = "Pick the app to open. This type can only be used in sub-actions.";
 "TYPE_FOOTER_URL" = "Opens the web URL, either inside this app or outside. Use @@@ to pass the current input field's text as a parameter.";
 "TYPE_FOOTER_SHORTCUT" = "Pick one of an app's home-screen quick actions (the long-press menu); it runs that action. This type can only be used in sub-actions.";
+"OPEN_APP_SETTINGS" = "Open App Settings";
 
 //=====================APP / SHORTCUT PICKERS=====================
 "OPEN_APP" = "Open App";

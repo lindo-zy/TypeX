@@ -129,17 +129,25 @@ static inline BOOL DXIsSubActionOnlyCustomActionType(NSString *type) {
 // (Settings, SpringBoard) can refresh the snapshot without a helper daemon.
 #define TypeXCachePath DX_ROOT_PATH_NS(@"/Library/TypeX")
 #define TypeXSharedPrefsPath DX_ROOT_PATH_NS(@"/Library/TypeX/shared.plist")
-// 打开应用 and 面板 URL scheme requests ride a file + Darwin notification
+// 打开应用、应用长按快捷项 and 面板 URL scheme requests ride a file + Darwin notification
 // channel into SpringBoard: the writing process posts
 // kPendingActionRequestIdentifier; the SpringBoard-injected dylib consumes
 // the file and performs the open natively. Opens made from inside a host
 // process are blocked by restricted hosts (WeChat), and identity-gated
 // schemes (prefs:, App-Prefs:) only pass when the opener is SpringBoard
-// itself. Two fixed action names are acted on: "openapp" with a plain bundle
-// identifier, and "openurl" with a scheme-validated URL string — the channel
-// never carries shell commands or arbitrary selectors.
+// itself. Three fixed action names are acted on: "openapp" with a plain bundle
+// identifier, "openshortcut" with a bundle identifier plus the app-defined
+// UIApplicationShortcutItemType, and "openurl" with a scheme-validated URL
+// string — the channel never carries shell commands or arbitrary selectors.
 #define TypeXPendingActionPath DX_ROOT_PATH_NS(@"/Library/TypeX/pendingaction.plist")
 #define kPendingActionRequestIdentifier @"com.lindo.typex/pendingaction"
+
+// Settings asks SpringBoard to refresh the composed quick-action catalogue
+// through a separate request file so opening the picker cannot overwrite an
+// application/URL action that is being dispatched at the same moment.
+#define TypeXShortcutRefreshRequestPath DX_ROOT_PATH_NS(@"/Library/TypeX/shortcutrefresh.plist")
+#define kShortcutRefreshRequestIdentifier @"com.lindo.typex/shortcutrefresh"
+#define kShortcutSnapshotChangedIdentifier @"com.lindo.typex/shortcutschanged"
 
 // Real icon-menu quick actions captured inside SpringBoard (see TypeX.xm):
 // hooks around the shortcut-menu data source (SBIconView /
@@ -186,6 +194,15 @@ static inline NSString *DXScopedPreferenceKey(NSString *baseKey, NSString *confi
         return [@"top" stringByAppendingString:baseKey];
     }
     return baseKey;
+}
+
+// Fields whose text was set programmatically start editing with the caret at
+// the leading edge; park it past the existing text so a tap continues typing
+// where the text ends. Works for UITextField and UITextView alike.
+static inline void DXPlaceCaretAtEnd(id<UITextInput> field) {
+    if (![field conformsToProtocol:@protocol(UITextInput)]) return;
+    UITextPosition *end = field.endOfDocument;
+    field.selectedTextRange = [field textRangeFromPosition:end toPosition:end];
 }
 
 // Gesture types for per-shortcut custom actions. Long press keeps the
@@ -371,18 +388,35 @@ typedef NS_ENUM(NSInteger, DXStudlyCapsType){
       withResultHandler:(void (^)(NSError *error))resultHandler;
 @end
 
-// Home-screen quick action carried through an app launch, the same payload
-// SpringBoard's icon long-press menu uses; the target app then receives
-// application:performActionForShortcutItem:. SBSOpenApplicationLaunchOriginShortcutItem
-// (SpringBoardServices) marks the launch origin as a shortcut item.
+// Home-screen quick action object used by SpringBoard's long-press menu. TypeX
+// passes the current object to SBIconView's own activation entry so both
+// UIApplicationShortcutItem and App Intents-backed actions follow the system
+// dispatch path.
 @class SBSApplicationShortcutIcon;
 
 @interface SBSApplicationShortcutItem : NSObject
+@property (nonatomic, assign) unsigned long long activationMode;
 @property (nonatomic, copy) NSString *type;
 @property (nonatomic, copy) NSString *localizedTitle;
 @property (nonatomic, copy) NSString *localizedSubtitle;
 @property (nonatomic, retain) SBSApplicationShortcutIcon *icon;
 @property (nonatomic, copy) NSString *bundleIdentifierToLaunch;
+@property (nonatomic, copy) NSString *targetContentIdentifier;
+@property (nonatomic, copy) NSDictionary *userInfo;
+@property (nonatomic, retain) NSData *userInfoData;
 @end
 
-extern NSString * const SBSOpenApplicationLaunchOriginShortcutItem;
+// SpringBoardServices' full-access shortcut catalogue. On iOS 16/17 the
+// synchronous selector returns SBSApplicationShortcutServiceFetchResult;
+// composedApplicationShortcutItems is the list SpringBoard formed after
+// merging the app's static and dynamic items.
+@interface SBSApplicationShortcutService : NSObject
+- (id)applicationShortcutItemsOfTypes:(unsigned long long)types
+                   forBundleIdentifier:(NSString *)bundleIdentifier;
+@end
+
+@interface SBSApplicationShortcutServiceFetchResult : NSObject
+@property (nonatomic, readonly) NSArray *composedApplicationShortcutItems;
+@property (nonatomic, readonly) NSArray *dynamicApplicationShortcutItems;
+@property (nonatomic, readonly) NSArray *staticApplicationShortcutItems;
+@end

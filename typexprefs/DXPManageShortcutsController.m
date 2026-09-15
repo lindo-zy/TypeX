@@ -2,6 +2,7 @@
 #import "DXPGesturePickerController.h"
 #import "../DXShortcutsGenerator.h"
 #import "../DXHelper.h"
+#import "../common.h"
 #import <objc/runtime.h>
 
 static NSBundle *tweakBundle;
@@ -398,6 +399,10 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
             }
         }
     } completion:nil];
+}
+
+- (void)textFieldDidBeginEditing:(UITextField *)textField {
+    DXPlaceCaretAtEnd(textField);
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {

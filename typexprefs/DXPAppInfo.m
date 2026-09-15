@@ -98,51 +98,69 @@ static NSInteger DXLastShortcutScanApplicationCount = 0;
     return [NSDictionary dictionaryWithContentsOfURL:[bundleURL URLByAppendingPathComponent:@"Info.plist"]];
 }
 
-// Extracts one app's static quick actions — the UIApplicationShortcutItems
-// array declared in its Info.plist. Static titles are keys into the app's
-// InfoPlist.strings, resolved here so the list shows real menu labels.
-+ (NSArray<DXPAppShortcutItem *> *)staticShortcutItemsForProxy:(LSApplicationProxy *)proxy {
-    NSDictionary *info = [self infoDictionaryForProxy:proxy];
-    if (info.count == 0) {
-        NSLog(@"[TypeX] shortcuts: no Info.plist readable for %@", proxy.bundleIdentifier ?: @"");
-        return @[];
+// Quick-action declarations can live in the app, an extension or a framework
+// that supplies the system app's App Intents. Enumerate bundle containers
+// recursively so the iOS 16 Photos layout is covered as well as iOS 17.
++ (NSArray<NSURL *> *)shortcutContainerURLsForAppURL:(NSURL *)appURL {
+    if (![appURL isKindOfClass:[NSURL class]]) return @[];
+    NSMutableArray<NSURL *> *result = [NSMutableArray arrayWithObject:appURL];
+    NSDirectoryEnumerator<NSURL *> *enumerator = [[NSFileManager defaultManager]
+        enumeratorAtURL:appURL
+        includingPropertiesForKeys:@[NSURLIsDirectoryKey]
+        options:NSDirectoryEnumerationSkipsHiddenFiles
+        errorHandler:^BOOL(NSURL *url, NSError *error) {
+            return YES;
+        }];
+    for (NSURL *url in enumerator) {
+        NSString *extension = url.pathExtension.lowercaseString;
+        if ([extension isEqualToString:@"appex"] ||
+            [extension isEqualToString:@"framework"] ||
+            [extension isEqualToString:@"bundle"]) {
+            [result addObject:url];
+            if (result.count >= 512) break;
+        }
     }
-    NSArray *items = info[@"UIApplicationShortcutItems"];
-    if (![items isKindOfClass:[NSArray class]]) return @[];
+    return result;
+}
 
-    NSURL *bundleURL = proxy.bundleURL;
-    NSBundle *stringsBundle = bundleURL ? [NSBundle bundleWithURL:bundleURL] : nil;
+// Extracts every static UIApplicationShortcutItems declaration belonging to
+// an app. Static titles are keys into the declaring bundle's InfoPlist.strings.
++ (NSArray<DXPAppShortcutItem *> *)staticShortcutItemsForProxy:(LSApplicationProxy *)proxy {
     NSMutableArray<DXPAppShortcutItem *> *results = [NSMutableArray array];
     NSMutableSet<NSString *> *seen = [NSMutableSet set];
-    for (NSDictionary *item in items) {
-        if (![item isKindOfClass:[NSDictionary class]]) continue;
-        NSString *type = [item[@"UIApplicationShortcutItemType"] isKindOfClass:[NSString class]] ? item[@"UIApplicationShortcutItemType"] : nil;
-        NSString *titleKey = [item[@"UIApplicationShortcutItemTitle"] isKindOfClass:[NSString class]] ? item[@"UIApplicationShortcutItemTitle"] : nil;
-        if (type.length == 0 && titleKey.length == 0) continue;
-        if (type.length == 0) type = titleKey;
-
-        NSString *title = nil;
-        if (titleKey.length > 0 && stringsBundle) {
-            title = [stringsBundle localizedStringForKey:titleKey value:titleKey table:@"InfoPlist"];
+    for (NSURL *bundleURL in [self shortcutContainerURLsForAppURL:proxy.bundleURL]) {
+        NSBundle *stringsBundle = [NSBundle bundleWithURL:bundleURL];
+        NSDictionary *info = stringsBundle.infoDictionary;
+        if (info.count == 0 && [bundleURL isEqual:proxy.bundleURL]) {
+            info = [self infoDictionaryForProxy:proxy];
         }
-
-        NSString *subtitleKey = [item[@"UIApplicationShortcutItemSubtitle"] isKindOfClass:[NSString class]] ? item[@"UIApplicationShortcutItemSubtitle"] : nil;
-        NSString *subtitle = nil;
-        if (subtitleKey.length > 0 && stringsBundle) {
-            subtitle = [stringsBundle localizedStringForKey:subtitleKey value:subtitleKey table:@"InfoPlist"];
-            if (subtitle.length == 0) subtitle = subtitleKey;
+        if (info.count == 0) {
+            info = [NSDictionary dictionaryWithContentsOfURL:[bundleURL URLByAppendingPathComponent:@"Info.plist"]];
         }
+        NSArray *items = [info[@"UIApplicationShortcutItems"] isKindOfClass:[NSArray class]]
+            ? info[@"UIApplicationShortcutItems"] : nil;
+        for (NSDictionary *item in items) {
+            if (![item isKindOfClass:[NSDictionary class]]) continue;
+            NSString *type = [item[@"UIApplicationShortcutItemType"] isKindOfClass:[NSString class]] ? item[@"UIApplicationShortcutItemType"] : nil;
+            NSString *titleKey = [item[@"UIApplicationShortcutItemTitle"] isKindOfClass:[NSString class]] ? item[@"UIApplicationShortcutItemTitle"] : nil;
+            if (type.length == 0 && titleKey.length == 0) continue;
+            if (type.length == 0) type = titleKey;
+            if ([seen containsObject:type]) continue;
+            [seen addObject:type];
 
-        DXPAppShortcutItem *entry = [[DXPAppShortcutItem alloc] init];
-        entry.type = type;
-        entry.title = title.length > 0 ? title : (titleKey.length > 0 ? titleKey : type);
-        entry.subtitle = subtitle;
-        entry.source = DXPAppShortcutSourceStatic;
+            NSString *title = titleKey.length > 0
+                ? [stringsBundle localizedStringForKey:titleKey value:titleKey table:@"InfoPlist"] : nil;
+            NSString *subtitleKey = [item[@"UIApplicationShortcutItemSubtitle"] isKindOfClass:[NSString class]] ? item[@"UIApplicationShortcutItemSubtitle"] : nil;
+            NSString *subtitle = subtitleKey.length > 0
+                ? [stringsBundle localizedStringForKey:subtitleKey value:subtitleKey table:@"InfoPlist"] : nil;
 
-        NSString *fingerprint = [NSString stringWithFormat:@"%@|%@|%@", type, titleKey ?: @"", subtitleKey ?: @""];
-        if ([seen containsObject:fingerprint]) continue;
-        [seen addObject:fingerprint];
-        [results addObject:entry];
+            DXPAppShortcutItem *entry = [[DXPAppShortcutItem alloc] init];
+            entry.type = type;
+            entry.title = title.length > 0 ? title : (titleKey.length > 0 ? titleKey : type);
+            entry.subtitle = subtitle.length > 0 ? subtitle : nil;
+            entry.source = DXPAppShortcutSourceStatic;
+            [results addObject:entry];
+        }
     }
     return results;
 }
@@ -313,21 +331,7 @@ static NSInteger DXLastShortcutScanApplicationCount = 0;
     // Weather) AND embedded frameworks (Frameworks/*.framework — Photos'
     // menu items live in PhotosUICore.framework, not the app bundle root).
     // The icon long-press menu merges them all, so every container is read.
-    NSMutableArray<NSURL *> *bundleURLs = [NSMutableArray arrayWithObject:appURL];
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    for (NSString *subdirectory in @[@"PlugIns", @"Frameworks"]) {
-        NSURL *directoryURL = [appURL URLByAppendingPathComponent:subdirectory];
-        for (NSURL *childURL in [fileManager contentsOfDirectoryAtURL:directoryURL
-                                               includingPropertiesForKeys:nil
-                                                                  options:NSDirectoryEnumerationSkipsHiddenFiles
-                                                                    error:nil]) {
-            NSString *extension = childURL.pathExtension.lowercaseString;
-            if ([extension isEqualToString:@"appex"] || [extension isEqualToString:@"framework"] ||
-                [extension isEqualToString:@"bundle"]) {
-                [bundleURLs addObject:childURL];
-            }
-        }
-    }
+    NSArray<NSURL *> *bundleURLs = [self shortcutContainerURLsForAppURL:appURL];
 
     NSMutableArray<DXPAppShortcutItem *> *results = [NSMutableArray array];
     NSMutableSet<NSString *> *seen = [NSMutableSet set];
@@ -451,22 +455,17 @@ static NSInteger DXLastShortcutScanApplicationCount = 0;
     }
 }
 
-// Merges one app's live captures into its metadata-scanned group. Captures
-// reflect the menu the user actually saw, so they lead the list and win type
-// deduplication; an app whose metadata scan found nothing still gets a
-// group from captures alone.
+// A current SpringBoard snapshot is the authoritative menu for the app. Do
+// not append metadata-only rows: App Intents metadata may use a different
+// internal identifier from the composed SBS item, which would otherwise leave
+// raw localization keys (for example MOST_RECENT_PHOTO) beside the real,
+// localized Photos actions. Metadata remains the fallback when no live
+// snapshot could be fetched.
 + (NSDictionary *)groupByPrependingCapturedItems:(NSArray<DXPAppShortcutItem *> *)capturedItems
                                             group:(NSDictionary *)group
                                          bundleID:(NSString *)bundleID
                                              name:(NSString *)name {
-    NSMutableArray<DXPAppShortcutItem *> *items = [NSMutableArray arrayWithArray:capturedItems];
-    NSMutableSet<NSString *> *seenTypes = [NSMutableSet setWithArray:[capturedItems valueForKey:@"type"]];
-    for (DXPAppShortcutItem *item in group[@"items"]) {
-        if ([seenTypes containsObject:item.type]) continue;
-        [seenTypes addObject:item.type];
-        [items addObject:item];
-    }
-    return @{@"name": name, @"bundleID": bundleID, @"items": [items copy]};
+    return @{@"name": name, @"bundleID": bundleID, @"items": [capturedItems copy]};
 }
 
 + (NSArray<NSDictionary *> *)appShortcutGroups {
@@ -494,8 +493,9 @@ static NSInteger DXLastShortcutScanApplicationCount = 0;
                 NSLog(@"[TypeX] shortcuts: skipped %@ (%@)", bundleID, exception);
                 group = nil;
             }
-            // Live captures outrank every metadata source; they also give a
-            // group to apps whose metadata scan came up empty.
+            // The composed SpringBoard list is the exact icon menu, so it
+            // replaces metadata guesses and also gives a group to apps whose
+            // metadata scan came up empty.
             NSArray<DXPAppShortcutItem *> *capturedItems = captured[bundleID];
             if (capturedItems.count > 0) {
                 group = [self groupByPrependingCapturedItems:capturedItems group:group bundleID:bundleID name:name];

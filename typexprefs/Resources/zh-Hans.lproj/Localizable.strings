@@ -168,6 +168,7 @@
 "TYPE_FOOTER_OPEN_APP" = "选择点击后打开的应用；该类型仅可在子动作中使用。";
 "TYPE_FOOTER_URL" = "点击后打开该网址，可选择在 APP 内或 APP 外打开；url 支持入参替换，使用 @@@ 传入当前输入框的内容。";
 "TYPE_FOOTER_SHORTCUT" = "选择应用长按菜单中的快捷项，点击后执行该项；该类型仅可在子动作中使用。";
+"OPEN_APP_SETTINGS" = "打开应用设置";
 
 //=====================APP / SHORTCUT PICKERS=====================
 "OPEN_APP" = "打开应用";

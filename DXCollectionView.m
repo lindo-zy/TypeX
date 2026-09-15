@@ -2017,6 +2017,23 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
                                          NULL, NULL, YES);
 }
 
+// App icon quick actions must be dispatched by SpringBoard. Besides avoiding
+// host-process launch restrictions, SpringBoard can re-fetch the complete
+// SBSApplicationShortcutItem (userInfo/targetContentIdentifier included)
+// immediately before launching the owning app.
+-(void)requestSpringBoardOpenShortcut:(NSString *)shortcutType
+                     bundleIdentifier:(NSString *)bundleIdentifier {
+    NSDictionary *request = @{
+        @"action": @"openshortcut",
+        @"bundle": bundleIdentifier,
+        @"shortcuttype": shortcutType,
+    };
+    [request writeToFile:TypeXPendingActionPath atomically:YES];
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                         (__bridge CFStringRef)kPendingActionRequestIdentifier,
+                                         NULL, NULL, YES);
+}
+
 // 悬浮面板 (sub-action) URL schemes ride the same channel: an open issued
 // from inside the host process is intercepted by restricted hosts, and
 // identity-gated schemes refuse host requesters outright, so the open must
@@ -2157,33 +2174,7 @@ routingURLSchemesThroughSpringBoard:(BOOL)viaSpringBoard {
             return YES;
         }
 
-        void (^openPlainly)(void) = ^{
-            [self openApplicationWithBundleIdentifier:link completion:^(BOOL success) {
-                if (!success) {
-                    [self showCustomActionLinkError];
-                }
-            }];
-        };
-
-        // Home-screen quick action: launch the owning app with the shortcut
-        // item as the launch origin — the payload behind SpringBoard's icon
-        // long-press menu — so the app receives
-        // application:performActionForShortcutItem:. A refused request (or a
-        // system without the item class) degrades to a plain app launch.
-        Class itemClass = NSClassFromString(@"SBSApplicationShortcutItem");
-        NSString *configuredName = [entry[@"name"] isKindOfClass:[NSString class]] ? entry[@"name"] : @"";
-        SBSApplicationShortcutItem *item = [itemClass alloc];
-        if (item) {
-            item.type = itemType;
-            item.localizedTitle = configuredName.length > 0 ? configuredName : itemType;
-            item.bundleIdentifierToLaunch = link;
-        }
-        BOOL scheduled = item && [self frontBoardOpenApplication:link
-                                                         options:@{SBSOpenApplicationLaunchOriginShortcutItem: item}
-                                                         handler:^(BOOL launched) {
-            if (!launched) openPlainly();
-        }];
-        if (!scheduled) openPlainly();
+        [self requestSpringBoardOpenShortcut:itemType bundleIdentifier:link];
         [self autoPaginationControl];
         return YES;
     }

@@ -390,6 +390,11 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
         if (!strongSelf) return;
         strongSelf.nameField.text = name;
         strongSelf.linkField.text = bundleID;
+        // Fill the icon field with the bundle ID so the button renders the
+        // app's real icon (saveTapped already validates bundle-ID icons).
+        strongSelf.iconField.text = bundleID;
+        [strongSelf.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:DXActionRowPayload inSection:0]]
+                                    withRowAnimation:UITableViewRowAnimationNone];
     };
     [self pushController:picker];
 }
@@ -409,9 +414,14 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
         if (!strongSelf) return;
         strongSelf.linkField.text = bundleID;
         strongSelf.entry[kCustomActionShortcutTypeKey] = type;
+        // Same bundle-ID icon backfill as the open-app type: the button then
+        // renders the owning app's real icon.
+        strongSelf.iconField.text = bundleID;
         // A freshly added action takes the menu item's own title as its label
         // until the user types one; re-picking never clobbers a custom name.
         if ([strongSelf trimmedValue:strongSelf.nameField.text].length == 0) strongSelf.nameField.text = title;
+        [strongSelf.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:DXActionRowPayload inSection:0]]
+                                    withRowAnimation:UITableViewRowAnimationNone];
     };
     [self pushController:picker];
 }
@@ -451,6 +461,16 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
 }
 
 #pragma mark - Text fields
+
+// Program-filled fields would otherwise start with the caret at the very
+// beginning of the text.
+- (void)textFieldDidBeginEditing:(UITextField *)textField {
+    DXPlaceCaretAtEnd(textField);
+}
+
+- (void)textViewDidBeginEditing:(UITextView *)textView {
+    DXPlaceCaretAtEnd(textView);
+}
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
     if (textField == self.nameField) [self.iconField becomeFirstResponder];
@@ -533,7 +553,10 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
     [tweakBundle load];
     [super viewDidLoad];
 
-    self.title = LOCALIZED(@"CUSTOM_ACTION_SETTINGS");
+    // Open-app entries get their own page title; every other type keeps the
+    // generic custom-action one.
+    self.title = [_displayedType isEqualToString:kCustomActionTypeOpenApp]
+        ? LOCALIZED(@"OPEN_APP_SETTINGS") : LOCALIZED(@"CUSTOM_ACTION_SETTINGS");
     self.entry = [self.entry mutableCopy] ?: [NSMutableDictionary dictionary];
     NSString *storedType = self.entry[kCustomActionTypeKey];
     _displayedType = [storedType isKindOfClass:[NSString class]] ? storedType : @"";

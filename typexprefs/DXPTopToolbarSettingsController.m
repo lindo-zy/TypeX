@@ -140,6 +140,10 @@ static NSString *DXHexFromColor(UIColor *color) {
 
 // ── UITextFieldDelegate ────────────────────────────────────────────────
 
+- (void)textFieldDidBeginEditing:(UITextField *)textField {
+    DXPlaceCaretAtEnd(textField);
+}
+
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
     [textField resignFirstResponder];
     return YES;
