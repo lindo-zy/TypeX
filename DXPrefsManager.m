@@ -117,28 +117,39 @@ static NSString *DXSharedPrefsPath(void) {
     return snapshot.count > 0 ? snapshot : nil;
 }
 
-- (BOOL)sharedPrefsUseCurrentFormat {
-    NSDictionary *snapshot = [NSDictionary dictionaryWithContentsOfFile:DXSharedPrefsPath()];
-    return [snapshot[DXSharedPrefsFormatKey] isKindOfClass:[NSNumber class]] &&
-           [snapshot[DXSharedPrefsFormatKey] integerValue] == DXSharedPrefsFormatVersion &&
-           [snapshot[DXSharedPrefsPayloadKey] isKindOfClass:[NSDictionary class]];
-}
-
 // Seed the shared snapshot from the authoritative domain when it is missing or
-// empty (first launch after install, or an erased cache).  Never overwrite a
-// live snapshot: every writer that can reach the domain also mirrors its full
-// result into the snapshot, so the snapshot is never behind the domain, while
-// sandboxed writers (dock toggle) reach ONLY the snapshot -- replacing it from
-// the domain would silently revert their writes.
+// carries no payload (first launch after install, an erased cache, or a
+// snapshot poisoned as "intentionally empty" by an early-boot read).  Never
+// overwrite a live snapshot: every writer that can reach the domain also
+// mirrors its full result into the snapshot, so the snapshot is never behind
+// the domain, while sandboxed writers (dock toggle) reach ONLY the snapshot --
+// replacing it from the domain would silently revert their writes.
+//
+// Deliberately NO retry timers and NO change notification from here: both
+// were tried and could self-amplify on SpringBoard's main runloop (hard hang,
+// no safe mode).  This method keeps the original shape -- one synchronous
+// pass per invocation, converging on the first successful write.
 - (void)healSharedPrefsIfNeeded {
     if ([DXPrefsManager isRunningInSandbox]) return;
-    if ([self sharedPrefsUseCurrentFormat]) return;
 
-    // Always replace a legacy snapshot once.  Older sandboxed hosts could
-    // overwrite it with only their local cache/toggle key, leaving a readable
-    // but incomplete file that permanently produced the six defaults.
+    NSDictionary *snapshotFile = [NSDictionary dictionaryWithContentsOfFile:DXSharedPrefsPath()];
+    BOOL snapshotIsCurrentFormat = [snapshotFile[DXSharedPrefsFormatKey] isKindOfClass:[NSNumber class]] &&
+        [snapshotFile[DXSharedPrefsFormatKey] integerValue] == DXSharedPrefsFormatVersion &&
+        [snapshotFile[DXSharedPrefsPayloadKey] isKindOfClass:[NSDictionary class]];
+    // Live = current format WITH payload.  An empty-payload snapshot is not
+    // live: right after install/respring the preferences daemon may briefly
+    // report an empty domain, and freezing that as the "intentionally empty"
+    // snapshot poisoned every later heal (the install-needs-a-Settings-visit
+    // bug).  It stays healable instead.
+    if (snapshotIsCurrentFormat && [snapshotFile[DXSharedPrefsPayloadKey] count] > 0) return;
+
+    // Also replaces a legacy (pre-format) snapshot once: older sandboxed
+    // hosts could leave it readable but incomplete.  Seed only from a
+    // successful non-empty domain read — an empty read is much more likely a
+    // cold daemon than a real "never configured", and the next heal trigger
+    // (any preferences change reloads this manager) retries naturally.
     NSDictionary *authoritative = [self readPrefs];
-    if ([authoritative isKindOfClass:[NSDictionary class]]) {
+    if ([authoritative isKindOfClass:[NSDictionary class]] && authoritative.count > 0) {
         [self writeSharedPrefs:authoritative];
     }
 }

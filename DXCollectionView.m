@@ -1944,18 +1944,41 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 // Sends the configured text (template) to the active input field, at the
-// cursor, exactly like the built-in paste action.
+// cursor, through the same channel the built-in paste action uses. The
+// private UIKeyboardImpl insert must stay a last-resort fallback: calling it
+// as the primary path crashes host apps on iOS 17, and no built-in action
+// reaches it in practice (their delegate-first ladder answers first).
 -(void)performTextCustomAction:(NSString *)template {
-    UIKeyboardImpl *impl = [objc_getClass("UIKeyboardImpl") activeInstance] ?: kbImpl;
     NSString *text = [self expandedCustomActionPayload:template escaped:NO];
-    if (!impl || text.length == 0) {
+    if (text.length == 0) {
         [self showCustomActionLinkError];
         return;
     }
-    [impl insertText:text];
-    [impl clearTransientState];
-    [impl clearAnimations];
-    [impl setCaretBlinks:YES];
+
+    // insertText: is UIKeyInput — every real text responder
+    // (UITextField/UITextView/web editors) implements it.
+    if (delegate && [delegate respondsToSelector:@selector(insertText:)]) {
+        @try {
+            [delegate insertText:text];
+            return;
+        } @catch (__unused NSException *exception) {
+            // Fall through to the keyboard-impl fallback, then the toast.
+        }
+    }
+
+    UIKeyboardImpl *impl = kbImpl ?: [objc_getClass("UIKeyboardImpl") activeInstance];
+    if (!impl) {
+        [self showCustomActionLinkError];
+        return;
+    }
+    @try {
+        [impl insertText:text];
+        [impl clearTransientState];
+        [impl clearAnimations];
+        [impl setCaretBlinks:YES];
+    } @catch (__unused NSException *exception) {
+        [self showCustomActionLinkError];
+    }
 }
 
 // In-app open for the url type. SFSafariViewController needs a presenting
@@ -1988,6 +2011,20 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 // launch natively. Fire-and-forget — SpringBoard has no failure channel back.
 -(void)requestSpringBoardOpenApplication:(NSString *)bundleIdentifier {
     NSDictionary *request = @{@"action": @"openapp", @"bundle": bundleIdentifier};
+    [request writeToFile:TypeXPendingActionPath atomically:YES];
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                         (__bridge CFStringRef)kPendingActionRequestIdentifier,
+                                         NULL, NULL, YES);
+}
+
+// 悬浮面板 (sub-action) URL schemes ride the same channel: an open issued
+// from inside the host process is intercepted by restricted hosts, and
+// identity-gated schemes refuse host requesters outright, so the open must
+// be performed by SpringBoard itself. Fire-and-forget like openapp — the
+// payload is validated here and again on the SpringBoard side
+// (DXIsOpenableSchemeURLString).
+-(void)requestSpringBoardOpenURL:(NSURL *)url {
+    NSDictionary *request = @{@"action": @"openurl", @"url": url.absoluteString};
     [request writeToFile:TypeXPendingActionPath atomically:YES];
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                          (__bridge CFStringRef)kPendingActionRequestIdentifier,
@@ -2032,9 +2069,13 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 // execution path; legacy entries without a type keep the old auto-detecting
 // link behavior. Sub-action-only types (打开应用 / 快捷方式) stay inert when
 // reached through a button gesture instead of the sub-action chain.
+// URL-scheme opens (typed or legacy-classified) go through the SpringBoard
+// channel when the action runs from the 悬浮面板/sub-action path: opens from
+// inside the host process get intercepted there.
 -(BOOL)dispatchLinkActionSelector:(NSString *)selectorName
                            sender:(UIButton *)sender
-       allowingSubActionOnlyTypes:(BOOL)allowSubActionOnly {
+       allowingSubActionOnlyTypes:(BOOL)allowSubActionOnly
+routingURLSchemesThroughSpringBoard:(BOOL)viaSpringBoard {
     NSDictionary *entry = preferencesLinkActionForSelector(selectorName);
     if (!entry) return NO;
 
@@ -2149,18 +2190,21 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
     if ([type isEqualToString:kCustomActionTypeURLScheme]) {
         NSString *payload = [self expandedCustomActionPayload:link escaped:YES];
-        NSRange schemeRange = [payload rangeOfString:@"^[A-Za-z][A-Za-z0-9+.-]*:" options:NSRegularExpressionSearch];
-        NSURL *url = schemeRange.location == 0 ? [NSURL URLWithString:payload] : nil;
-        if (!url || url.scheme.length == 0) {
+        if (!DXIsOpenableSchemeURLString(payload)) {
             [self showCustomActionLinkError];
             [self autoPaginationControl];
             return YES;
         }
-        [self openCustomActionURL:url completion:^(BOOL success) {
-            if (!success) {
-                [self showCustomActionLinkError];
-            }
-        }];
+        NSURL *url = [NSURL URLWithString:payload];
+        if (viaSpringBoard) {
+            [self requestSpringBoardOpenURL:url];
+        } else {
+            [self openCustomActionURL:url completion:^(BOOL success) {
+                if (!success) {
+                    [self showCustomActionLinkError];
+                }
+            }];
+        }
         [self autoPaginationControl];
         return YES;
     }
@@ -2184,18 +2228,22 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     NSRange schemeRange = [link rangeOfString:@"^[A-Za-z][A-Za-z0-9+.-]*:"
                                       options:NSRegularExpressionSearch];
     if (schemeRange.location == 0) {
-        NSURL *url = [NSURL URLWithString:link];
-        if (!url || url.scheme.length == 0) {
+        if (!DXIsOpenableSchemeURLString(link)) {
             [self showCustomActionLinkError];
             [self autoPaginationControl];
             return YES;
         }
 
-        [self openCustomActionURL:url completion:^(BOOL success) {
-            if (!success) {
-                [self showCustomActionLinkError];
-            }
-        }];
+        NSURL *url = [NSURL URLWithString:link];
+        if (viaSpringBoard) {
+            [self requestSpringBoardOpenURL:url];
+        } else {
+            [self openCustomActionURL:url completion:^(BOOL success) {
+                if (!success) {
+                    [self showCustomActionLinkError];
+                }
+            }];
+        }
         [self autoPaginationControl];
         return YES;
     }
@@ -2225,7 +2273,13 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 -(void)dispatchConfiguredActionSelector:(NSString *)selectorName
                                  sender:(UIButton *)sender
              allowingSubActionOnlyTypes:(BOOL)allowSubActionOnly {
-    if ([self dispatchLinkActionSelector:selectorName sender:sender allowingSubActionOnlyTypes:allowSubActionOnly]) return;
+    // Sub-action executions (悬浮面板 item taps, single-chain runs) route
+    // URL schemes through the SpringBoard channel — the routing flag follows
+    // the sub-action flag — so restricted hosts cannot intercept the open.
+    if ([self dispatchLinkActionSelector:selectorName
+                                   sender:sender
+                 allowingSubActionOnlyTypes:allowSubActionOnly
+          routingURLSchemesThroughSpringBoard:allowSubActionOnly]) return;
     if (![DXShortcutsGenerator isVisibleShortcutSelector:selectorName]) {
         return;
     }

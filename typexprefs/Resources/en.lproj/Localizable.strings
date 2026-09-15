@@ -176,11 +176,12 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SELECTED" = "Selected";
 "UNSELECTED" = "Not Selected";
 "NO_APP_SHORTCUTS" = "No app shortcuts found";
-"STATIC_SHORTCUTS_FOOTER" = "Lists each app\u2019s long-press quick actions: static items declared in the app bundle plus dynamic items the app registered at runtime (kept on this device). The Home Screen itself shows at most four entries per app.";
+"STATIC_SHORTCUTS_FOOTER" = "Lists each app\u2019s long-press quick actions: static items declared in the app bundle, dynamic items the app registered at runtime (kept on this device), and live entries captured from the real SpringBoard menu when you long-press the icon (including system-merged suggestions; long-press once to capture). The Home Screen itself shows at most four entries per app.";
 "NO_APP_SHORTCUTS_SCANNED" = "Scanned %ld apps; no quick actions found. Dynamic items appear here once their app has registered them on this device.";
 "SHORTCUT_SOURCE_STATIC" = "Static";
 "SHORTCUT_SOURCE_DYNAMIC" = "Dynamic";
 "SHORTCUT_SOURCE_APPINTENT" = "App Shortcut";
+"SHORTCUT_SOURCE_SPRINGBOARD" = "Live";
 
 //=====================SHELL COMMAND BEHAVIOR=====================
 "SHELL_TITLE" = "Title";

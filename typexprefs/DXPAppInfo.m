@@ -1,4 +1,5 @@
 #import "DXPAppInfo.h"
+#import "../common.h"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -405,8 +406,72 @@ static NSInteger DXLastShortcutScanApplicationCount = 0;
     return @{@"name": name, @"bundleID": bundleID, @"items": [items copy]};
 }
 
+// Live icon-menu captures written by the SpringBoard side of the tweak
+// (TypeXSBShortcutsPath). A capture is a snapshot of one long-press, so
+// entries older than DXSBShortcutCaptureMaxAge are dropped rather than
+// outliving the app's own shortcut changes. The file lives under the shared
+// snapshot directory, which Settings reads like every other TypeX shared
+// preference.
++ (NSDictionary<NSString *, NSArray<DXPAppShortcutItem *> *> *)springBoardCapturedShortcutsByBundleID {
+    @try {
+        NSDictionary *root = [NSDictionary dictionaryWithContentsOfFile:TypeXSBShortcutsPath];
+        NSDictionary *apps = [root[@"apps"] isKindOfClass:[NSDictionary class]] ? root[@"apps"] : nil;
+        if (apps.count == 0) return @{};
+
+        NSTimeInterval cutoff = [NSDate timeIntervalSinceReferenceDate] - DXSBShortcutCaptureMaxAge;
+        NSMutableDictionary<NSString *, NSArray<DXPAppShortcutItem *> *> *result = [NSMutableDictionary dictionary];
+        for (NSString *bundleID in apps.allKeys) {
+            if (![bundleID isKindOfClass:[NSString class]] || bundleID.length == 0) continue;
+            NSDictionary *entry = [apps[bundleID] isKindOfClass:[NSDictionary class]] ? apps[bundleID] : nil;
+            NSArray *rawItems = [entry[@"items"] isKindOfClass:[NSArray class]] ? entry[@"items"] : nil;
+            double updated = [entry[@"updated"] isKindOfClass:[NSNumber class]] ? [entry[@"updated"] doubleValue] : 0;
+            if (rawItems.count == 0 || updated < cutoff) continue;
+
+            NSMutableArray<DXPAppShortcutItem *> *items = [NSMutableArray array];
+            NSMutableSet<NSString *> *seenTypes = [NSMutableSet set];
+            for (NSDictionary *raw in rawItems) {
+                if (![raw isKindOfClass:[NSDictionary class]]) continue;
+                NSString *type = [raw[@"type"] isKindOfClass:[NSString class]] ? raw[@"type"] : nil;
+                if (type.length == 0 || [seenTypes containsObject:type]) continue;
+                [seenTypes addObject:type];
+
+                DXPAppShortcutItem *item = [[DXPAppShortcutItem alloc] init];
+                item.type = type;
+                item.title = [raw[@"title"] isKindOfClass:[NSString class]] ? raw[@"title"] : type;
+                item.subtitle = [raw[@"subtitle"] isKindOfClass:[NSString class]] ? raw[@"subtitle"] : nil;
+                item.source = DXPAppShortcutSourceSpringBoard;
+                [items addObject:item];
+            }
+            if (items.count > 0) result[bundleID] = items;
+        }
+        return result;
+    } @catch (NSException *exception) {
+        NSLog(@"[TypeX] shortcuts: unreadable SpringBoard capture file (%@)", exception);
+        return @{};
+    }
+}
+
+// Merges one app's live captures into its metadata-scanned group. Captures
+// reflect the menu the user actually saw, so they lead the list and win type
+// deduplication; an app whose metadata scan found nothing still gets a
+// group from captures alone.
++ (NSDictionary *)groupByPrependingCapturedItems:(NSArray<DXPAppShortcutItem *> *)capturedItems
+                                            group:(NSDictionary *)group
+                                         bundleID:(NSString *)bundleID
+                                             name:(NSString *)name {
+    NSMutableArray<DXPAppShortcutItem *> *items = [NSMutableArray arrayWithArray:capturedItems];
+    NSMutableSet<NSString *> *seenTypes = [NSMutableSet setWithArray:[capturedItems valueForKey:@"type"]];
+    for (DXPAppShortcutItem *item in group[@"items"]) {
+        if ([seenTypes containsObject:item.type]) continue;
+        [seenTypes addObject:item.type];
+        [items addObject:item];
+    }
+    return @{@"name": name, @"bundleID": bundleID, @"items": [items copy]};
+}
+
 + (NSArray<NSDictionary *> *)appShortcutGroups {
     @try {
+        NSDictionary<NSString *, NSArray<DXPAppShortcutItem *> *> *captured = [self springBoardCapturedShortcutsByBundleID];
         NSMutableArray<NSDictionary *> *groups = [NSMutableArray array];
         NSMutableSet<NSString *> *seen = [NSMutableSet set];
         NSInteger scanned = 0, readable = 0;
@@ -429,23 +494,29 @@ static NSInteger DXLastShortcutScanApplicationCount = 0;
                 NSLog(@"[TypeX] shortcuts: skipped %@ (%@)", bundleID, exception);
                 group = nil;
             }
+            // Live captures outrank every metadata source; they also give a
+            // group to apps whose metadata scan came up empty.
+            NSArray<DXPAppShortcutItem *> *capturedItems = captured[bundleID];
+            if (capturedItems.count > 0) {
+                group = [self groupByPrependingCapturedItems:capturedItems group:group bundleID:bundleID name:name];
+            }
             if (group) {
                 readable++;
                 [groups addObject:group];
             }
         }
         DXLastShortcutScanApplicationCount = scanned;
-        NSInteger sourceCounts[3] = {0, 0, 0};
+        NSInteger sourceCounts[4] = {0, 0, 0, 0};
         for (NSDictionary *group in groups) {
             for (DXPAppShortcutItem *item in group[@"items"]) {
                 if ([item isKindOfClass:[DXPAppShortcutItem class]] &&
-                    item.source >= DXPAppShortcutSourceStatic && item.source <= DXPAppShortcutSourceAppIntent) {
+                    item.source >= DXPAppShortcutSourceStatic && item.source <= DXPAppShortcutSourceSpringBoard) {
                     sourceCounts[item.source]++;
                 }
             }
         }
-        NSLog(@"[TypeX] shortcuts scan: %ld apps, %ld with quick actions (static %ld, dynamic %ld, app intents %ld)",
-              (long)scanned, (long)readable, (long)sourceCounts[0], (long)sourceCounts[1], (long)sourceCounts[2]);
+        NSLog(@"[TypeX] shortcuts scan: %ld apps, %ld with quick actions (static %ld, dynamic %ld, app intents %ld, live %ld)",
+              (long)scanned, (long)readable, (long)sourceCounts[0], (long)sourceCounts[1], (long)sourceCounts[2], (long)sourceCounts[3]);
         [groups sortUsingComparator:^NSComparisonResult(NSDictionary *left, NSDictionary *right) {
             return [left[@"name"] localizedStandardCompare:right[@"name"]];
         }];

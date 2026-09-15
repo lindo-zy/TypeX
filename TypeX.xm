@@ -3,6 +3,7 @@
 #import "DXShared.h"
 #import "DXHelper.h"
 #import <objc/runtime.h>
+#import <objc/message.h>
 #import <SpringBoardServices/SpringBoardServices.h>
 
 
@@ -982,12 +983,13 @@ static void reloadPrefsNotificationCallback(CFNotificationCenterRef center,
     });
 }
 
-// SpringBoard side of the 打开应用 channel. The keyboard process cannot be
-// trusted to launch apps from restricted hosts (WeChat), so the request is a
-// plist {action, bundle} plus a Darwin notification; SpringBoard performs the
-// launch natively. Only the fixed "openapp" action name is acted on and the
-// payload must be a plain bundle identifier — the channel never carries
-// shell commands or arbitrary selectors.
+// SpringBoard side of the 打开应用 / openurl channel. Opens made from inside
+// a host process are blocked by restricted hosts (WeChat), and identity-gated
+// schemes only pass for SpringBoard itself, so requests ride a plist
+// {action, ...} plus a Darwin notification and are performed here natively.
+// Only the fixed "openapp" (plain bundle identifier) and "openurl"
+// (scheme-validated URL string) action names are acted on — the channel
+// never carries shell commands or arbitrary selectors.
 static void pendingActionRequestCallback(CFNotificationCenterRef center,
                                          void *observer,
                                          CFStringRef name,
@@ -997,29 +999,222 @@ static void pendingActionRequestCallback(CFNotificationCenterRef center,
         NSDictionary *request = [NSDictionary dictionaryWithContentsOfFile:TypeXPendingActionPath];
         NSString *action = [request isKindOfClass:[NSDictionary class]] ? request[@"action"] : nil;
         NSString *bundle = [request isKindOfClass:[NSDictionary class]] ? request[@"bundle"] : nil;
-        if (![action isEqualToString:@"openapp"] || !DXIsValidBundleIdentifier(bundle)) return;
+        NSString *urlString = [request isKindOfClass:[NSDictionary class]] ? request[@"url"] : nil;
 
-        // Consume before launching so a replayed notification cannot
-        // double-launch the app.
-        [[NSFileManager defaultManager] removeItemAtPath:TypeXPendingActionPath error:nil];
+        // Consume before acting so a replayed notification cannot repeat the
+        // open; a request that fails validation leaves the file in place but
+        // is inert (no recognized action name ever matches it).
+        void (^consumeRequestFile)(void) = ^{
+            [[NSFileManager defaultManager] removeItemAtPath:TypeXPendingActionPath error:nil];
+        };
 
-        FBSSystemService *service = [FBSSystemService sharedService];
-        SEL openSelector = @selector(openApplication:options:withResult:);
-        BOOL scheduled = NO;
-        if (service && [service respondsToSelector:openSelector]) {
-            @try {
-                [service openApplication:bundle options:@{} withResult:^(__unused NSError *error) {
-                    // A failed launch is not reported back: the keyboard has
-                    // no channel for it and the app switcher stays the retry.
-                }];
-                scheduled = YES;
-            } @catch (__unused NSException *exception) {
-                scheduled = NO;
+        if ([action isEqualToString:@"openapp"]) {
+            if (!DXIsValidBundleIdentifier(bundle)) return;
+            consumeRequestFile();
+
+            FBSSystemService *service = [FBSSystemService sharedService];
+            SEL openSelector = @selector(openApplication:options:withResult:);
+            BOOL scheduled = NO;
+            if (service && [service respondsToSelector:openSelector]) {
+                @try {
+                    [service openApplication:bundle options:@{} withResult:^(__unused NSError *error) {
+                        // A failed launch is not reported back: the keyboard has
+                        // no channel for it and the app switcher stays the retry.
+                    }];
+                    scheduled = YES;
+                } @catch (__unused NSException *exception) {
+                    scheduled = NO;
+                }
             }
+            if (!scheduled) {
+                SBSLaunchApplicationWithIdentifierAndLaunchOptions(bundle, @{}, @{}, NO);
+            }
+            return;
         }
-        if (!scheduled) {
-            SBSLaunchApplicationWithIdentifierAndLaunchOptions(bundle, @{}, @{}, NO);
+
+        if ([action isEqualToString:@"openurl"]) {
+            if (!DXIsOpenableSchemeURLString(urlString)) return;
+            consumeRequestFile();
+
+            // Opened by SpringBoard itself: the host app cannot intercept the
+            // request, and schemes gated on the requester's identity (prefs:,
+            // App-Prefs:) pass because the requester is SpringBoard.
+            NSURL *url = [NSURL URLWithString:urlString];
+            SBSOpenSensitiveURLAndUnlock((__bridge CFURLRef)url, 0);
         }
+    });
+}
+
+// ===========================================================================
+// Icon-menu quick-action capture (SpringBoard only)
+// ---------------------------------------------------------------------------
+// The Settings-side picker enumerates quick actions from bundle metadata
+// (static), app-container preferences (dynamic) and App Intents metadata,
+// but the menu the user actually long-presses is merged inside SpringBoard
+// from those sources plus system-only entries (suggestions), and only
+// SpringBoard sees the final list.  Two hooks observe the menu's real data
+// source at the moment the menu is being built for one specific icon —
+// SBIconView.effectiveApplicationShortcutItems (the final model list the
+// menu renders) and SBIconController's
+// iconManager:applicationShortcutItemsForIconView: (the delegate the icon
+// manager asks) — and persist the normalized items, keyed by bundle ID,
+// into the shared snapshot (TypeXSBShortcutsPath) for the Settings picker.
+//
+// The setApplicationShortcutItems: setter is deliberately NOT hooked:
+// SBIconView instances are recycled across icons in the grid, so a setter
+// call cannot be attributed to a bundle ID with certainty, while both
+// chosen hooks fire with the menu's icon fixed.  Hooks resolve at runtime
+// and degrade to no-ops on systems where a symbol is missing.
+
+// Reads one property through a respondsToSelector-guarded objc_msgSend —
+// items arrive as SBSApplicationShortcutItem but stay decodable even if the
+// class changes, and a missing property must read as nil, never throw.
+static NSString *DXSBReadStringProperty(id object, NSString *propertyName) {
+    SEL selector = NSSelectorFromString(propertyName);
+    if (![object respondsToSelector:selector]) return nil;
+    NSString *value = ((NSString *(*)(id, SEL))objc_msgSend)(object, selector);
+    return [value isKindOfClass:[NSString class]] ? value : nil;
+}
+
+static BOOL DXSBReadBoolProperty(id object, NSString *propertyName) {
+    SEL selector = NSSelectorFromString(propertyName);
+    if (![object respondsToSelector:selector]) return NO;
+    return ((BOOL (*)(id, SEL))objc_msgSend)(object, selector);
+}
+
+// Bundle ID of the app whose menu is being built.  Prefers the view's own
+// shortcut-scoped accessor, then falls back to its icon (SBIcon).
+static NSString *DXSBBundleIdentifierForIconView(id iconView) {
+    if (!iconView) return nil;
+    NSString *bundleID = DXSBReadStringProperty(iconView, @"applicationBundleIdentifierForShortcuts");
+    if (bundleID.length > 0) return bundleID;
+
+    SEL iconSelector = NSSelectorFromString(@"icon");
+    if ([iconView respondsToSelector:iconSelector]) {
+        id icon = ((id (*)(id, SEL))objc_msgSend)(iconView, iconSelector);
+        if (icon) {
+            bundleID = DXSBReadStringProperty(icon, @"applicationBundleID");
+            if (bundleID.length > 0) return bundleID;
+        }
+    }
+    return nil;
+}
+
+// Normalizes one captured menu list into storable dictionaries.  System
+// chrome rows (移除应用/分享应用/编辑主屏幕) are dropped three ways: they carry
+// no dispatch type, mark themselves destructive through the SBH addition,
+// or use a SpringBoard-owned type prefix — only real app shortcut items,
+// which dispatch through application:performActionForShortcutItem:, stay.
+static NSArray *DXSBNormalizedShortcutItems(NSArray *items) {
+    if (![items isKindOfClass:[NSArray class]]) return nil;
+    NSMutableArray *normalized = [NSMutableArray array];
+    NSMutableSet<NSString *> *seen = [NSMutableSet set];
+    for (id item in items) {
+        NSString *type = DXSBReadStringProperty(item, @"type");
+        if (type.length == 0) continue;
+        if (DXSBReadBoolProperty(item, @"sbh_isDestructive")) continue;
+        if ([type hasPrefix:@"com.apple.springboard."]) continue;
+        if ([seen containsObject:type]) continue;
+        [seen addObject:type];
+
+        NSString *title = DXSBReadStringProperty(item, @"localizedTitle")
+            ?: DXSBReadStringProperty(item, @"title");
+        NSString *subtitle = DXSBReadStringProperty(item, @"localizedSubtitle")
+            ?: DXSBReadStringProperty(item, @"subtitle");
+        NSMutableDictionary *entry = [NSMutableDictionary dictionary];
+        entry[@"type"] = type;
+        entry[@"title"] = title.length > 0 ? title : type;
+        if (subtitle.length > 0) entry[@"subtitle"] = subtitle;
+        [normalized addObject:entry];
+    }
+    return normalized.count > 0 ? normalized : nil;
+}
+
+// Persists one capture.  Hooks fire on the main thread with the menu on
+// screen, so writes stay tiny, atomic, content-deduplicated per bundle and
+// rate-limited — an unchanged list never rewrites the file.
+static void DXSBCaptureShortcutItems(NSArray *items, NSString *bundleID) {
+    if (bundleID.length == 0) return;
+    NSArray *normalized = DXSBNormalizedShortcutItems(items);
+    if (!normalized) return;
+
+    static NSMutableDictionary<NSString *, NSDictionary *> *captureState;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        captureState = [NSMutableDictionary dictionary];
+    });
+
+    NSString *signature = [normalized description];
+    NSDictionary *previous = captureState[bundleID];
+    NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+    if (previous) {
+        BOOL unchanged = [previous[@"signature"] isEqualToString:signature];
+        BOOL recent = now - [previous[@"time"] doubleValue] < 2.0;
+        if (unchanged || recent) return;
+    }
+    captureState[bundleID] = @{@"signature": signature, @"time": @(now)};
+
+    @try {
+        NSMutableDictionary *root = [[NSDictionary dictionaryWithContentsOfFile:TypeXSBShortcutsPath] mutableCopy]
+            ?: [NSMutableDictionary dictionary];
+        NSMutableDictionary *apps = [root[@"apps"] mutableCopy] ?: [NSMutableDictionary dictionary];
+        apps[bundleID] = @{@"items": normalized, @"updated": @(now)};
+        root[@"apps"] = apps;
+        root[@"format"] = @1;
+        [root writeToFile:TypeXSBShortcutsPath atomically:YES];
+    } @catch (NSException *exception) {
+        NSLog(@"[TypeX] sbshortcuts: write failed for %@ (%@)", bundleID, exception);
+    }
+}
+
+static NSArray *(*dx_SBIconView_effectiveItems_orig)(id, SEL);
+static NSArray *dx_SBIconView_effectiveItems(id self, SEL _cmd) {
+    NSArray *items = dx_SBIconView_effectiveItems_orig(self, _cmd);
+    DXSBCaptureShortcutItems(items, DXSBBundleIdentifierForIconView(self));
+    return items;
+}
+
+static NSArray *(*dx_SBIconController_itemsForIconView_orig)(id, SEL, id, id);
+static NSArray *dx_SBIconController_itemsForIconView(id self, SEL _cmd, id iconManager, id iconView) {
+    NSArray *items = dx_SBIconController_itemsForIconView_orig(self, _cmd, iconManager, iconView);
+    DXSBCaptureShortcutItems(items, DXSBBundleIdentifierForIconView(iconView));
+    return items;
+}
+
+// CydiaSubstrate (or its drop-in replacements) message hook.
+extern void MSHookMessageEx(Class _class, SEL message, IMP hook, IMP *previous);
+
+// Hooks one (class, selector) pair at most once; returns YES when this call
+// installed it, NO when it was already hooked or the symbol is missing.
+static BOOL DXSBHookClassSelector(const char *className, const char *selectorName, IMP hook, IMP *previous) {
+    Class cls = objc_getClass(className);
+    SEL selector = sel_registerName(selectorName);
+    if (!cls || !class_getInstanceMethod(cls, selector)) return NO;
+    MSHookMessageEx(cls, selector, hook, previous);
+    NSLog(@"[TypeX] sbshortcuts: hooked %s %s", className, selectorName);
+    return YES;
+}
+
+// SpringBoardHome may not be loaded yet when tweak constructors run; retry
+// briefly on the main queue until every hook is in place.
+static void DXSBInstallShortcutCaptureHooks(NSUInteger attempt) {
+    static BOOL effectiveHooked = NO, delegateHooked = NO;
+    if (!effectiveHooked) {
+        effectiveHooked = DXSBHookClassSelector("SBIconView",
+                                                 "effectiveApplicationShortcutItems",
+                                                 (IMP)dx_SBIconView_effectiveItems,
+                                                 (IMP *)&dx_SBIconView_effectiveItems_orig);
+    }
+    if (!delegateHooked) {
+        delegateHooked = DXSBHookClassSelector("SBIconController",
+                                               "iconManager:applicationShortcutItemsForIconView:",
+                                               (IMP)dx_SBIconController_itemsForIconView,
+                                               (IMP *)&dx_SBIconController_itemsForIconView_orig);
+    }
+    if ((effectiveHooked && delegateHooked) || attempt >= 5) return;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        DXSBInstallShortcutCaptureHooks(attempt + 1);
     });
 }
 
@@ -1060,6 +1255,9 @@ static void pendingActionRequestCallback(CFNotificationCenterRef center,
                         // Only SpringBoard consumes 打开应用 requests; other
                         // processes ignore the notification entirely.
                         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, pendingActionRequestCallback, (CFStringRef)kPendingActionRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+                        // Capture the real icon-menu quick actions (see the
+                        // capture module above) for the Settings picker.
+                        DXSBInstallShortcutCaptureHooks(0);
                     }
                 }
             }

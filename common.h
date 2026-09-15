@@ -129,13 +129,30 @@ static inline BOOL DXIsSubActionOnlyCustomActionType(NSString *type) {
 // (Settings, SpringBoard) can refresh the snapshot without a helper daemon.
 #define TypeXCachePath DX_ROOT_PATH_NS(@"/Library/TypeX")
 #define TypeXSharedPrefsPath DX_ROOT_PATH_NS(@"/Library/TypeX/shared.plist")
-// 打开应用 requests ride a file + Darwin notification channel into
-// SpringBoard: the keyboard process writes the request here and posts
+// 打开应用 and 面板 URL scheme requests ride a file + Darwin notification
+// channel into SpringBoard: the writing process posts
 // kPendingActionRequestIdentifier; the SpringBoard-injected dylib consumes
-// the file and performs the launch natively (a keyboard-process launch is
-// blocked by restricted hosts like WeChat).
+// the file and performs the open natively. Opens made from inside a host
+// process are blocked by restricted hosts (WeChat), and identity-gated
+// schemes (prefs:, App-Prefs:) only pass when the opener is SpringBoard
+// itself. Two fixed action names are acted on: "openapp" with a plain bundle
+// identifier, and "openurl" with a scheme-validated URL string — the channel
+// never carries shell commands or arbitrary selectors.
 #define TypeXPendingActionPath DX_ROOT_PATH_NS(@"/Library/TypeX/pendingaction.plist")
 #define kPendingActionRequestIdentifier @"com.lindo.typex/pendingaction"
+
+// Real icon-menu quick actions captured inside SpringBoard (see TypeX.xm):
+// hooks around the shortcut-menu data source (SBIconView /
+// SBIconController) persist the exact merged item list — including entries
+// only SpringBoard can see, such as system-merged suggestions — per bundle
+// ID under the shared snapshot.  The Settings-side picker merges this file
+// as its freshest source (see DXPAppInfo):
+//   {format: 1, apps: {bundleID: {items: [{type, title, subtitle}],
+//                                   updated: <timeIntervalSinceReferenceDate>}}}
+#define TypeXSBShortcutsPath DX_ROOT_PATH_NS(@"/Library/TypeX/sbshortcuts.plist")
+// Captures are snapshots of one long-press; older ones must not outlive the
+// app's own shortcut changes, so the Settings side drops stale entries.
+#define DXSBShortcutCaptureMaxAge (7.0 * 24 * 3600)
 
 // Reverse-DNS shape test shared with the SpringBoard-side request handler so
 // the channel can never be coerced into acting on a non-identifier payload.
@@ -145,6 +162,23 @@ static inline BOOL DXIsValidBundleIdentifier(NSString *value) {
                                                                                 options:0
                                                                                   error:nil];
     return [expression firstMatchInString:value options:0 range:NSMakeRange(0, value.length)] != nil;
+}
+
+// Shared URL-shape test for the openurl channel action (and the scheme
+// classification of custom-action links): a scheme-shaped URL of bounded
+// length whose scheme is not an executable/document one (javascript:, data:,
+// file:, about:), so the channel can never be coerced beyond "open this URL".
+static inline BOOL DXIsOpenableSchemeURLString(NSString *value) {
+    if (![value isKindOfClass:[NSString class]] || value.length == 0 || value.length > 2048) return NO;
+    NSRange schemeRange = [value rangeOfString:@"^[A-Za-z][A-Za-z0-9+.-]*:" options:NSRegularExpressionSearch];
+    if (schemeRange.location != 0) return NO;
+    NSURL *url = [NSURL URLWithString:value];
+    if (!url || url.scheme.length == 0) return NO;
+    NSString *lowercaseScheme = url.scheme.lowercaseString;
+    return ![lowercaseScheme isEqualToString:@"javascript"] &&
+        ![lowercaseScheme isEqualToString:@"data"] &&
+        ![lowercaseScheme isEqualToString:@"file"] &&
+        ![lowercaseScheme isEqualToString:@"about"];
 }
 
 static inline NSString *DXScopedPreferenceKey(NSString *baseKey, NSString *configuration) {

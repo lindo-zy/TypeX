@@ -147,14 +147,18 @@ static NSBundle *tweakBundle;
     DXPAppShortcutItem *item = [self itemForIndexPath:indexPath];
     if (item) {
         cell.textLabel.text = item.title ?: item.type;
-        // Source tag tells the three planes apart: a dynamic entry (present
-        // only because the app registered it on this device), an App Shortcut
-        // (iOS 16+ App Intents), and a static one from the app bundle.
-        NSString *source = item.source == DXPAppShortcutSourceDynamic
-            ? LOCALIZED(@"SHORTCUT_SOURCE_DYNAMIC")
-            : (item.source == DXPAppShortcutSourceAppIntent
-                ? LOCALIZED(@"SHORTCUT_SOURCE_APPINTENT")
-                : LOCALIZED(@"SHORTCUT_SOURCE_STATIC"));
+        // Source tag tells the four planes apart: a live entry captured from
+        // the real SpringBoard menu (freshest, includes system-merged
+        // suggestions), a dynamic entry (present only because the app
+        // registered it on this device), an App Shortcut (iOS 16+ App
+        // Intents), and a static one from the app bundle.
+        NSString *source = item.source == DXPAppShortcutSourceSpringBoard
+            ? LOCALIZED(@"SHORTCUT_SOURCE_SPRINGBOARD")
+            : (item.source == DXPAppShortcutSourceDynamic
+                ? LOCALIZED(@"SHORTCUT_SOURCE_DYNAMIC")
+                : (item.source == DXPAppShortcutSourceAppIntent
+                    ? LOCALIZED(@"SHORTCUT_SOURCE_APPINTENT")
+                    : LOCALIZED(@"SHORTCUT_SOURCE_STATIC")));
         cell.detailTextLabel.text = item.type.length > 0
             ? [NSString stringWithFormat:@"%@ · %@", item.type, source]
             : source;
