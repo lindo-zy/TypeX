@@ -115,6 +115,33 @@ static CGFloat const DXSubActionContentLeading = 40.0;
 
 #pragma mark - Picker navigation
 
+// The add row never stages an empty entry: actions are picked first in a
+// multi-select pass, and only a non-empty pick appends entries in one batch.
+- (void)pushMultiPickerForAdd {
+    DXPSubActionPickerController *picker = [[DXPSubActionPickerController alloc] init];
+    picker.fullOrder = self.fullOrder;
+    picker.allowsMultipleSelection = YES;
+    picker.title = LOCALIZED(@"CHOOSE_ACTION");
+
+    __weak typeof(self) weakSelf = self;
+    picker.multiSelectionCompletion = ^(NSArray<NSString *> *selectors) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf || selectors.count == 0) return;
+        for (NSString *selector in selectors) {
+            [strongSelf.entries addObject:[@{
+                @"identifier": strongSelf.identifier ?: @"",
+                @"selector": selector ?: @"",
+            } mutableCopy]];
+        }
+        [strongSelf.tableView reloadData];
+        [strongSelf writeEntries:strongSelf.entries];
+    };
+
+    [picker setRootController:[self rootController]];
+    [picker setParentController:[self parentController]];
+    [self pushController:picker];
+}
+
 - (void)pushPickerForRow:(NSInteger)row {
     if (row >= (NSInteger)self.entries.count) return;
 
@@ -172,8 +199,8 @@ static CGFloat const DXSubActionContentLeading = 40.0;
     NSDictionary *linkAction = [self linkActionForSelector:selector];
     if (DXIsLinkActionSelector(selector)) {
         NSString *icon = [linkAction[@"icon"] isKindOfClass:[NSString class]] ? linkAction[@"icon"] : @"";
-        UIImage *image = [UIImage systemImageNamed:(icon.length ? icon : @"link")];
-        return image ?: [UIImage systemImageNamed:@"link"];
+        return [DXHelper imageForIconConfig:icon defaultSymbolName:@"link"]
+            ?: [UIImage systemImageNamed:@"link"];
     }
 
     for (NSUInteger index = 0; index < self.fullOrder.count; index++) {
@@ -246,14 +273,7 @@ static CGFloat const DXSubActionContentLeading = 40.0;
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
 
     if (indexPath.row >= (NSInteger)self.entries.count) {
-        NSMutableDictionary *entry = [NSMutableDictionary dictionary];
-        entry[@"identifier"] = self.identifier;
-        entry[@"selector"] = @"";
-        [self.entries addObject:entry];
-        [self.tableView insertRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:self.entries.count - 1 inSection:0]]
-                              withRowAnimation:UITableViewRowAnimationAutomatic];
-        [self writeEntries:self.entries];
-        [self pushPickerForRow:(NSInteger)self.entries.count - 1];
+        [self pushMultiPickerForAdd];
         return;
     }
 

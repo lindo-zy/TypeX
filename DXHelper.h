@@ -8,5 +8,8 @@
 +(NSString *)localizedStringForActionNamed:(NSString *)actionName shortName:(BOOL)shortName bundle:(NSBundle *)tweakBundle;
 +(NSString *)customNameForShortcutItem:(NSDictionary *)item;
 +(NSString *)customIconForShortcutItem:(NSDictionary *)item;
++(NSString *)appIconBundleIDForShortcutItem:(NSDictionary *)item;
++(UIImage *)appIconImageForBundleID:(NSString *)bundleID;
++(UIImage *)imageForIconConfig:(NSString *)icon defaultSymbolName:(NSString *)defaultName;
 +(NSString *)resolvedIconNameForShortcutItem:(NSDictionary *)item defaultName:(NSString *)defaultName;
 @end

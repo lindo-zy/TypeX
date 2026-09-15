@@ -143,10 +143,30 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "ACTION_LINK" = "Action Link";
 "CUSTOM_ACTIONS" = "Custom Actions";
 "CUSTOM_ACTION" = "Custom Action";
+"CUSTOM_ACTION_SETTINGS" = "Custom Action Settings";
 "EDIT" = "Edit";
-"CUSTOM_LINK_ACTION_FOOTER" = "Enter an SF Symbol name for the icon.\nWeb link: must begin with http://, https://, or www., e.g. https://apple.com\nURL scheme: e.g. example://open\nBundle ID: e.g. com.apple.Preferences\nUse @@@ to insert the current input field's text.";
+"DELETE" = "Delete";
+"CUSTOM_LINK_ACTION_FOOTER" = "Enter an SF Symbol name or an app Bundle ID (e.g. com.apple.Preferences) for the icon.\nWeb link: must begin with http://, https://, or www., e.g. https://apple.com\nURL scheme: e.g. example://open\nBundle ID: e.g. com.apple.Preferences\nUse @@@ to insert the current input field's text.";
 "CUSTOM_ACTION_LINK_ERROR" = "The action link is invalid";
 "TEXT" = "Text";
+
+//=====================CUSTOM ACTION TYPES=====================
+"ACTION_TYPE" = "Type";
+"CHOOSE_ACTION_TYPE" = "Choose Action Type";
+"ACTION_TYPE_URL_SCHEME" = "URL Scheme";
+"ACTION_TYPE_TEXT" = "Text";
+"ACTION_TYPE_URL" = "URL";
+"SUB_ACTION_ONLY_SUFFIX" = " (Sub-actions only)";
+"URL_SCHEME_SETTINGS" = "URL Scheme";
+"TEXT_SETTINGS" = "Text";
+"TEXT_BOX_PLACEHOLDER" = "Text to send to the input field; supports the @@@ template.";
+"URL_SETTINGS" = "URL";
+"OPEN_IN_APP" = "Open in App";
+"TYPE_FOOTER_URL_SCHEME" = "Opens the URL scheme when tapped. Use @@@ to pass the current input field's text as a parameter.";
+"TYPE_FOOTER_TEXT" = "Sends the configured text to the current input field. Supports templates — @@@ inserts the field's current text.";
+"TYPE_FOOTER_OPEN_APP" = "Pick the app to open. This type can only be used in sub-actions.";
+"TYPE_FOOTER_URL" = "Opens the web URL, either inside this app or outside. Use @@@ to pass the current input field's text as a parameter.";
+"TYPE_FOOTER_SHORTCUT" = "Pick one of an app's home-screen quick actions (the long-press menu); it runs that action. This type can only be used in sub-actions.";
 
 //=====================APP / SHORTCUT PICKERS=====================
 "OPEN_APP" = "Open App";
@@ -156,8 +176,11 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SELECTED" = "Selected";
 "UNSELECTED" = "Not Selected";
 "NO_APP_SHORTCUTS" = "No app shortcuts found";
-"STATIC_SHORTCUTS_FOOTER" = "Only static quick actions declared in each app\u2019s Info.plist are listed. Quick actions an app registers at runtime cannot be shown here.";
-"NO_APP_SHORTCUTS_SCANNED" = "Scanned %ld apps; no static quick actions found. Dynamic items an app registers at runtime cannot be listed here.";
+"STATIC_SHORTCUTS_FOOTER" = "Lists each app\u2019s long-press quick actions: static items declared in the app bundle plus dynamic items the app registered at runtime (kept on this device). The Home Screen itself shows at most four entries per app.";
+"NO_APP_SHORTCUTS_SCANNED" = "Scanned %ld apps; no quick actions found. Dynamic items appear here once their app has registered them on this device.";
+"SHORTCUT_SOURCE_STATIC" = "Static";
+"SHORTCUT_SOURCE_DYNAMIC" = "Dynamic";
+"SHORTCUT_SOURCE_APPINTENT" = "App Shortcut";
 
 //=====================SHELL COMMAND BEHAVIOR=====================
 "SHELL_TITLE" = "Title";
@@ -167,10 +190,10 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 
 //=====================SHORTCUT APPEARANCE=====================
 "CUSTOM_APPEARANCE" = "Appearance";
-"FOOTER_CUSTOM_APPEARANCE" = "The name replaces the shortcut's label in short-label toolbar mode. The icon only accepts standard SF Symbol names (e.g. doc.on.doc); an invalid name falls back to the default icon.";
+"FOOTER_CUSTOM_APPEARANCE" = "The name replaces the shortcut's label in short-label toolbar mode. The icon accepts a standard SF Symbol name (e.g. doc.on.doc) or an app Bundle ID (e.g. com.apple.Preferences) to show that app's icon at symbol size; an invalid value falls back to the default icon.";
 "CUSTOM_NAME" = "Name";
 "CUSTOM_ICON" = "Icon";
-"CUSTOM_ICON_INVALID" = "Invalid icon name. The default icon will be used.";
+"CUSTOM_ICON_INVALID" = "Invalid icon. Enter an SF Symbol name or an app Bundle ID; the default icon will be used.";
 
 //=====================SPONGEBOB BEHAVIOR=====================
 "SPONGEBOB_ENTROPY" = "Randomness of Spongebob Text";
@@ -204,6 +227,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "ANSWER_OK" = "OK";
 "ANSWER_CANCEL" = "Cancel";
 "SAVE" = "Save";
+"DONE" = "Done";
 "DEFAULT_BUTTON_NAME" = "Action";
 "TEST_INPUT_FIELD" = "Test Field (tap to try the toolbar buttons)";
 "TEST_INPUT_FIELD_PLACEHOLDER" = "Type here to test the toolbar…";

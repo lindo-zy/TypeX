@@ -93,10 +93,10 @@ static NSBundle *tweakBundle;
     return items[indexPath.row];
 }
 
-// Explains what the page lists (static items only — dynamic ones exist only
-// inside the running app) and doubles as the empty-state view. When empty,
-// the scanned-app count distinguishes "no app declares shortcuts" from "the
-// scan found no apps at all".
+// Explains what the page lists (static items from each app bundle plus the
+// dynamic items apps registered on this device) and doubles as the empty-state
+// view. When empty, the scanned-app count distinguishes "no app declares
+// shortcuts" from "the scan found no apps at all".
 - (void)updateFooter {
     NSString *text;
     if ([self filteredGroups].count > 0) {
@@ -147,7 +147,17 @@ static NSBundle *tweakBundle;
     DXPAppShortcutItem *item = [self itemForIndexPath:indexPath];
     if (item) {
         cell.textLabel.text = item.title ?: item.type;
-        cell.detailTextLabel.text = item.type;
+        // Source tag tells the three planes apart: a dynamic entry (present
+        // only because the app registered it on this device), an App Shortcut
+        // (iOS 16+ App Intents), and a static one from the app bundle.
+        NSString *source = item.source == DXPAppShortcutSourceDynamic
+            ? LOCALIZED(@"SHORTCUT_SOURCE_DYNAMIC")
+            : (item.source == DXPAppShortcutSourceAppIntent
+                ? LOCALIZED(@"SHORTCUT_SOURCE_APPINTENT")
+                : LOCALIZED(@"SHORTCUT_SOURCE_STATIC"));
+        cell.detailTextLabel.text = item.type.length > 0
+            ? [NSString stringWithFormat:@"%@ · %@", item.type, source]
+            : source;
     } else {
         cell.textLabel.text = nil;
         cell.detailTextLabel.text = nil;
@@ -155,9 +165,30 @@ static NSBundle *tweakBundle;
     cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
     cell.detailTextLabel.lineBreakMode = NSLineBreakByTruncatingMiddle;
     cell.imageView.image = [DXPAppInfo iconForBundleID:[self groupForSection:indexPath.section][@"bundleID"]];
-    // Display only: no selection highlight, nothing is written back.
-    cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    // Selectable when a completion is set (checkmark marks the configured
+    // item); the legacy preview keeps rows inert and unhighlighted.
+    BOOL isSelected = [item.type isKindOfClass:[NSString class]] &&
+        [item.type isEqualToString:self.currentType] &&
+        [[self groupForSection:indexPath.section][@"bundleID"] isEqualToString:self.currentBundleID];
+    cell.accessoryType = (self.completion && isSelected)
+        ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+    cell.selectionStyle = self.completion
+        ? UITableViewCellSelectionStyleDefault : UITableViewCellSelectionStyleNone;
     return cell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    // Without a completion (legacy preview mode) the page stays display-only.
+    if (!self.completion) return;
+
+    DXPAppShortcutItem *item = [self itemForIndexPath:indexPath];
+    if (![item isKindOfClass:[DXPAppShortcutItem class]] || item.type.length == 0) return;
+    NSString *bundleID = [self groupForSection:indexPath.section][@"bundleID"];
+    if (![bundleID isKindOfClass:[NSString class]] || bundleID.length == 0) return;
+
+    self.completion(item.title ?: item.type, bundleID, item.type);
+    [self.navigationController popViewControllerAnimated:YES];
 }
 
 #pragma mark - Search

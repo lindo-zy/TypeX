@@ -67,6 +67,18 @@
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>detail</key>
+			<string>DXPCustomActionsController</string>
+			<key>label</key>
+			<string>自定义动作</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
 			<key>footerText</key>
 			<string>FOOTER_DOCK_MODE</string>
 		</dict>

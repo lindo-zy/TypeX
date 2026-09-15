@@ -6,6 +6,7 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <SpringBoardServices/SpringBoardServices.h>
+#import <SafariServices/SafariServices.h>
 
 static const NSInteger DXCustomActionToastTag = 0x54584341;
 static const NSInteger DXSubActionPanelOverlayTag = 0x54585341;
@@ -48,7 +49,13 @@ typedef void (^DXCustomActionOpenCompletion)(BOOL success);
 
 - (void)configureWithTitle:(NSString *)title image:(UIImage *)image {
     self.nameLabel.text = title;
-    self.iconView.image = [image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    // Symbols template into the label color, but app icons arrive
+    // always-original and must keep their artwork.
+    UIImage *resolved = image;
+    if (resolved && resolved.renderingMode != UIImageRenderingModeAlwaysOriginal) {
+        resolved = [resolved imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    }
+    self.iconView.image = resolved;
     self.accessibilityLabel = title;
 }
 
@@ -1772,11 +1779,12 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     return dictionary;
 }
 
-// Single FrontBoard open request. Returns NO when the FrontBoard route is
-// unavailable on this system (handler left untouched); when YES, the handler
-// fires exactly once on the main queue with the final outcome.
+// Single FrontBoard open request with explicit launch options. Returns NO
+// when the FrontBoard route is unavailable on this system (handler left
+// untouched); when YES, the handler fires exactly once on the main queue
+// with the final outcome.
 -(BOOL)frontBoardOpenApplication:(NSString *)bundleIdentifier
-                       launchURL:(NSURL *)launchURL
+                         options:(NSDictionary *)launchOptions
                          handler:(void (^)(BOOL success))handler {
     Class requestClass = NSClassFromString(@"FBSOpenApplicationRequest");
     if (!requestClass || ![requestClass respondsToSelector:@selector(requestWithBundleIdentifier:)]) return NO;
@@ -1792,7 +1800,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     SEL openSelector = @selector(openApplication:options:withResultHandler:);
     if (!service || ![service respondsToSelector:openSelector]) return NO;
 
-    id options = [self frontBoardOpenApplicationOptionsWithLaunchURL:launchURL];
+    id options = launchOptions ?: @{};
     @try {
         [service openApplication:request options:options withResultHandler:^(NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -1803,6 +1811,14 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     } @catch (__unused NSException *exception) {
         return NO;
     }
+}
+
+-(BOOL)frontBoardOpenApplication:(NSString *)bundleIdentifier
+                       launchURL:(NSURL *)launchURL
+                         handler:(void (^)(BOOL success))handler {
+    return [self frontBoardOpenApplication:bundleIdentifier
+                                   options:[self frontBoardOpenApplicationOptionsWithLaunchURL:launchURL]
+                                   handler:handler];
 }
 
 -(void)openURLThroughSpringBoard:(NSURL *)url completion:(DXCustomActionOpenCompletion)completion {
@@ -1917,22 +1933,241 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }
 }
 
-// Opens a user-defined web URL, URL scheme, or installed app bundle ID. The
-// @@@ placeholder receives the active input control's complete text.
--(BOOL)dispatchLinkActionSelector:(NSString *)selectorName sender:(UIButton *)sender {
+// The @@@ placeholder receives the active input control's complete text:
+// percent-encoded for URL payloads, raw when the text lands in the input
+// field itself.
+-(NSString *)expandedCustomActionPayload:(NSString *)payload escaped:(BOOL)escaped {
+    if (payload.length == 0 || ![payload containsString:@"@@@"]) return payload;
+    NSString *parameter = [self currentInputTextForCustomAction];
+    if (escaped) parameter = [self escapedCustomActionParameter:parameter];
+    return [payload stringByReplacingOccurrencesOfString:@"@@@" withString:parameter];
+}
+
+// Sends the configured text (template) to the active input field, at the
+// cursor, exactly like the built-in paste action.
+-(void)performTextCustomAction:(NSString *)template {
+    UIKeyboardImpl *impl = [objc_getClass("UIKeyboardImpl") activeInstance] ?: kbImpl;
+    NSString *text = [self expandedCustomActionPayload:template escaped:NO];
+    if (!impl || text.length == 0) {
+        [self showCustomActionLinkError];
+        return;
+    }
+    [impl insertText:text];
+    [impl clearTransientState];
+    [impl clearAnimations];
+    [impl setCaretBlinks:YES];
+}
+
+// In-app open for the url type. SFSafariViewController needs a presenting
+// view controller, which only exists in host-app processes; SpringBoard (and
+// any presentation failure) returns NO so the caller falls back to the
+// out-of-app open ladder.
+-(BOOL)openURLInAppBrowser:(NSURL *)url {
+    UIViewController *presenter = nil;
+    UIWindow *window = self.window ?: DXKeyWindow();
+    if ([UIApplication sharedApplication] && window) {
+        presenter = window.rootViewController;
+        while (presenter.presentedViewController) presenter = presenter.presentedViewController;
+    }
+    if (!presenter) return NO;
+
+    @try {
+        SFSafariViewController *safari = [[SFSafariViewController alloc] initWithURL:url];
+        [presenter presentViewController:safari animated:YES completion:nil];
+        return YES;
+    } @catch (__unused NSException *exception) {
+        return NO;
+    }
+}
+
+// 打开应用 rides the SpringBoard channel instead of launching from the
+// keyboard process: restricted hosts (WeChat) block keyboard-side app
+// launches. The request is a plist {action, bundle} written into the shared
+// TypeX directory and announced with a Darwin notification; the
+// SpringBoard-injected dylib consumes it (see TypeX.xm) and performs the
+// launch natively. Fire-and-forget — SpringBoard has no failure channel back.
+-(void)requestSpringBoardOpenApplication:(NSString *)bundleIdentifier {
+    NSDictionary *request = @{@"action": @"openapp", @"bundle": bundleIdentifier};
+    [request writeToFile:TypeXPendingActionPath atomically:YES];
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                         (__bridge CFStringRef)kPendingActionRequestIdentifier,
+                                         NULL, NULL, YES);
+}
+
+-(BOOL)dispatchWebURLCustomAction:(NSString *)link inApp:(BOOL)inApp {
+    NSString *lowercaseLink = link.lowercaseString;
+    BOOL isHTTPURL = [lowercaseLink hasPrefix:@"http://"] || [lowercaseLink hasPrefix:@"https://"];
+    BOOL isWWWURL = [lowercaseLink hasPrefix:@"www."];
+    if (!isHTTPURL && !isWWWURL) {
+        [self showCustomActionLinkError];
+        [self autoPaginationControl];
+        return YES;
+    }
+
+    NSString *webLink = isWWWURL ? [@"https://" stringByAppendingString:link] : link;
+    NSURL *url = [NSURL URLWithString:webLink];
+    BOOL validWebURL = url && url.host.length > 0 &&
+        ([url.scheme.lowercaseString isEqualToString:@"http"] ||
+         [url.scheme.lowercaseString isEqualToString:@"https"]);
+    if (!validWebURL) {
+        [self showCustomActionLinkError];
+        [self autoPaginationControl];
+        return YES;
+    }
+
+    if (inApp && [self openURLInAppBrowser:url]) {
+        [self autoPaginationControl];
+        return YES;
+    }
+    [self openCustomActionURL:url completion:^(BOOL success) {
+        if (!success) {
+            [self showCustomActionLinkError];
+        }
+    }];
+    [self autoPaginationControl];
+    return YES;
+}
+
+// Runs one user-defined custom action. The entry's "type" picks the
+// execution path; legacy entries without a type keep the old auto-detecting
+// link behavior. Sub-action-only types (打开应用 / 快捷方式) stay inert when
+// reached through a button gesture instead of the sub-action chain.
+-(BOOL)dispatchLinkActionSelector:(NSString *)selectorName
+                           sender:(UIButton *)sender
+       allowingSubActionOnlyTypes:(BOOL)allowSubActionOnly {
     NSDictionary *entry = preferencesLinkActionForSelector(selectorName);
     if (!entry) return NO;
 
-    NSString *link = [entry[@"link"] isKindOfClass:[NSString class]] ? entry[@"link"] : @"";
-    link = [link stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    NSString *type = [entry[kCustomActionTypeKey] isKindOfClass:[NSString class]] ? entry[kCustomActionTypeKey] : @"";
+    if (!allowSubActionOnly && DXIsSubActionOnlyCustomActionType(type)) return YES;
+
     [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
 
-    if ([link containsString:@"@@@"]) {
-        NSString *parameter = [self escapedCustomActionParameter:[self currentInputTextForCustomAction]];
-        link = [link stringByReplacingOccurrencesOfString:@"@@@" withString:parameter];
+    NSString *link = [entry[@"link"] isKindOfClass:[NSString class]] ? entry[@"link"] : @"";
+    link = [link stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+
+    if ([type isEqualToString:kCustomActionTypeText]) {
+        [self performTextCustomAction:link];
+        [self autoPaginationControl];
+        return YES;
     }
 
+    if ([type isEqualToString:kCustomActionTypeOpenApp]) {
+        if (![self isBundleIdentifier:link]) {
+            [self showCustomActionLinkError];
+            [self autoPaginationControl];
+            return YES;
+        }
+        // Already in SpringBoard: open directly. Anywhere else, hand the
+        // launch to SpringBoard so restricted hosts cannot block it.
+        if (isSpringBoard) {
+            [self openApplicationWithBundleIdentifier:link completion:^(BOOL success) {
+                if (!success) {
+                    [self showCustomActionLinkError];
+                }
+            }];
+        } else {
+            [self requestSpringBoardOpenApplication:link];
+        }
+        [self autoPaginationControl];
+        return YES;
+    }
+
+    if ([type isEqualToString:kCustomActionTypeURL]) {
+        id storedInApp = entry[kCustomActionInAppKey];
+        // APP内打开 is the default: an absent flag still means in-app.
+        BOOL inApp = (storedInApp == nil) || [storedInApp boolValue];
+        return [self dispatchWebURLCustomAction:[self expandedCustomActionPayload:link escaped:YES] inApp:inApp];
+    }
+
+    if ([type isEqualToString:kCustomActionTypeShortcut]) {
+        NSString *itemType = [entry[kCustomActionShortcutTypeKey] isKindOfClass:[NSString class]]
+            ? entry[kCustomActionShortcutTypeKey] : @"";
+        if (link.length == 0) {
+            [self showCustomActionLinkError];
+            [self autoPaginationControl];
+            return YES;
+        }
+
+        // Entries configured before the quick-action payload keep the
+        // Shortcuts-app name (or full shortcuts:// URL) behavior.
+        if (itemType.length == 0) {
+            NSString *payload = [self expandedCustomActionPayload:link escaped:YES];
+            NSURL *url = [payload containsString:@"://"] ? [NSURL URLWithString:payload]
+                : [NSURL URLWithString:[@"shortcuts://run-shortcut?name=" stringByAppendingString:payload]];
+            if (!url || url.scheme.length == 0) {
+                [self showCustomActionLinkError];
+                [self autoPaginationControl];
+                return YES;
+            }
+            [self openCustomActionURL:url completion:^(BOOL success) {
+                if (!success) {
+                    [self showCustomActionLinkError];
+                }
+            }];
+            [self autoPaginationControl];
+            return YES;
+        }
+
+        if (![self isBundleIdentifier:link]) {
+            [self showCustomActionLinkError];
+            [self autoPaginationControl];
+            return YES;
+        }
+
+        void (^openPlainly)(void) = ^{
+            [self openApplicationWithBundleIdentifier:link completion:^(BOOL success) {
+                if (!success) {
+                    [self showCustomActionLinkError];
+                }
+            }];
+        };
+
+        // Home-screen quick action: launch the owning app with the shortcut
+        // item as the launch origin — the payload behind SpringBoard's icon
+        // long-press menu — so the app receives
+        // application:performActionForShortcutItem:. A refused request (or a
+        // system without the item class) degrades to a plain app launch.
+        Class itemClass = NSClassFromString(@"SBSApplicationShortcutItem");
+        NSString *configuredName = [entry[@"name"] isKindOfClass:[NSString class]] ? entry[@"name"] : @"";
+        SBSApplicationShortcutItem *item = [itemClass alloc];
+        if (item) {
+            item.type = itemType;
+            item.localizedTitle = configuredName.length > 0 ? configuredName : itemType;
+            item.bundleIdentifierToLaunch = link;
+        }
+        BOOL scheduled = item && [self frontBoardOpenApplication:link
+                                                         options:@{SBSOpenApplicationLaunchOriginShortcutItem: item}
+                                                         handler:^(BOOL launched) {
+            if (!launched) openPlainly();
+        }];
+        if (!scheduled) openPlainly();
+        [self autoPaginationControl];
+        return YES;
+    }
+
+    if ([type isEqualToString:kCustomActionTypeURLScheme]) {
+        NSString *payload = [self expandedCustomActionPayload:link escaped:YES];
+        NSRange schemeRange = [payload rangeOfString:@"^[A-Za-z][A-Za-z0-9+.-]*:" options:NSRegularExpressionSearch];
+        NSURL *url = schemeRange.location == 0 ? [NSURL URLWithString:payload] : nil;
+        if (!url || url.scheme.length == 0) {
+            [self showCustomActionLinkError];
+            [self autoPaginationControl];
+            return YES;
+        }
+        [self openCustomActionURL:url completion:^(BOOL success) {
+            if (!success) {
+                [self showCustomActionLinkError];
+            }
+        }];
+        [self autoPaginationControl];
+        return YES;
+    }
+
+    // Legacy entry: open a user-defined web URL, URL scheme, or installed app
+    // bundle ID, classified from the link itself.
+    link = [self expandedCustomActionPayload:link escaped:YES];
     if (link.length == 0) {
         [self showCustomActionLinkError];
         [self autoPaginationControl];
@@ -1943,24 +2178,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     BOOL isHTTPURL = [lowercaseLink hasPrefix:@"http://"] || [lowercaseLink hasPrefix:@"https://"];
     BOOL isWWWURL = [lowercaseLink hasPrefix:@"www."];
     if (isHTTPURL || isWWWURL) {
-        NSString *webLink = isWWWURL ? [@"https://" stringByAppendingString:link] : link;
-        NSURL *url = [NSURL URLWithString:webLink];
-        BOOL validWebURL = url && url.host.length > 0 &&
-            ([url.scheme.lowercaseString isEqualToString:@"http"] ||
-             [url.scheme.lowercaseString isEqualToString:@"https"]);
-        if (!validWebURL) {
-            [self showCustomActionLinkError];
-            [self autoPaginationControl];
-            return YES;
-        }
-
-        [self openCustomActionURL:url completion:^(BOOL success) {
-            if (!success) {
-                [self showCustomActionLinkError];
-            }
-        }];
-        [self autoPaginationControl];
-        return YES;
+        return [self dispatchWebURLCustomAction:link inApp:NO];
     }
 
     NSRange schemeRange = [link rangeOfString:@"^[A-Za-z][A-Za-z0-9+.-]*:"
@@ -1997,9 +2215,17 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     return YES;
 }
 
-// Dispatches either one built-in selector or one user-defined link selector.
+// Dispatches either one built-in selector or one user-defined custom action.
+// Button taps go through here, so sub-action-only types stay forbidden; the
+// sub-action chain relaxes the restriction in dispatchSubActionSelector.
 -(void)dispatchConfiguredActionSelector:(NSString *)selectorName sender:(UIButton *)sender {
-    if ([self dispatchLinkActionSelector:selectorName sender:sender]) return;
+    [self dispatchConfiguredActionSelector:selectorName sender:sender allowingSubActionOnlyTypes:NO];
+}
+
+-(void)dispatchConfiguredActionSelector:(NSString *)selectorName
+                                 sender:(UIButton *)sender
+             allowingSubActionOnlyTypes:(BOOL)allowSubActionOnly {
+    if ([self dispatchLinkActionSelector:selectorName sender:sender allowingSubActionOnlyTypes:allowSubActionOnly]) return;
     if (![DXShortcutsGenerator isVisibleShortcutSelector:selectorName]) {
         return;
     }
@@ -2013,7 +2239,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 -(void)dispatchSubActionSelector:(NSString *)selectorName sender:(UIButton *)sender {
-    [self dispatchConfiguredActionSelector:selectorName sender:sender];
+    [self dispatchConfiguredActionSelector:selectorName sender:sender allowingSubActionOnlyTypes:YES];
 }
 
 -(NSString *)subActionPanelTitleForSelector:(NSString *)selectorName {
@@ -2029,8 +2255,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     NSDictionary *linkAction = preferencesLinkActionForSelector(selectorName);
     if (linkAction) {
         NSString *iconName = [linkAction[@"icon"] isKindOfClass:[NSString class]] ? linkAction[@"icon"] : @"";
-        UIImage *image = [UIImage systemImageNamed:(iconName.length ? iconName : @"link")];
-        return image ?: [UIImage systemImageNamed:@"link"];
+        return [DXHelper imageForIconConfig:iconName defaultSymbolName:@"link"]
+            ?: [UIImage systemImageNamed:@"link"];
     }
 
     NSArray<NSString *> *actionSelectors = [self.shortcutsGenerator selectorNames];

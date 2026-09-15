@@ -3,6 +3,7 @@
 #import "DXShared.h"
 #import "DXHelper.h"
 #import <objc/runtime.h>
+#import <SpringBoardServices/SpringBoardServices.h>
 
 
 id delegate;
@@ -981,6 +982,47 @@ static void reloadPrefsNotificationCallback(CFNotificationCenterRef center,
     });
 }
 
+// SpringBoard side of the 打开应用 channel. The keyboard process cannot be
+// trusted to launch apps from restricted hosts (WeChat), so the request is a
+// plist {action, bundle} plus a Darwin notification; SpringBoard performs the
+// launch natively. Only the fixed "openapp" action name is acted on and the
+// payload must be a plain bundle identifier — the channel never carries
+// shell commands or arbitrary selectors.
+static void pendingActionRequestCallback(CFNotificationCenterRef center,
+                                         void *observer,
+                                         CFStringRef name,
+                                         const void *object,
+                                         CFDictionaryRef userInfo) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSDictionary *request = [NSDictionary dictionaryWithContentsOfFile:TypeXPendingActionPath];
+        NSString *action = [request isKindOfClass:[NSDictionary class]] ? request[@"action"] : nil;
+        NSString *bundle = [request isKindOfClass:[NSDictionary class]] ? request[@"bundle"] : nil;
+        if (![action isEqualToString:@"openapp"] || !DXIsValidBundleIdentifier(bundle)) return;
+
+        // Consume before launching so a replayed notification cannot
+        // double-launch the app.
+        [[NSFileManager defaultManager] removeItemAtPath:TypeXPendingActionPath error:nil];
+
+        FBSSystemService *service = [FBSSystemService sharedService];
+        SEL openSelector = @selector(openApplication:options:withResult:);
+        BOOL scheduled = NO;
+        if (service && [service respondsToSelector:openSelector]) {
+            @try {
+                [service openApplication:bundle options:@{} withResult:^(__unused NSError *error) {
+                    // A failed launch is not reported back: the keyboard has
+                    // no channel for it and the app switcher stays the retry.
+                }];
+                scheduled = YES;
+            } @catch (__unused NSException *exception) {
+                scheduled = NO;
+            }
+        }
+        if (!scheduled) {
+            SBSLaunchApplicationWithIdentifierAndLaunchOptions(bundle, @{}, @{}, NO);
+        }
+    });
+}
+
 %ctor {
     
     @autoreleasepool {
@@ -1014,6 +1056,11 @@ static void reloadPrefsNotificationCallback(CFNotificationCenterRef center,
                                                                  name:UIKeyboardWillHideNotification
                                                                object:nil];
                     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, reloadPrefsNotificationCallback, (CFStringRef)kPrefsChangedIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+                    if (isSpringBoard) {
+                        // Only SpringBoard consumes 打开应用 requests; other
+                        // processes ignore the notification entirely.
+                        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, pendingActionRequestCallback, (CFStringRef)kPendingActionRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+                    }
                 }
             }
         }

@@ -1,4 +1,5 @@
 #import "DXPCustomActionViewController.h"
+#import "DXPSubActionPickerController.h"
 #import "DXPLinkActionEditorController.h"
 #import "../DXHelper.h"
 #import "../common.h"
@@ -7,19 +8,30 @@ static NSBundle *tweakBundle;
 
 @interface DXPCustomActionViewController ()
 @property (nonatomic, strong) NSMutableArray<NSMutableDictionary *> *linkActions;
+// Live multi-select state; only maintained while allowsMultipleSelection is on.
+@property (nonatomic, strong) NSMutableSet<NSString *> *pickedSelectors;
 @end
 
 @implementation DXPCustomActionViewController
 
 #pragma mark - Storage
 
+// 打开应用 and 快捷方式 are sub-action-only types. The management page and
+// the sub-action picker subclass list every type; the plain instance pushed
+// by the gesture picker offers only universal actions.
+- (BOOL)showsAllCustomActionTypes {
+    return self.customActionsOnly || [self isKindOfClass:[DXPSubActionPickerController class]];
+}
+
 - (void)reloadPreferences {
     self.prefs = [[[DXPrefsManager sharedInstance] readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
     self.linkActions = [NSMutableArray array];
+    BOOL showAllTypes = [self showsAllCustomActionTypes];
     for (NSDictionary *entry in self.prefs[kLinkActionskey]) {
         if (![entry isKindOfClass:[NSDictionary class]]) continue;
         NSString *selector = entry[@"selector"];
         if (!DXIsLinkActionSelector(selector)) continue;
+        if (!showAllTypes && DXIsSubActionOnlyCustomActionType(entry[kCustomActionTypeKey])) continue;
         [self.linkActions addObject:[entry mutableCopy]];
     }
 
@@ -100,6 +112,51 @@ static NSBundle *tweakBundle;
 
 #pragma mark - Action editor
 
+// 添加 flow: the type is chosen first (URL Scheme preselected as the first
+// entry of the chooser), then the typed editor opens on a PENDING entry.
+// Nothing touches the store here — the action joins the list (and the prefs)
+// only when the editor's 保存 reports the finished entry, so backing out of
+// the editor never leaves a half-configured row behind.
+- (void)presentAddActionTypeChooser {
+    __weak typeof(self) weakSelf = self;
+    [DXPLinkActionEditorController presentTypeChooserFromController:self
+                                                        currentType:kCustomActionTypeURLScheme
+                                                         completion:^(NSString *type) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf || type.length == 0) return;
+        NSMutableDictionary *entry = [@{
+            @"selector": [kLinkActionSelectorPrefix stringByAppendingString:NSUUID.UUID.UUIDString],
+            @"name": LOCALIZED(@"DEFAULT_BUTTON_NAME"),
+            @"icon": [DXPLinkActionEditorController defaultIconForType:type],
+            @"link": @"",
+            kCustomActionTypeKey: type,
+        } mutableCopy];
+        if ([type isEqualToString:kCustomActionTypeURL]) entry[kCustomActionInAppKey] = @YES;
+
+        DXPLinkActionEditorController *editor = [[DXPLinkActionEditorController alloc] init];
+        editor.entry = entry;
+        __weak typeof(self) weakEditorOwner = weakSelf;
+        editor.completion = ^(NSDictionary *savedEntry) {
+            __strong typeof(weakEditorOwner) strongOwner = weakEditorOwner;
+            if (!strongOwner) return;
+            [strongOwner.linkActions addObject:[savedEntry mutableCopy]];
+            [strongOwner persistLinkActions];
+            NSIndexPath *newPath = [NSIndexPath indexPathForRow:strongOwner.linkActions.count - 1
+                                                      inSection:strongOwner.customActionsSection];
+            [strongOwner.tableView insertRowsAtIndexPaths:@[newPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+        };
+        [editor setRootController:[strongSelf rootController]];
+        [editor setParentController:[strongSelf parentController]];
+        [strongSelf pushController:editor];
+    }];
+}
+
+// In customActionsOnly mode the custom-actions group is the single section 0;
+// otherwise it sits behind the built-in actions as section 1.
+- (NSInteger)customActionsSection {
+    return self.customActionsOnly ? 0 : 1;
+}
+
 - (void)pushEditorForCustomRow:(NSInteger)row {
     if (row < 0 || row >= (NSInteger)self.linkActions.count) return;
     DXPLinkActionEditorController *editor = [[DXPLinkActionEditorController alloc] init];
@@ -111,7 +168,7 @@ static NSBundle *tweakBundle;
         if (!strongSelf || row >= (NSInteger)strongSelf.linkActions.count) return;
         strongSelf.linkActions[row] = [entry mutableCopy];
         [strongSelf persistLinkActions];
-        [strongSelf.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:row inSection:1]]
+        [strongSelf.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:row inSection:strongSelf.customActionsSection]]
                                     withRowAnimation:UITableViewRowAnimationNone];
     };
     [editor setRootController:[self rootController]];
@@ -123,21 +180,27 @@ static NSBundle *tweakBundle;
     UIView *view = sender;
     while (view && ![view isKindOfClass:[UITableViewCell class]]) view = view.superview;
     NSIndexPath *indexPath = [self.tableView indexPathForCell:(UITableViewCell *)view];
-    if (indexPath.section == 1) [self pushEditorForCustomRow:indexPath.row];
+    if (self.customActionsOnly && indexPath.section == self.customActionsSection) [self pushEditorForCustomRow:indexPath.row];
 }
 
 #pragma mark - Table view
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 2;
+    return self.customActionsOnly ? 1 : 2;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    return section == 0 ? LOCALIZED(@"ACTION") : LOCALIZED(@"CUSTOM_ACTIONS");
+    if (section != self.customActionsSection) return LOCALIZED(@"ACTION");
+    // Picker modes hide the whole group when there is nothing to select.
+    if (!self.customActionsOnly && self.linkActions.count == 0) return nil;
+    return LOCALIZED(@"CUSTOM_ACTIONS");
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return section == 0 ? self.fullOrder.count : self.linkActions.count + 1;
+    if (section != self.customActionsSection) return self.fullOrder.count;
+    // The trailing "添加" row belongs to the management page only; pickers
+    // list custom actions for selection without offering mutations.
+    return self.linkActions.count + (self.customActionsOnly ? 1 : 0);
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -147,8 +210,10 @@ static NSBundle *tweakBundle;
 - (UITableViewCell *)builtInCellForIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:@"TypeXLPItemCell" forIndexPath:indexPath];
     NSString *selector = [DXHelper actionNameFromArray:self.fullOrder atIndex:indexPath.row];
-    cell.accessoryType = [self.selectedSelector isEqualToString:selector]
-        ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+    BOOL checked = self.allowsMultipleSelection
+        ? [self.pickedSelectors containsObject:selector]
+        : [self.selectedSelector isEqualToString:selector];
+    cell.accessoryType = checked ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
     cell.accessoryView = nil;
     cell.editingAccessoryView = nil;
     cell.textLabel.text = [DXHelper localizedStringForActionNamed:selector shortName:NO bundle:tweakBundle];
@@ -163,17 +228,19 @@ static NSBundle *tweakBundle;
     NSString *name = [entry[@"name"] isKindOfClass:[NSString class]] ? entry[@"name"] : @"";
     NSString *icon = [entry[@"icon"] isKindOfClass:[NSString class]] ? entry[@"icon"] : @"";
     cell.textLabel.text = name.length ? name : LOCALIZED(@"DEFAULT_BUTTON_NAME");
-    UIImage *image = [UIImage systemImageNamed:(icon.length ? icon : @"link")];
-    cell.imageView.image = image ?: [UIImage systemImageNamed:@"link"];
-    cell.accessoryType = [self.selectedSelector isEqualToString:selector]
-        ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+    cell.imageView.image = [DXHelper imageForIconConfig:icon defaultSymbolName:@"link"]
+        ?: [UIImage systemImageNamed:@"link"];
+    BOOL checked = self.allowsMultipleSelection
+        ? [self.pickedSelectors containsObject:selector]
+        : [self.selectedSelector isEqualToString:selector];
+    cell.accessoryType = checked ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
     cell.accessoryView = nil;
     cell.editingAccessoryView = nil;
     return cell;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.section == 0) return [self builtInCellForIndexPath:indexPath];
+    if (indexPath.section != self.customActionsSection) return [self builtInCellForIndexPath:indexPath];
     if (indexPath.row >= (NSInteger)self.linkActions.count) {
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPActionAddCell" forIndexPath:indexPath];
         cell.textLabel.text = LOCALIZED(@"ADD");
@@ -188,25 +255,35 @@ static NSBundle *tweakBundle;
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    if (indexPath.section == 1 && indexPath.row >= (NSInteger)self.linkActions.count) {
-        NSString *selector = [kLinkActionSelectorPrefix stringByAppendingString:NSUUID.UUID.UUIDString];
-        NSMutableDictionary *entry = [@{
-            @"selector": selector,
-            @"name": LOCALIZED(@"DEFAULT_BUTTON_NAME"),
-            @"icon": @"link",
-            @"link": @"",
-        } mutableCopy];
-        [self.linkActions addObject:entry];
-        [self persistLinkActions];
-        NSIndexPath *newPath = [NSIndexPath indexPathForRow:self.linkActions.count - 1 inSection:1];
-        [tableView insertRowsAtIndexPaths:@[newPath] withRowAnimation:UITableViewRowAnimationAutomatic];
-        [self pushEditorForCustomRow:newPath.row];
+    // Only the management page carries the "添加" row, so this branch is
+    // unreachable in picker modes (they are select-only for custom actions).
+    if (indexPath.section == self.customActionsSection && indexPath.row >= (NSInteger)self.linkActions.count) {
+        [self presentAddActionTypeChooser];
         return;
     }
 
-    NSString *selector = indexPath.section == 0
-        ? [DXHelper actionNameFromArray:self.fullOrder atIndex:indexPath.row]
-        : self.linkActions[indexPath.row][@"selector"];
+    // Management page: tapping a custom action edits it instead of selecting.
+    if (self.customActionsOnly) {
+        [self pushEditorForCustomRow:indexPath.row];
+        return;
+    }
+
+    if (self.allowsMultipleSelection) {
+        NSString *selector = indexPath.section == self.customActionsSection
+            ? self.linkActions[indexPath.row][@"selector"]
+            : [DXHelper actionNameFromArray:self.fullOrder atIndex:indexPath.row];
+        if ([self.pickedSelectors containsObject:selector]) {
+            [self.pickedSelectors removeObject:selector];
+        } else {
+            [self.pickedSelectors addObject:selector];
+        }
+        [tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
+        return;
+    }
+
+    NSString *selector = indexPath.section == self.customActionsSection
+        ? self.linkActions[indexPath.row][@"selector"]
+        : [DXHelper actionNameFromArray:self.fullOrder atIndex:indexPath.row];
     NSString *oldSelector = self.selectedSelector;
 
     if (self.selectionManagedExternally) {
@@ -241,43 +318,73 @@ static NSBundle *tweakBundle;
     return nil;
 }
 
+#pragma mark - Multi-select (batch pick)
+
+// Report picks in list order (built-ins first, then custom actions) so a
+// batch append lands in the order the user saw on screen.
+- (NSArray<NSString *> *)orderedPickedSelectors {
+    NSMutableArray<NSString *> *ordered = [NSMutableArray array];
+    for (NSUInteger row = 0; row < self.fullOrder.count; row++) {
+        NSString *selector = [DXHelper actionNameFromArray:self.fullOrder atIndex:row];
+        if ([self.pickedSelectors containsObject:selector]) [ordered addObject:selector];
+    }
+    for (NSDictionary *entry in self.linkActions) {
+        NSString *selector = entry[@"selector"];
+        if ([selector isKindOfClass:[NSString class]] && [self.pickedSelectors containsObject:selector]) [ordered addObject:selector];
+    }
+    return ordered;
+}
+
+- (void)confirmMultiSelection {
+    if (self.multiSelectionCompletion) self.multiSelectionCompletion([self orderedPickedSelectors]);
+    [self.navigationController popViewControllerAnimated:YES];
+}
+
 #pragma mark - Edit and delete
 
 - (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
-    return indexPath.section == 1 && indexPath.row < (NSInteger)self.linkActions.count;
+    return self.customActionsOnly && indexPath.section == self.customActionsSection &&
+        indexPath.row < (NSInteger)self.linkActions.count;
 }
 
 - (UITableViewCellEditingStyle)tableView:(UITableView *)tableView editingStyleForRowAtIndexPath:(NSIndexPath *)indexPath {
-    return indexPath.section == 1 && indexPath.row < (NSInteger)self.linkActions.count
+    return self.customActionsOnly && indexPath.section == self.customActionsSection &&
+        indexPath.row < (NSInteger)self.linkActions.count
         ? UITableViewCellEditingStyleDelete : UITableViewCellEditingStyleNone;
 }
 
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (editingStyle != UITableViewCellEditingStyleDelete || indexPath.section != 1 ||
+    if (editingStyle != UITableViewCellEditingStyleDelete || indexPath.section != self.customActionsSection ||
         indexPath.row >= (NSInteger)self.linkActions.count) return;
     NSString *selector = self.linkActions[indexPath.row][@"selector"];
     [self.linkActions removeObjectAtIndex:indexPath.row];
     self.prefs[kLinkActionskey] = self.linkActions;
     [self removeReferencesToSelector:selector fromPreferences:self.prefs];
     if ([self.selectedSelector isEqualToString:selector]) self.selectedSelector = nil;
+    [self.pickedSelectors removeObject:selector];
     [self writePreferences];
     [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
 }
 
-- (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView leadingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.section != 1 || indexPath.row >= (NSInteger)self.linkActions.count) return nil;
+// Management page only: the picker keeps delete reachable through edit mode.
+// There is no leading-swipe 编辑 any more — tapping a row already opens its
+// editor.
+- (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (!self.customActionsOnly || indexPath.section != self.customActionsSection ||
+        indexPath.row >= (NSInteger)self.linkActions.count) return nil;
     __weak typeof(self) weakSelf = self;
-    UIContextualAction *edit = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal
-                                                                        title:LOCALIZED(@"EDIT")
-                                                                      handler:^(__unused UIContextualAction *action,
-                                                                                __unused UIView *sourceView,
-                                                                                void (^completionHandler)(BOOL)) {
+    UIContextualAction *delete = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive
+                                                                         title:LOCALIZED(@"DELETE")
+                                                                       handler:^(__unused UIContextualAction *action,
+                                                                                 __unused UIView *sourceView,
+                                                                                 void (^completionHandler)(BOOL)) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
-        [strongSelf pushEditorForCustomRow:indexPath.row];
+        if (strongSelf) [strongSelf tableView:strongSelf.tableView
+                            commitEditingStyle:UITableViewCellEditingStyleDelete
+                             forRowAtIndexPath:indexPath];
         completionHandler(strongSelf != nil);
     }];
-    edit.backgroundColor = [UIColor systemBlueColor];
-    return [UISwipeActionsConfiguration configurationWithActions:@[edit]];
+    return [UISwipeActionsConfiguration configurationWithActions:@[delete]];
 }
 
 #pragma mark - Lifecycle
@@ -315,6 +422,14 @@ static NSBundle *tweakBundle;
                                                           target:self
                                                           action:@selector(resetToDefault)];
         self.navigationItem.rightBarButtonItem = self.defaultBtn;
+    }
+
+    if (self.allowsMultipleSelection) {
+        self.pickedSelectors = [NSMutableSet set];
+        self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:LOCALIZED(@"DONE")
+                                                                                  style:UIBarButtonItemStyleDone
+                                                                                 target:self
+                                                                                 action:@selector(confirmMultiSelection)];
     }
 }
 

@@ -46,6 +46,30 @@
 // top and bottom toolbar configurations.
 #define kLinkActionskey @"linkactions"
 #define kLinkActionSelectorPrefix @"__typex_link_action_"
+
+// Custom action types, stored on each linkactions entry under "type".  An
+// entry without a type is a legacy definition and keeps the old behavior of
+// auto-detecting web URL / URL scheme / bundle identifier from its link.
+// "url" additionally stores the APP内打开 choice under "inapp" (default YES).
+#define kCustomActionTypeKey @"type"
+#define kCustomActionInAppKey @"inapp"
+// 快捷方式 entries: "link" stores the owning app's bundle identifier and this
+// field the UIApplicationShortcutItemType of the chosen long-press menu item.
+// Entries without it predate the quick-action payload and keep the legacy
+// Shortcuts-app name behavior.
+#define kCustomActionShortcutTypeKey @"shortcuttype"
+#define kCustomActionTypeURLScheme @"urlscheme"
+#define kCustomActionTypeText @"text"
+#define kCustomActionTypeOpenApp @"openapp"
+#define kCustomActionTypeURL @"url"
+#define kCustomActionTypeShortcut @"shortcut"
+
+// 打开应用 and 快捷方式 are only selectable as sub-actions; every other type
+// (and every legacy entry) is universal and may also drive a button gesture.
+static inline BOOL DXIsSubActionOnlyCustomActionType(NSString *type) {
+    return [type isKindOfClass:[NSString class]] &&
+        ([type isEqualToString:kCustomActionTypeOpenApp] || [type isEqualToString:kCustomActionTypeShortcut]);
+}
 // Per-entry field on a shortcut dictionary: set to @YES when the button's tap
 // should run its sub-action chain (long-press behavior) instead of the tap
 // action configured for it.
@@ -105,6 +129,23 @@
 // (Settings, SpringBoard) can refresh the snapshot without a helper daemon.
 #define TypeXCachePath DX_ROOT_PATH_NS(@"/Library/TypeX")
 #define TypeXSharedPrefsPath DX_ROOT_PATH_NS(@"/Library/TypeX/shared.plist")
+// 打开应用 requests ride a file + Darwin notification channel into
+// SpringBoard: the keyboard process writes the request here and posts
+// kPendingActionRequestIdentifier; the SpringBoard-injected dylib consumes
+// the file and performs the launch natively (a keyboard-process launch is
+// blocked by restricted hosts like WeChat).
+#define TypeXPendingActionPath DX_ROOT_PATH_NS(@"/Library/TypeX/pendingaction.plist")
+#define kPendingActionRequestIdentifier @"com.lindo.typex/pendingaction"
+
+// Reverse-DNS shape test shared with the SpringBoard-side request handler so
+// the channel can never be coerced into acting on a non-identifier payload.
+static inline BOOL DXIsValidBundleIdentifier(NSString *value) {
+    if (![value isKindOfClass:[NSString class]] || value.length == 0) return NO;
+    NSRegularExpression *expression = [NSRegularExpression regularExpressionWithPattern:@"^[A-Za-z0-9_](?:[A-Za-z0-9_-]*[A-Za-z0-9_])?(?:\\.[A-Za-z0-9_](?:[A-Za-z0-9_-]*[A-Za-z0-9_])?)+$"
+                                                                                options:0
+                                                                                  error:nil];
+    return [expression firstMatchInString:value options:0 range:NSMakeRange(0, value.length)] != nil;
+}
 
 static inline NSString *DXScopedPreferenceKey(NSString *baseKey, NSString *configuration) {
     if ([configuration isEqualToString:@"top"]) {
@@ -295,3 +336,19 @@ typedef NS_ENUM(NSInteger, DXStudlyCapsType){
                 options:(id)options
       withResultHandler:(void (^)(NSError *error))resultHandler;
 @end
+
+// Home-screen quick action carried through an app launch, the same payload
+// SpringBoard's icon long-press menu uses; the target app then receives
+// application:performActionForShortcutItem:. SBSOpenApplicationLaunchOriginShortcutItem
+// (SpringBoardServices) marks the launch origin as a shortcut item.
+@class SBSApplicationShortcutIcon;
+
+@interface SBSApplicationShortcutItem : NSObject
+@property (nonatomic, copy) NSString *type;
+@property (nonatomic, copy) NSString *localizedTitle;
+@property (nonatomic, copy) NSString *localizedSubtitle;
+@property (nonatomic, retain) SBSApplicationShortcutIcon *icon;
+@property (nonatomic, copy) NSString *bundleIdentifierToLaunch;
+@end
+
+extern NSString * const SBSOpenApplicationLaunchOriginShortcutItem;

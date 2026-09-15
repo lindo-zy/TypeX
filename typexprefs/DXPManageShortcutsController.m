@@ -160,13 +160,18 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     NSDictionary *shortcutItem = self.currentOrder[indexPath.section][indexPath.row];
 
     // Per-shortcut overrides set in the button's own settings page: a custom
-    // name replaces the localized label and a valid SF Symbol replaces the icon.
+    // name replaces the localized label and a valid SF Symbol or app bundle
+    // identifier replaces the icon.
     NSString *customName = [DXHelper customNameForShortcutItem:shortcutItem];
     if (customName) label = customName;
     else if ([shortcutItem[@"label"] isKindOfClass:[NSString class]] && [(NSString *)shortcutItem[@"label"] length])
         label = shortcutItem[@"label"];
     NSString *customIcon = [DXHelper customIconForShortcutItem:shortcutItem];
     if (customIcon) image = [DXHelper imageForName:customIcon withSystemColor:YES completion:nil];
+    else {
+        NSString *iconBundleID = [DXHelper appIconBundleIDForShortcutItem:shortcutItem];
+        if (iconBundleID) image = [DXHelper appIconImageForBundleID:iconBundleID];
+    }
 
     // Enable switch: off keeps the button stored but hides it from the
     // toolbar. The table lives in editing mode permanently, so the switch is

@@ -242,6 +242,14 @@ static NSBundle *tweakBundle;
     [self presentViewController:alert animated:YES completion:nil];
 }
 
+// Rendering a bundle-ID icon needs an app-icon lookup that sandboxed toolbar
+// hosts may not be able to perform themselves, so a successful Settings-side
+// load is staged as a PNG under the shared snapshot for them.
+- (void)stageAppIconCacheForIconConfig:(NSString *)icon {
+    NSString *bundleID = [DXHelper appIconBundleIDForShortcutItem:@{@"icon": icon}];
+    if (bundleID) [DXHelper appIconImageForBundleID:bundleID];
+}
+
 - (void)saveButtonTapped {
     // A nav-bar tap does not resign the keyboard by itself; commit any
     // in-progress edit first so the pending values are current.
@@ -266,6 +274,7 @@ static NSBundle *tweakBundle;
         if (nameDirty) entry[@"name"] = name;
         if (iconDirty) entry[@"icon"] = icon;
     }];
+    [self stageAppIconCacheForIconConfig:icon];
 
     self.pendingName = nil;
     self.pendingIcon = nil;
@@ -305,6 +314,7 @@ static NSBundle *tweakBundle;
     NSString *name = nil;
     NSString *icon = nil;
     [self resolveNameAndIconForTapAction:hasTap ? tapAction : @"" name:&name icon:&icon];
+    [self stageAppIconCacheForIconConfig:icon];
 
     NSMutableDictionary *entry = canonical ? [canonical mutableCopy] : [NSMutableDictionary dictionary];
     entry[@"selector"] = identifier;
@@ -402,9 +412,12 @@ static NSBundle *tweakBundle;
         ? [(NSString *)value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]]
         : @"";
 
-    // Only standard SF Symbol names are accepted; anything else keeps the
-    // default icon instead of silently rendering a blank shortcut.
-    if (icon.length > 0 && ![DXHelper customIconForShortcutItem:@{@"icon": icon}]) {
+    // SF Symbol names and app bundle identifiers are both accepted; anything
+    // else keeps the default icon instead of silently rendering a blank
+    // shortcut.
+    if (icon.length > 0
+        && ![DXHelper customIconForShortcutItem:@{@"icon": icon}]
+        && ![DXHelper appIconBundleIDForShortcutItem:@{@"icon": icon}]) {
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"TypeX"
                                                                        message:LOCALIZED(@"CUSTOM_ICON_INVALID")
                                                                 preferredStyle:UIAlertControllerStyleAlert];

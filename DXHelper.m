@@ -4,6 +4,22 @@
 
 #define UIKitBundleArtwork @"/System/Library/PrivateFrameworks/UIKitCore.framework/Artwork.bundle"
 
+// Name prefix marking a shortcut icon that renders an installed app's icon.
+// Resolved names flow through the toolbar's string arrays just like the
+// CUSTOM_ image-path prefix.
+static NSString * const DXAppIconNamePrefix = @"APP_";
+
+// Icon slot size shared by every custom icon source: 24pt matches the custom
+// image path and sits at the SF Symbol scale, so a bundle-ID icon never
+// renders larger than the symbol it replaces.
+static const CGFloat DXAppIconSide = 24.0;
+
+// Private UIKit lookup backed by the system icon cache; available far below
+// this tweak's deployment target, but resolved defensively all the same.
+@interface UIImage (TypeXAppIcon)
++ (UIImage *)_applicationIconImageForBundleIdentifier:(NSString *)bundleIdentifier format:(NSInteger)format;
+@end
+
 @implementation DXHelper
 
 +(UIImage *)imageForTypeXWithPlaceholder:(BOOL)placeholder{
@@ -23,6 +39,7 @@
     if (isCustomImagePath){
         customPath = [imageName substringFromIndex:[customPrefix length]];
     }
+    BOOL isAppIconPath = [imageName hasPrefix:DXAppIconNamePrefix];
 
     UIImage* (^cacheAndLoadImage)(NSString *, NSString *) = ^(NSString *inputImagePath, NSString *cacheFilePath){
         UIImage *resizedImage;
@@ -43,8 +60,22 @@
     
     if (@available(iOS 13.0, *)){
         isThirteen = YES;
-        
-        if (isCustomImagePath){
+
+        if (isAppIconPath){
+            NSString *bundleID = [imageName substringFromIndex:[DXAppIconNamePrefix length]];
+            UIImage *appIcon = [self appIconImageForBundleID:bundleID];
+            if (appIcon){
+                // App icons keep their artwork: always-original rendering
+                // stops UIButton's default templating from flattening them
+                // into monochrome silhouettes, and the system tint is skipped
+                // for the same reason.
+                image = [appIcon imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
+            }else{
+                // Unresolvable bundle ID falls back to a tintable placeholder
+                // instead of a blank shortcut.
+                image = [UIImage systemImageNamed:@"app"];
+            }
+        }else if (isCustomImagePath){
             image = cacheAndLoadImage(customPath, cachedImagePath);
             if (withSystemColor){
                 image = [image imageWithTintColor:systemBlueColor];
@@ -157,8 +188,112 @@
     return nil;
 }
 
+// Reverse-DNS shape test shared by the bundle-ID icon classification.  Kept
+// strict so ordinary icon typos never get handed to the app-icon loader.
++(BOOL)looksLikeBundleIdentifier:(NSString *)value{
+    if (value.length == 0 || value.length > 256) return NO;
+    NSRegularExpression *expression = [NSRegularExpression regularExpressionWithPattern:@"^[A-Za-z0-9_](?:[A-Za-z0-9_-]*[A-Za-z0-9_])?(?:\\.[A-Za-z0-9_](?:[A-Za-z0-9_-]*[A-Za-z0-9_])?)+$"
+                                                                                options:0
+                                                                                  error:nil];
+    return [expression firstMatchInString:value options:0 range:NSMakeRange(0, value.length)] != nil;
+}
+
+// Icon config that is not a valid SF Symbol but is a bundle identifier is
+// treated as an app icon request.  iOS 12 has no SF Symbols to win the first
+// check, so bundle-ID icons stay disabled there like custom symbols are.
++(NSString *)appIconBundleIDForShortcutItem:(NSDictionary *)item{
+    NSString *icon = item[@"icon"];
+    if (![icon isKindOfClass:[NSString class]] || icon.length == 0) return nil;
+    if (@available(iOS 13.0, *)) {
+        if ([UIImage systemImageNamed:icon]) return nil;
+        return [self looksLikeBundleIdentifier:icon] ? icon : nil;
+    }
+    return nil;
+}
+
+// Loads one app icon at the shared 24pt icon-slot size, rounded like the home
+// screen.  Lookups go memory cache -> PNG staged under the shared snapshot
+// (readable by sandboxed hosts) -> the private UIKit icon lookup, whose result
+// is staged back to disk asynchronously so sandboxed processes can read it
+// later.  Returns nil only when every source fails.
++(UIImage *)appIconImageForBundleID:(NSString *)bundleID{
+    if (![self looksLikeBundleIdentifier:bundleID]) return nil;
+
+    static NSCache *cache;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        cache = [[NSCache alloc] init];
+        cache.countLimit = 64;
+    });
+    UIImage *cached = [cache objectForKey:bundleID];
+    if (cached) return cached;
+
+    NSString *cachedFilePath = [NSString stringWithFormat:@"%@/appicons/%@.png", TypeXCachePath, bundleID];
+    UIImage *icon = nil;
+    if ([[NSFileManager defaultManager] fileExistsAtPath:cachedFilePath]){
+        icon = [UIImage imageWithContentsOfFile:cachedFilePath];
+        // PNGs carry no scale metadata: the icon is stored at screen pixel
+        // density and reads back as a scale-1.0 image that fills the whole
+        // button. Re-tag from the pixel width so it stays at the shared
+        // 24pt icon slot alongside SF Symbols.
+        if (icon && icon.size.width > 0){
+            icon = [UIImage imageWithCGImage:icon.CGImage
+                                       scale:icon.size.width / DXAppIconSide
+                                 orientation:UIImageOrientationUp];
+        }
+    }
+
+    if (!icon && [UIImage respondsToSelector:@selector(_applicationIconImageForBundleIdentifier:format:)]){
+        UIImage *base = [UIImage _applicationIconImageForBundleIdentifier:bundleID format:2];
+        if (!base) base = [UIImage _applicationIconImageForBundleIdentifier:bundleID format:0];
+        if (base){
+            CGFloat side = DXAppIconSide;
+            UIGraphicsImageRendererFormat *format = [[UIGraphicsImageRendererFormat alloc] init];
+            format.scale = [UIScreen mainScreen].scale;
+            format.opaque = NO;
+            UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(side, side) format:format];
+            icon = [renderer imageWithActions:^(UIGraphicsImageRendererContext *rendererContext) {
+                [[UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, side, side)
+                                            cornerRadius:side * 0.225] addClip];
+                [base drawInRect:CGRectMake(0, 0, side, side)];
+            }];
+            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                [[NSFileManager defaultManager] createDirectoryAtPath:[cachedFilePath stringByDeletingLastPathComponent]
+                                          withIntermediateDirectories:YES attributes:nil error:nil];
+                [UIImagePNGRepresentation(icon) writeToFile:cachedFilePath options:NSDataWritingAtomic error:nil];
+            });
+        }
+    }
+
+    if (icon){
+        icon = [icon imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
+        [cache setObject:icon forKey:bundleID];
+    }
+    return icon;
+}
+
+// Resolves one raw icon config string (a link action's or shortcut's "icon"
+// field) into a UIImage: SF Symbol wins, then the app icon for bundle IDs,
+// then the named fallback symbol.
++(UIImage *)imageForIconConfig:(NSString *)icon defaultSymbolName:(NSString *)defaultName{
+    if (@available(iOS 13.0, *)) {
+        if (icon.length > 0){
+            UIImage *symbol = [UIImage systemImageNamed:icon];
+            if (symbol) return symbol;
+            UIImage *appIcon = [self appIconImageForBundleID:icon];
+            if (appIcon) return appIcon;
+        }
+        return [UIImage systemImageNamed:defaultName];
+    }
+    return nil;
+}
+
 +(NSString *)resolvedIconNameForShortcutItem:(NSDictionary *)item defaultName:(NSString *)defaultName{
-    return [self customIconForShortcutItem:item] ?: defaultName;
+    NSString *sfName = [self customIconForShortcutItem:item];
+    if (sfName) return sfName;
+    NSString *bundleID = [self appIconBundleIDForShortcutItem:item];
+    if (bundleID) return [DXAppIconNamePrefix stringByAppendingString:bundleID];
+    return defaultName;
 }
 
 @end
