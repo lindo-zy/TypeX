@@ -26,42 +26,30 @@ typedef NS_ENUM(NSInteger, DXPAppShortcutSource) {
 @property (nonatomic, assign) DXPAppShortcutSource source;
 @end
 
-// Installed-app lookups for the custom-action editor's pickers: the app list,
-// home-screen icons and each app's home-screen quick actions. Static items
-// (the app's Info.plist UIApplicationShortcutItems), dynamic items (the
-// UIApplicationShortcutItems key UIKit persists in the app's own
-// data-container preferences when the app calls setShortcutItems:) and App
-// Shortcuts (the autoShortcuts of the Metadata.appintents/
-// extract.actionsdata metadata appintentsmetadataprocessor compiles into the
-// bundle, localized through the bundle's .loctable / strings tables) are
-// enumerated from Settings; the fourth source is the live list captured in
-// SpringBoard when the user long-presses an icon (see TypeX.xm). Siri
-// donations beyond what SpringBoard merges into the icon menu are a separate
-// system plane and are not collected.
+// Installed-app lookups for the custom-action editor's pickers: the app list
+// and each app's home-screen quick actions. The quick-action catalogue is
+// authored entirely inside SpringBoard — the catalogue refresh reads every
+// installed app's system-resolved static and dynamic items (the Home Screen
+// menu's own data source, via SBApplicationController) and real long-press
+// captures overlay them, writing the shared plist the picker reads. Nothing
+// is scanned from the Settings process. Siri donations beyond what
+// SpringBoard merges into the icon menu are a separate system plane and are
+// not collected.
 @interface DXPAppInfo : NSObject
 @property (nonatomic, copy) NSString *bundleID;
 @property (nonatomic, copy) NSString *name;
 
 // All installed apps, deduplicated by bundle identifier and sorted by
-// localized name.
+// localized name. Used by the open-app picker; the shortcut catalogue does
+// not enumerate here.
 + (NSArray<DXPAppInfo *> *)installedApps;
 
-// Live icon-menu captures written by the SpringBoard side of the tweak
-// (TypeXSBShortcutsPath), keyed by bundle ID. A capture reflects the real
-// merged menu, so it is the freshest source; entries older than
-// DXSBShortcutCaptureMaxAge are dropped. Never throws and never nil.
-+ (NSDictionary<NSString *, NSArray<DXPAppShortcutItem *> *> *)springBoardCapturedShortcutsByBundleID;
-
-// Apps that declare at least one quick action, static or dynamic. Each entry
-// is @{@"name": NSString, @"bundleID": NSString, @"items": NSArray<DXPAppShortcutItem *>}
-// sorted by localized name. Never throws: apps whose metadata cannot be read
-// are skipped so one broken bundle cannot take Settings down.
+// Apps that declare at least one quick action. Each entry is
+// @{@"name": NSString, @"bundleID": NSString, @"items": NSArray<DXPAppShortcutItem *>}
+// sorted by localized name, read from the shared SpringBoard-authored
+// catalogue (TypeXSBShortcutsPath). Never throws and never nil; entries
+// older than DXSBShortcutCaptureMaxAge are dropped.
 + (NSArray<NSDictionary *> *)appShortcutGroups;
-
-// Number of installed apps seen by the most recent appShortcutGroups scan;
-// lets the picker distinguish "no app declares shortcuts" from "the scan
-// itself came up empty".
-+ (NSInteger)lastShortcutScanApplicationCount;
 
 // 44x44 rounded home-screen icon for a bundle identifier; falls back to a
 // generic symbol when the private icon service returns nothing.

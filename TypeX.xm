@@ -4,6 +4,7 @@
 #import "DXHelper.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import <dlfcn.h>
 #import <SpringBoardServices/SpringBoardServices.h>
 
 
@@ -985,6 +986,15 @@ static void reloadPrefsNotificationCallback(CFNotificationCenterRef center,
 
 static void DXSBOpenApplicationShortcut(NSString *bundleIdentifier, NSString *shortcutType);
 static void DXSBRefreshShortcutSnapshots(NSArray<NSString *> *bundleIdentifiers);
+static NSArray<NSString *> *DXSBAllInstalledBundleIdentifiers(void);
+
+static void DXSBWriteShortcutRefreshStatus(NSString *phase, NSDictionary *details) {
+    if (phase.length == 0) return;
+    NSMutableDictionary *status = [NSMutableDictionary dictionaryWithDictionary:details ?: @{}];
+    status[@"phase"] = phase;
+    status[@"updated"] = @([NSDate timeIntervalSinceReferenceDate]);
+    [status writeToFile:TypeXShortcutRefreshStatusPath atomically:YES];
+}
 
 static void shortcutRefreshRequestCallback(CFNotificationCenterRef center,
                                            void *observer,
@@ -992,16 +1002,29 @@ static void shortcutRefreshRequestCallback(CFNotificationCenterRef center,
                                            const void *object,
                                            CFDictionaryRef userInfo) {
     NSDictionary *request = [NSDictionary dictionaryWithContentsOfFile:TypeXShortcutRefreshRequestPath];
+    DXSBWriteShortcutRefreshStatus(@"request-received", nil);
     NSArray *rawBundles = [request[@"bundles"] isKindOfClass:[NSArray class]] ? request[@"bundles"] : nil;
-    if (rawBundles.count == 0 || rawBundles.count > 2048) return;
+    if (rawBundles.count > 2048) rawBundles = nil;
+    // Consume the request whatever it contained; an unrecognized one is inert.
+    [[NSFileManager defaultManager] removeItemAtPath:TypeXShortcutRefreshRequestPath error:nil];
 
     NSMutableOrderedSet<NSString *> *bundleIdentifiers = [NSMutableOrderedSet orderedSet];
     for (id value in rawBundles) {
         if (DXIsValidBundleIdentifier(value)) [bundleIdentifiers addObject:value];
     }
-    if (bundleIdentifiers.count == 0) return;
-
-    [[NSFileManager defaultManager] removeItemAtPath:TypeXShortcutRefreshRequestPath error:nil];
+    // iOS 16 deliberately receives an empty list here: its dedicated SGP-style
+    // path enumerates LSApplicationProxy objects itself so the localized app
+    // name and bundle identifier come from the same authoritative pass. iOS 17
+    // keeps the existing icon-menu path and only needs bundle identifiers.
+    if (@available(iOS 17.0, *)) {
+        if (bundleIdentifiers.count == 0) {
+            [bundleIdentifiers addObjectsFromArray:DXSBAllInstalledBundleIdentifiers()];
+        }
+        if (bundleIdentifiers.count == 0) {
+            NSLog(@"[TypeX] sbshortcuts: refresh request with no enumerable applications");
+            return;
+        }
+    }
     DXSBRefreshShortcutSnapshots(bundleIdentifiers.array);
 }
 
@@ -1013,68 +1036,229 @@ static void shortcutRefreshRequestCallback(CFNotificationCenterRef center,
 // (bundle identifier plus app-defined type), and "openurl" (scheme-validated
 // URL string) action names are acted on — the channel never carries shell
 // commands or arbitrary selectors.
+//
+// Consumption runs on a dedicated serial queue, never the main queue: a busy
+// main thread (catalogue refreshes, Home Screen work) must not delay or
+// blackhole panel actions. openurl/openapp are pure service XPC and act right
+// here; openshortcut touches icon views and hops to main for that part.
+static dispatch_queue_t DXSBPendingActionQueue(void) {
+    static dispatch_queue_t queue;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        queue = dispatch_queue_create("com.lindo.typex.pendingaction", DISPATCH_QUEUE_SERIAL);
+    });
+    return queue;
+}
+
+// Executes one already-consumed request. Pure service XPC runs right here on
+// the serial queue; openshortcut touches icon views and hops to main.
+static void DXSBExecutePendingActionRequest(NSDictionary *request) {
+    NSString *action = [request isKindOfClass:[NSDictionary class]] ? request[@"action"] : nil;
+    NSString *bundle = [request isKindOfClass:[NSDictionary class]] ? request[@"bundle"] : nil;
+    NSString *urlString = [request isKindOfClass:[NSDictionary class]] ? request[@"url"] : nil;
+    NSString *shortcutType = [request isKindOfClass:[NSDictionary class]] ? request[@"shortcuttype"] : nil;
+
+    if ([action isEqualToString:@"openapp"]) {
+        if (!DXIsValidBundleIdentifier(bundle)) return;
+
+        FBSSystemService *service = [FBSSystemService sharedService];
+        SEL openSelector = @selector(openApplication:options:withResult:);
+        BOOL scheduled = NO;
+        if (service && [service respondsToSelector:openSelector]) {
+            @try {
+                [service openApplication:bundle options:@{} withResult:^(NSError *error) {
+                    // A failed launch is not reported back: the keyboard has
+                    // no channel for it and the app switcher stays the retry.
+                    // Syslog is the only place a refusal can be diagnosed.
+                    if (error) {
+                        NSLog(@"[TypeX] pendingaction: openApplication %@ failed: %@", bundle, error);
+                    }
+                }];
+                scheduled = YES;
+            } @catch (__unused NSException *exception) {
+                scheduled = NO;
+            }
+        }
+        if (!scheduled) {
+            int result = SBSLaunchApplicationWithIdentifierAndLaunchOptions(bundle, @{}, @{}, NO);
+            if (result != 0) {
+                NSLog(@"[TypeX] pendingaction: SBS launch of %@ failed (%d)", bundle, result);
+            }
+        }
+        return;
+    }
+
+    if ([action isEqualToString:@"openshortcut"]) {
+        if (!DXIsValidBundleIdentifier(bundle) ||
+            ![shortcutType isKindOfClass:[NSString class]] ||
+            shortcutType.length == 0 || shortcutType.length > 512) return;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            DXSBOpenApplicationShortcut(bundle, shortcutType);
+        });
+        return;
+    }
+
+    if ([action isEqualToString:@"openurl"]) {
+        if (!DXIsOpenableSchemeURLString(urlString)) return;
+
+        // Opened by SpringBoard itself: the host app cannot intercept the
+        // request, and schemes gated on the requester's identity (prefs:,
+        // App-Prefs:) pass because the requester is SpringBoard. The return
+        // value is the only execution feedback this channel has; a refused
+        // open used to vanish silently and look like a dead tap.
+        NSURL *url = [NSURL URLWithString:urlString];
+        if (!SBSOpenSensitiveURLAndUnlock((__bridge CFURLRef)url, 0)) {
+            NSLog(@"[TypeX] pendingaction: openurl refused by SpringBoard: %@", urlString);
+        }
+    }
+}
+
+// A request older than this is dropped instead of executed: the tap that
+// wrote it is long over, and replaying it onto whatever the user is doing
+// now is exactly the "one tap, two actions" failure.
+static const NSTimeInterval DXSBPendingActionMaxAge = 30.0;
+// Identical requests produced by duplicate gesture/control callbacks can land
+// in separate drains, so per-drain comparison is insufficient. Keep a short
+// process-wide execution window keyed by the semantic payload. A later,
+// intentional tap remains possible after the window expires.
+static const NSTimeInterval DXSBPendingActionDuplicateWindow = 1.0;
+// Consecutive launches inside one drain are paced: each request starts an
+// app-transition transaction, and two transactions racing used to wedge
+// SpringBoard's UI.
+static const NSTimeInterval DXSBPendingActionLaunchGap = 0.8;
+
+static BOOL DXSBPendingActionWasRecentlyExecuted(NSDictionary *request) {
+    static NSMutableDictionary<NSString *, NSNumber *> *executionTimes;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        executionTimes = [NSMutableDictionary dictionary];
+    });
+
+    NSString *key = [NSString stringWithFormat:@"%@|%@|%@|%@",
+                     request[@"action"] ?: @"",
+                     request[@"bundle"] ?: @"",
+                     request[@"url"] ?: @"",
+                     request[@"shortcuttype"] ?: @""];
+    NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+    NSNumber *previous = executionTimes[key];
+    if (previous && now - previous.doubleValue < DXSBPendingActionDuplicateWindow) return YES;
+    executionTimes[key] = @(now);
+
+    // The queue is serial; cheap opportunistic pruning keeps the table bounded.
+    for (NSString *storedKey in executionTimes.allKeys) {
+        if (now - [executionTimes[storedKey] doubleValue] > DXSBPendingActionMaxAge) {
+            [executionTimes removeObjectForKey:storedKey];
+        }
+    }
+    return NO;
+}
+
+// Every request file currently on disk, oldest first by modification time.
+// The legacy fixed-path file (pre-timestamped builds) carries no
+// "pendingaction-" prefix and is collected explicitly; a name sort cannot
+// order it against the timestamped files, so the ordering comes from the
+// files themselves.
+static NSMutableArray<NSString *> *DXSBPendingActionRequestPaths(void) {
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSString *directory = [TypeXPendingActionPath stringByDeletingLastPathComponent];
+    NSMutableArray<NSString *> *paths = [NSMutableArray array];
+    if ([fileManager fileExistsAtPath:TypeXPendingActionPath]) {
+        [paths addObject:TypeXPendingActionPath];
+    }
+    for (NSString *fileName in [fileManager contentsOfDirectoryAtPath:directory error:nil]) {
+        if (![fileName isKindOfClass:[NSString class]]) continue;
+        if (![fileName hasPrefix:@"pendingaction-"] || ![fileName hasSuffix:@".plist"]) continue;
+        [paths addObject:[directory stringByAppendingPathComponent:fileName]];
+    }
+    [paths sortUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
+        NSDate *dateA = [fileManager attributesOfItemAtPath:a error:nil][NSFileModificationDate];
+        NSDate *dateB = [fileManager attributesOfItemAtPath:b error:nil][NSFileModificationDate];
+        NSComparisonResult byDate = [dateA compare:dateB];
+        return byDate != NSOrderedSame ? byDate : [a compare:b];
+    }];
+    // Defensive cap: a runaway writer must not queue an unbounded backlog.
+    // The list is oldest-first, so the oldest overflow is dropped.
+    if (paths.count > 64) {
+        [paths removeObjectsInRange:NSMakeRange(0, paths.count - 64)];
+    }
+    return paths;
+}
+
+// Session-start hygiene: a request present before the observer exists was
+// written by an earlier session (keyboard processes cannot run before
+// SpringBoard) or during an upgrade window where the not-yet-resprited
+// SpringBoard could not consume the writer's files — such files used to ride
+// the NEXT action's drain as a surprise replay. Runs BEFORE the Darwin
+// observer is registered so a later notification can only drain post-sweep
+// files. Never executes anything.
+static void DXSBPurgePendingActionRequests(void) {
+    NSMutableArray<NSString *> *paths = DXSBPendingActionRequestPaths();
+    for (NSString *path in paths) {
+        [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
+    }
+    if (paths.count > 0) {
+        NSLog(@"[TypeX] pendingaction: purged %lu pre-launch request(s)", (unsigned long)paths.count);
+    }
+}
+
+// Drains every queued request file, oldest first. Requests each get their own
+// file because the old single-slot design lost everything but the last write
+// of a burst; Darwin notification coalescing is harmless because one delivery
+// drains every file present. Delivery itself is the channel's only trigger,
+// so a lost delivery used to strand a file until the next action replayed it;
+// the guard rails around this drain (session purge at registration, the
+// writer-side re-post, the staleness drop, the duplicate merge) exist to make
+// that strand harmless instead of a surprise.
+static void DXSBDrainPendingActionRequests(void) {
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSMutableArray<NSString *> *requestPaths = DXSBPendingActionRequestPaths();
+
+    NSDictionary *lastExecuted = nil;
+    BOOL launchedSinceGap = NO;
+    for (NSString *path in requestPaths) {
+        NSDictionary *attributes = [fileManager attributesOfItemAtPath:path error:nil];
+        NSDictionary *request = [NSDictionary dictionaryWithContentsOfFile:path];
+        // Consume before acting so a replayed notification cannot repeat
+        // the open — and unconditionally, so an invalid request can never
+        // linger and masquerade as a later action's payload.
+        [fileManager removeItemAtPath:path error:nil];
+        if (![request isKindOfClass:[NSDictionary class]]) continue;
+
+        NSDate *modified = [attributes isKindOfClass:[NSDictionary class]] ? attributes[NSFileModificationDate] : nil;
+        NSTimeInterval age = modified ? -[modified timeIntervalSinceNow] : 0.0;
+        if (age > DXSBPendingActionMaxAge) {
+            NSLog(@"[TypeX] pendingaction: dropped %.0fs-old stale request", age);
+            continue;
+        }
+        if (lastExecuted && [lastExecuted isEqualToDictionary:request]) {
+            // A stranded copy of an action plus the live copy of the same tap
+            // land in one drain together; the second execution is redundant.
+            NSLog(@"[TypeX] pendingaction: merged duplicate %@", request[@"action"] ?: @"request");
+            continue;
+        }
+        if (DXSBPendingActionWasRecentlyExecuted(request)) {
+            NSLog(@"[TypeX] pendingaction: suppressed cross-drain duplicate %@", request[@"action"] ?: @"request");
+            continue;
+        }
+
+        if (launchedSinceGap) [NSThread sleepForTimeInterval:DXSBPendingActionLaunchGap];
+        lastExecuted = request;
+        launchedSinceGap = YES;
+        DXSBExecutePendingActionRequest(request);
+    }
+}
+
 static void pendingActionRequestCallback(CFNotificationCenterRef center,
                                          void *observer,
                                          CFStringRef name,
                                          const void *object,
                                          CFDictionaryRef userInfo) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        NSDictionary *request = [NSDictionary dictionaryWithContentsOfFile:TypeXPendingActionPath];
-        NSString *action = [request isKindOfClass:[NSDictionary class]] ? request[@"action"] : nil;
-        NSString *bundle = [request isKindOfClass:[NSDictionary class]] ? request[@"bundle"] : nil;
-        NSString *urlString = [request isKindOfClass:[NSDictionary class]] ? request[@"url"] : nil;
-        NSString *shortcutType = [request isKindOfClass:[NSDictionary class]] ? request[@"shortcuttype"] : nil;
-
-        // Consume before acting so a replayed notification cannot repeat the
-        // open; a request that fails validation leaves the file in place but
-        // is inert (no recognized action name ever matches it).
-        void (^consumeRequestFile)(void) = ^{
-            [[NSFileManager defaultManager] removeItemAtPath:TypeXPendingActionPath error:nil];
-        };
-
-        if ([action isEqualToString:@"openapp"]) {
-            if (!DXIsValidBundleIdentifier(bundle)) return;
-            consumeRequestFile();
-
-            FBSSystemService *service = [FBSSystemService sharedService];
-            SEL openSelector = @selector(openApplication:options:withResult:);
-            BOOL scheduled = NO;
-            if (service && [service respondsToSelector:openSelector]) {
-                @try {
-                    [service openApplication:bundle options:@{} withResult:^(__unused NSError *error) {
-                        // A failed launch is not reported back: the keyboard has
-                        // no channel for it and the app switcher stays the retry.
-                    }];
-                    scheduled = YES;
-                } @catch (__unused NSException *exception) {
-                    scheduled = NO;
-                }
-            }
-            if (!scheduled) {
-                SBSLaunchApplicationWithIdentifierAndLaunchOptions(bundle, @{}, @{}, NO);
-            }
-            return;
-        }
-
-        if ([action isEqualToString:@"openshortcut"]) {
-            if (!DXIsValidBundleIdentifier(bundle) ||
-                ![shortcutType isKindOfClass:[NSString class]] ||
-                shortcutType.length == 0 || shortcutType.length > 512) return;
-            consumeRequestFile();
-            DXSBOpenApplicationShortcut(bundle, shortcutType);
-            return;
-        }
-
-        if ([action isEqualToString:@"openurl"]) {
-            if (!DXIsOpenableSchemeURLString(urlString)) return;
-            consumeRequestFile();
-
-            // Opened by SpringBoard itself: the host app cannot intercept the
-            // request, and schemes gated on the requester's identity (prefs:,
-            // App-Prefs:) pass because the requester is SpringBoard.
-            NSURL *url = [NSURL URLWithString:urlString];
-            SBSOpenSensitiveURLAndUnlock((__bridge CFURLRef)url, 0);
-        }
+    // Never the main queue: a busy main thread (catalogue refreshes, Home
+    // Screen work) must not delay or blackhole panel actions. openurl/openapp
+    // are pure service XPC and act right here; openshortcut hops to main for
+    // the icon-view part.
+    dispatch_async(DXSBPendingActionQueue(), ^{
+        DXSBDrainPendingActionRequests();
     });
 }
 
@@ -1122,6 +1306,9 @@ static id DXSBReadObjectProperty(id object, NSString *propertyName) {
 }
 
 static NSString *DXSBBundleIdentifierForIconView(id iconView);
+static id DXSBSBApplicationForBundleIdentifier(NSString *bundleIdentifier);
+static NSString *DXSBDisplayNameForBundleIdentifier(NSString *bundleIdentifier);
+static NSArray *DXSBSBApplicationShortcutItems(NSString *bundleIdentifier);
 
 // The complete objects from the most recent real icon-menu build are kept in
 // SpringBoard memory as a fallback for systems where the catalogue service's
@@ -1226,52 +1413,6 @@ static NSArray *DXSBShortcutItemsFromIconView(id iconView, BOOL requestFetch) {
     return @[];
 }
 
-// Reads SpringBoardServices' current composed list. The low three bits request
-// static, dynamic and composed results on iOS 16/17. A small compatibility
-// ladder covers layouts that accept only a subset of those bits.
-static NSArray *DXSBCurrentShortcutItemsForBundleIdentifier(NSString *bundleIdentifier) {
-    Class serviceClass = NSClassFromString(@"SBSApplicationShortcutService");
-    SEL selector = NSSelectorFromString(@"applicationShortcutItemsOfTypes:forBundleIdentifier:");
-    if (!serviceClass || ![serviceClass instancesRespondToSelector:selector]) return @[];
-
-    static SBSApplicationShortcutService *service;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        service = [[serviceClass alloc] init];
-    });
-    if (!service) return @[];
-
-    for (NSNumber *maskValue in @[@7ULL, @3ULL, @4ULL]) {
-        id fetchResult = nil;
-        @try {
-            fetchResult = ((id (*)(id, SEL, unsigned long long, id))objc_msgSend)(
-                service, selector, maskValue.unsignedLongLongValue, bundleIdentifier);
-        } @catch (__unused NSException *exception) {
-            fetchResult = nil;
-        }
-        if (!fetchResult) continue;
-
-        if ([fetchResult isKindOfClass:[NSArray class]]) {
-            NSArray *items = DXSBLaunchableShortcutItems(fetchResult);
-            if (items.count > 0) return items;
-            continue;
-        }
-
-        NSArray *composed = DXSBReadObjectProperty(fetchResult, @"composedApplicationShortcutItems");
-        NSArray *items = DXSBLaunchableShortcutItems(composed);
-        if (items.count > 0) return items;
-
-        NSMutableArray *fallback = [NSMutableArray array];
-        NSArray *staticItems = DXSBReadObjectProperty(fetchResult, @"staticApplicationShortcutItems");
-        NSArray *dynamicItems = DXSBReadObjectProperty(fetchResult, @"dynamicApplicationShortcutItems");
-        if ([staticItems isKindOfClass:[NSArray class]]) [fallback addObjectsFromArray:staticItems];
-        if ([dynamicItems isKindOfClass:[NSArray class]]) [fallback addObjectsFromArray:dynamicItems];
-        items = DXSBLaunchableShortcutItems(fallback);
-        if (items.count > 0) return items;
-    }
-    return @[];
-}
-
 static SBSApplicationShortcutItem *DXSBShortcutItemWithType(NSArray *items, NSString *shortcutType) {
     for (id item in items) {
         NSString *type = DXSBReadStringProperty(item, @"type");
@@ -1281,9 +1422,12 @@ static SBSApplicationShortcutItem *DXSBShortcutItemWithType(NSArray *items, NSSt
 }
 
 // Use the exact SpringBoard entry invoked by a real long-press menu tap. It
-// routes both UIApplicationShortcutItem and App Intents-backed menu entries;
+// routes both UIApplicationShortcutItem and App Intents-backed actions;
 // merely placing an item in FrontBoard launch options does not perform this
-// activation on iOS 16/17.
+// activation on iOS 16/17. Which receiver carries the method shifted across
+// iOS builds (the icon view instance, the shortcut item itself, or a class
+// helper), so all three are probed — a missing symbol must degrade to
+// "not activated", never crash.
 static BOOL DXSBActivateApplicationShortcut(NSString *bundleIdentifier,
                                             SBSApplicationShortcutItem *item,
                                             id iconView) {
@@ -1291,18 +1435,40 @@ static BOOL DXSBActivateApplicationShortcut(NSString *bundleIdentifier,
     if ([item respondsToSelector:@selector(setBundleIdentifierToLaunch:)]) {
         item.bundleIdentifierToLaunch = bundleIdentifier;
     }
-    Class iconViewClass = NSClassFromString(@"SBIconView");
     SEL selector = NSSelectorFromString(@"activateShortcut:withBundleIdentifier:forIconView:");
-    if (!iconViewClass || ![iconViewClass respondsToSelector:selector]) return NO;
-    @try {
-        ((void (*)(id, SEL, id, id, id))objc_msgSend)(
-            iconViewClass, selector, item, bundleIdentifier, iconView);
-        return YES;
-    } @catch (NSException *exception) {
-        NSLog(@"[TypeX] shortcut: activation failed for %@/%@ (%@)",
-              bundleIdentifier, item.type ?: @"", exception);
-        return NO;
+
+    if (iconView && [iconView respondsToSelector:selector]) {
+        @try {
+            ((void (*)(id, SEL, id, id, id))objc_msgSend)(
+                iconView, selector, item, bundleIdentifier, iconView);
+            return YES;
+        } @catch (NSException *exception) {
+            NSLog(@"[TypeX] shortcut: iconView activation failed for %@/%@ (%@)",
+                  bundleIdentifier, item.type ?: @"", exception);
+        }
     }
+    if ([item respondsToSelector:selector]) {
+        @try {
+            ((void (*)(id, SEL, id, id, id))objc_msgSend)(
+                item, selector, item, bundleIdentifier, iconView);
+            return YES;
+        } @catch (NSException *exception) {
+            NSLog(@"[TypeX] shortcut: item activation failed for %@/%@ (%@)",
+                  bundleIdentifier, item.type ?: @"", exception);
+        }
+    }
+    Class iconViewClass = NSClassFromString(@"SBIconView");
+    if (iconViewClass && [iconViewClass respondsToSelector:selector]) {
+        @try {
+            ((void (*)(id, SEL, id, id, id))objc_msgSend)(
+                iconViewClass, selector, item, bundleIdentifier, iconView);
+            return YES;
+        } @catch (NSException *exception) {
+            NSLog(@"[TypeX] shortcut: class activation failed for %@/%@ (%@)",
+                  bundleIdentifier, item.type ?: @"", exception);
+        }
+    }
+    return NO;
 }
 
 static void DXSBOpenApplicationShortcut(NSString *bundleIdentifier, NSString *shortcutType) {
@@ -1312,30 +1478,29 @@ static void DXSBOpenApplicationShortcut(NSString *bundleIdentifier, NSString *sh
     if (!viewItem) {
         viewItem = DXSBShortcutItemWithType(DXSBLiveShortcutObjectsByBundleID[bundleIdentifier], shortcutType);
     }
+    // The resolved application object is the same source the catalogue is
+    // built from; its items dispatch identically through the activation entry.
+    if (!viewItem) {
+        viewItem = DXSBShortcutItemWithType(DXSBSBApplicationShortcutItems(bundleIdentifier), shortcutType);
+    }
     if (viewItem) {
         DXSBActivateApplicationShortcut(bundleIdentifier, viewItem, iconView);
         return;
     }
 
-    // The service performs synchronous XPC and is only a lookup fallback.
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        NSArray *currentItems = DXSBCurrentShortcutItemsForBundleIdentifier(bundleIdentifier);
-        dispatch_async(dispatch_get_main_queue(), ^{
-            SBSApplicationShortcutItem *item = DXSBShortcutItemWithType(currentItems, shortcutType);
-            if (!item) {
-                Class itemClass = NSClassFromString(@"SBSApplicationShortcutItem");
-                item = [[itemClass alloc] init];
-                item.type = shortcutType;
-                item.localizedTitle = shortcutType;
-                item.bundleIdentifierToLaunch = bundleIdentifier;
-                NSLog(@"[TypeX] shortcut: %@/%@ was absent from the current icon menu; using its stored type",
-                      bundleIdentifier, shortcutType);
-            }
-            if (!DXSBActivateApplicationShortcut(bundleIdentifier, item, iconView)) {
-                NSLog(@"[TypeX] shortcut: SBIconView activation entry unavailable for %@/%@",
-                      bundleIdentifier, shortcutType);
-            }
-        });
+    // The app declares no such item any more; still launch through the same
+    // entry with its stored type so an entry keeps working until the next
+    // catalogue refresh drops or renames it.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        Class itemClass = NSClassFromString(@"SBSApplicationShortcutItem");
+        SBSApplicationShortcutItem *item = [[itemClass alloc] init];
+        item.type = shortcutType;
+        item.localizedTitle = shortcutType;
+        item.bundleIdentifierToLaunch = bundleIdentifier;
+        if (!DXSBActivateApplicationShortcut(bundleIdentifier, item, iconView)) {
+            NSLog(@"[TypeX] shortcut: SBIconView activation entry unavailable for %@/%@",
+                  bundleIdentifier, shortcutType);
+        }
     });
 }
 
@@ -1416,9 +1581,14 @@ static void DXSBCaptureShortcutItems(NSArray *items, NSString *bundleID) {
         NSMutableDictionary *root = [[NSDictionary dictionaryWithContentsOfFile:TypeXSBShortcutsPath] mutableCopy]
             ?: [NSMutableDictionary dictionary];
         NSMutableDictionary *apps = [root[@"apps"] mutableCopy] ?: [NSMutableDictionary dictionary];
-        apps[bundleID] = @{@"items": normalized, @"updated": @(now)};
+        NSMutableDictionary *entry = [NSMutableDictionary dictionary];
+        entry[@"items"] = normalized;
+        entry[@"updated"] = @(now);
+        NSString *displayName = DXSBDisplayNameForBundleIdentifier(bundleID);
+        if (displayName.length > 0) entry[@"name"] = displayName;
+        apps[bundleID] = entry;
         root[@"apps"] = apps;
-        root[@"format"] = @1;
+        root[@"format"] = @2;
         if ([root writeToFile:TypeXSBShortcutsPath atomically:YES]) {
             CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                                  (__bridge CFStringRef)kShortcutSnapshotChangedIdentifier,
@@ -1429,75 +1599,728 @@ static void DXSBCaptureShortcutItems(NSArray *items, NSString *bundleID) {
     }
 }
 
-// Populates the Settings catalogue without requiring a manual long press for
-// every app. SpringBoard's icon view is asked to build the same menu used on
-// the Home Screen; the shortcut service runs in parallel as a fallback for
-// apps without a mapped icon view.
-static void DXSBRefreshShortcutSnapshots(NSArray<NSString *> *bundleIdentifiers) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        NSMutableDictionary<NSString *, id> *iconViews = [NSMutableDictionary dictionary];
-        NSMutableDictionary<NSString *, NSArray *> *immediate = [NSMutableDictionary dictionary];
-        for (NSString *bundleIdentifier in bundleIdentifiers) {
-            id iconView = DXSBIconViewForBundleIdentifier(bundleIdentifier);
-            if (!iconView) continue;
-            iconViews[bundleIdentifier] = iconView;
-            NSArray *items = DXSBShortcutItemsFromIconView(iconView, YES);
-            if (items.count > 0) immediate[bundleIdentifier] = items;
+// Launch Services is not linked into SpringBoard — the LSApplication* classes
+// only exist after the framework is pulled in (iOS 16 SB never loads it on
+// its own; Settings needs the same dlopen). Without this, both LS
+// enumeration fallbacks silently find no class and the catalogue stays empty.
+static void DXSBEnsureLaunchServicesLoaded(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        for (NSString *path in @[
+            @"/System/Library/Frameworks/MobileCoreServices.framework/MobileCoreServices",
+            @"/System/Library/Frameworks/CoreServices.framework/CoreServices",
+            @"/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/LaunchServices",
+        ]) {
+            dlopen(path.fileSystemRepresentation, RTLD_LAZY | RTLD_LOCAL);
+            if (NSClassFromString(@"LSApplicationWorkspace")) break;
+        }
+    });
+}
+
+// Every installed application from SpringBoard's own Launch Services — the
+// authoritative enumeration when Settings could not provide a bundle list.
+// Primary is the reference tweak's two-pass enumeration: enumerateApplicationsOfType:
+// asked once for system (0) and once for user (1) apps, merged. The block
+// runs synchronously, so results are complete when the call returns, and it
+// answers on every iOS version — the whole-array fetch below answers only
+// where Launch Services is already warm (iOS 17) and blocks indefinitely
+// where it is not (iOS 16), so it is kept purely as a fallback.  The last
+// resort is SBApplicationController.allApplications (verified in the iOS
+// 14.5 SpringBoard dump; the icon model's collection selector was a guess
+// that does not exist there).
+static NSArray<NSString *> *DXSBAllInstalledBundleIdentifiers(void) {
+    NSMutableOrderedSet<NSString *> *result = [NSMutableOrderedSet orderedSet];
+    DXSBEnsureLaunchServicesLoaded();
+    Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
+    SEL workspaceSelector = NSSelectorFromString(@"defaultWorkspace");
+    if (workspaceClass && [workspaceClass respondsToSelector:workspaceSelector]) {
+        @try {
+            id workspace = ((id (*)(id, SEL))objc_msgSend)(workspaceClass, workspaceSelector);
+            SEL enumerateSelector = NSSelectorFromString(@"enumerateApplicationsOfType:block:");
+            if (workspace && [workspace respondsToSelector:enumerateSelector]) {
+                for (NSUInteger type = 0; type <= 1 && result.count < 2048; type++) {
+                    ((void (*)(id, SEL, NSUInteger, void (^)(id)))objc_msgSend)(
+                        workspace, enumerateSelector, type, ^(id proxy) {
+                            if (result.count >= 2048) return;
+                            NSString *bundleID = DXSBReadStringProperty(proxy, @"applicationIdentifier")
+                                ?: DXSBReadStringProperty(proxy, @"bundleIdentifier");
+                            if (bundleID.length > 0) [result addObject:bundleID];
+                        });
+                }
+            }
+        } @catch (NSException *exception) {
+            NSLog(@"[TypeX] sbshortcuts: typed application enumeration failed (%@)", exception);
+        }
+    }
+    if (result.count == 0) {
+        SEL appsSelector = NSSelectorFromString(@"allInstalledApplications");
+        @try {
+            id workspace = workspaceClass && [workspaceClass respondsToSelector:workspaceSelector]
+                ? ((id (*)(id, SEL))objc_msgSend)(workspaceClass, workspaceSelector) : nil;
+            NSArray *proxies = (workspace && [workspace respondsToSelector:appsSelector])
+                ? ((id (*)(id, SEL))objc_msgSend)(workspace, appsSelector) : nil;
+            for (id proxy in proxies) {
+                NSString *bundleID = DXSBReadStringProperty(proxy, @"applicationIdentifier")
+                    ?: DXSBReadStringProperty(proxy, @"bundleIdentifier");
+                if (bundleID.length == 0) continue;
+                [result addObject:bundleID];
+                if (result.count >= 2048) break;
+            }
+        } @catch (NSException *exception) {
+            NSLog(@"[TypeX] sbshortcuts: application enumeration failed (%@)", exception);
+        }
+    }
+    if (result.count == 0) {
+        // SBApplicationController.allApplications — SpringBoard's own app
+        // registry, present since iOS 14 (verified in the 14.5 dump).
+        Class controllerClass = NSClassFromString(@"SBApplicationController");
+        SEL sharedSelector = NSSelectorFromString(@"sharedInstance");
+        id controller = [controllerClass respondsToSelector:sharedSelector]
+            ? ((id (*)(id, SEL))objc_msgSend)(controllerClass, sharedSelector) : nil;
+        SEL appsSelector = NSSelectorFromString(@"allApplications");
+        NSArray *applications = (controller && [controller respondsToSelector:appsSelector])
+            ? ((id (*)(id, SEL))objc_msgSend)(controller, appsSelector) : nil;
+        for (id application in [applications isKindOfClass:[NSArray class]] ? applications : @[]) {
+            NSString *bundleID = DXSBReadStringProperty(application, @"bundleIdentifier")
+                ?: DXSBReadStringProperty(application, @"applicationIdentifier");
+            if (bundleID.length == 0) continue;
+            [result addObject:bundleID];
+            if (result.count >= 2048) break;
+        }
+    }
+    return result.array;
+}
+
+// The Home Screen menu's own data source — the approach the reference
+// gesture tweak uses: SBApplicationController hands out the system-resolved
+// SBApplication for a bundle identifier, whose info carries the static items
+// (Info.plist, localized through SBApplicationInfo) alongside the runtime
+// dynamic cache. Available since iOS 14, synchronous, already localized, and
+// it needs neither a menu fetch round-trip nor any Launch Services work in
+// the Settings process. This is the catalogue's primary metadata source.
+static id DXSBSBApplicationController(void) {
+    static id applicationController;
+    if (!applicationController) {
+        @synchronized([NSProcessInfo class]) {
+            if (!applicationController) {
+                Class controllerClass = NSClassFromString(@"SBApplicationController");
+                SEL sharedSelector = NSSelectorFromString(@"sharedInstance");
+                id resolvedController = [controllerClass respondsToSelector:sharedSelector]
+                    ? ((id (*)(id, SEL))objc_msgSend)(controllerClass, sharedSelector) : nil;
+                // Do not permanently cache an early nil. SpringBoardHome can
+                // still be loading when TypeX's constructor runs on iOS 16;
+                // the next Settings refresh must resolve the controller again.
+                if (resolvedController) applicationController = resolvedController;
+            }
+        }
+    }
+    return applicationController;
+}
+
+static id DXSBSBApplicationForBundleIdentifier(NSString *bundleIdentifier) {
+    id applicationController = DXSBSBApplicationController();
+    if (!applicationController) return nil;
+    SEL appSelector = NSSelectorFromString(@"applicationWithBundleIdentifier:");
+    if (![applicationController respondsToSelector:appSelector]) return nil;
+    return ((id (*)(id, SEL, id))objc_msgSend)(applicationController, appSelector, bundleIdentifier);
+}
+
+// Localized display name straight from the resolved application object, so
+// the shared catalogue names its groups without the reader enumerating apps.
+static NSString *DXSBDisplayNameForBundleIdentifier(NSString *bundleIdentifier) {
+    id app = DXSBSBApplicationForBundleIdentifier(bundleIdentifier);
+    if (!app) return nil;
+    NSString *name = DXSBReadStringProperty(app, @"displayName")
+        ?: DXSBReadStringProperty(app, @"applicationDisplayName");
+    return name.length > 0 ? name : nil;
+}
+
+// Lightweight carrier for metadata-scanned entries: same selector surface
+// (type / localizedTitle / localizedSubtitle) as SBSApplicationShortcutItem,
+// so the launchable filter and catalogue normalization read it unchanged.
+@interface DXSBMetadataShortcutItem : NSObject
+@property (nonatomic, copy) NSString *type;
+@property (nonatomic, copy) NSString *localizedTitle;
+@property (nonatomic, copy) NSString *localizedSubtitle;
+@end
+
+@implementation DXSBMetadataShortcutItem
+@end
+
+// The bundle-metadata scanners below are the proven Settings-side sources
+// (static Info.plist items, UIKit-persisted dynamic items, App Intents
+// build metadata), ported to run inside SpringBoard as the iOS 16 fallback:
+// on iOS 16 the SBApplication model above frequently answers nothing, which
+// left the catalogue completely empty there.
+
+static id DXSBProxyForBundleIdentifier(NSString *bundleIdentifier) {
+    DXSBEnsureLaunchServicesLoaded();
+    Class proxyClass = NSClassFromString(@"LSApplicationProxy");
+    SEL proxySelector = NSSelectorFromString(@"applicationProxyForIdentifier:");
+    if (!proxyClass || ![proxyClass respondsToSelector:proxySelector]) return nil;
+    return ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, proxySelector, bundleIdentifier);
+}
+
+static NSArray *DXSBStaticShortcutItemsFromProxy(id proxy) {
+    NSDictionary *info = DXSBReadObjectProperty(proxy, @"infoDictionary");
+    if (![info isKindOfClass:[NSDictionary class]] || info.count == 0) {
+        NSURL *bundleURL = DXSBReadObjectProperty(proxy, @"bundleURL");
+        if (![bundleURL isKindOfClass:[NSURL class]]) return @[];
+        info = [NSDictionary dictionaryWithContentsOfURL:[bundleURL URLByAppendingPathComponent:@"Info.plist"]];
+    }
+    NSArray *rawItems = [info isKindOfClass:[NSDictionary class]] ? info[@"UIApplicationShortcutItems"] : nil;
+    if (![rawItems isKindOfClass:[NSArray class]]) return @[];
+
+    NSURL *bundleURL = DXSBReadObjectProperty(proxy, @"bundleURL");
+    NSBundle *stringsBundle = [bundleURL isKindOfClass:[NSURL class]] ? [NSBundle bundleWithURL:bundleURL] : nil;
+    NSMutableArray *results = [NSMutableArray array];
+    NSMutableSet<NSString *> *seen = [NSMutableSet set];
+    for (NSDictionary *item in rawItems) {
+        if (![item isKindOfClass:[NSDictionary class]]) continue;
+        NSString *type = [item[@"UIApplicationShortcutItemType"] isKindOfClass:[NSString class]] ? item[@"UIApplicationShortcutItemType"] : nil;
+        NSString *titleKey = [item[@"UIApplicationShortcutItemTitle"] isKindOfClass:[NSString class]] ? item[@"UIApplicationShortcutItemTitle"] : nil;
+        if (type.length == 0 && titleKey.length == 0) continue;
+        if (type.length == 0) type = titleKey;
+
+        NSString *title = nil;
+        if (titleKey.length > 0 && stringsBundle) {
+            title = [stringsBundle localizedStringForKey:titleKey value:titleKey table:@"InfoPlist"];
+        }
+        NSString *subtitleKey = [item[@"UIApplicationShortcutItemSubtitle"] isKindOfClass:[NSString class]] ? item[@"UIApplicationShortcutItemSubtitle"] : nil;
+        NSString *subtitle = nil;
+        if (subtitleKey.length > 0 && stringsBundle) {
+            subtitle = [stringsBundle localizedStringForKey:subtitleKey value:subtitleKey table:@"InfoPlist"];
+            if (subtitle.length == 0) subtitle = subtitleKey;
         }
 
-        dispatch_group_t readiness = dispatch_group_create();
-        __block NSDictionary<NSString *, NSArray *> *serviceItems = @{};
-        dispatch_group_async(readiness, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-            NSMutableDictionary<NSString *, NSArray *> *fetched = [NSMutableDictionary dictionary];
-            for (NSString *bundleIdentifier in bundleIdentifiers) {
-                NSArray *items = DXSBCurrentShortcutItemsForBundleIdentifier(bundleIdentifier);
-                if (items.count > 0) fetched[bundleIdentifier] = items;
-            }
-            serviceItems = [fetched copy];
-        });
-        // Newer icon views finish their fetch asynchronously. Keep each view
-        // alive and give SpringBoard a short window before reading it again.
-        dispatch_group_enter(readiness);
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            dispatch_group_leave(readiness);
-        });
+        NSString *fingerprint = [NSString stringWithFormat:@"%@|%@|%@", type, titleKey ?: @"", subtitleKey ?: @""];
+        if ([seen containsObject:fingerprint]) continue;
+        [seen addObject:fingerprint];
 
-        dispatch_group_notify(readiness, dispatch_get_main_queue(), ^{
-            NSMutableDictionary<NSString *, NSArray *> *fetched = [serviceItems mutableCopy]
-                ?: [NSMutableDictionary dictionary];
-            [immediate enumerateKeysAndObjectsUsingBlock:^(NSString *bundleIdentifier, NSArray *items, BOOL *stop) {
-                fetched[bundleIdentifier] = items;
-            }];
-            [iconViews enumerateKeysAndObjectsUsingBlock:^(NSString *bundleIdentifier, id iconView, BOOL *stop) {
-                NSArray *items = DXSBShortcutItemsFromIconView(iconView, NO);
-                if (items.count > 0) fetched[bundleIdentifier] = items;
-            }];
-            if (fetched.count == 0) return;
-            @try {
-                NSMutableDictionary *root = [[NSDictionary dictionaryWithContentsOfFile:TypeXSBShortcutsPath] mutableCopy]
-                    ?: [NSMutableDictionary dictionary];
-                NSMutableDictionary *apps = [root[@"apps"] mutableCopy] ?: [NSMutableDictionary dictionary];
-                NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
-                for (NSString *bundleIdentifier in fetched) {
-                    NSArray *items = fetched[bundleIdentifier];
-                    NSArray *normalized = DXSBNormalizedShortcutItems(items);
-                    if (normalized.count == 0) continue;
-                    DXSBRememberLiveShortcutItems(items, bundleIdentifier);
-                    apps[bundleIdentifier] = @{@"items": normalized, @"updated": @(now)};
+        DXSBMetadataShortcutItem *entry = [[DXSBMetadataShortcutItem alloc] init];
+        entry.type = type;
+        entry.localizedTitle = title.length > 0 ? title : (titleKey.length > 0 ? titleKey : type);
+        entry.localizedSubtitle = subtitle;
+        [results addObject:entry];
+    }
+    return results;
+}
+
+static NSArray *DXSBDynamicShortcutItemsFromProxy(id proxy, NSString *bundleIdentifier) {
+    NSURL *containerURL = DXSBReadObjectProperty(proxy, @"dataContainerURL");
+    if (![containerURL isKindOfClass:[NSURL class]]) return @[];
+
+    NSString *prefsPath = [[containerURL URLByAppendingPathComponent:@"Library/Preferences"]
+        URLByAppendingPathComponent:[NSString stringWithFormat:@"%@.plist", bundleIdentifier]].path;
+    NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:prefsPath];
+    if (![prefs isKindOfClass:[NSDictionary class]]) return @[];
+    id payload = prefs[@"UIApplicationShortcutItems"];
+    if (!payload) return @[];
+
+    // Accept every shape UIKit has used: a plain array of dictionaries, a
+    // single encoded blob, or a mix. Anything undecodable is dropped.
+    NSMutableArray *entries = [NSMutableArray array];
+    void (^collect)(id, NSMutableArray *) = ^(id entry, NSMutableArray *outItems) {
+        if ([entry isKindOfClass:[NSDictionary class]] ||
+            [entry isKindOfClass:[UIApplicationShortcutItem class]]) [outItems addObject:entry];
+    };
+    id (^decode)(NSData *) = ^(NSData *data) {
+        NSSet *classes = [NSSet setWithArray:@[
+            [NSArray class], [NSDictionary class], [NSString class], [NSNumber class],
+            [NSURL class], [NSData class], [NSDate class], [UIApplicationShortcutItem class],
+        ]];
+        return [NSKeyedUnarchiver unarchivedObjectOfClasses:classes fromData:data error:nil];
+    };
+    if ([payload isKindOfClass:[NSArray class]]) {
+        for (id entry in payload) {
+            if ([entry isKindOfClass:[NSData class]]) {
+                id decoded = decode(entry);
+                if ([decoded isKindOfClass:[NSArray class]]) for (id sub in decoded) collect(sub, entries);
+                else collect(decoded, entries);
+            } else {
+                collect(entry, entries);
+            }
+        }
+    } else if ([payload isKindOfClass:[NSData class]]) {
+        id decoded = decode(payload);
+        if ([decoded isKindOfClass:[NSArray class]]) for (id sub in decoded) collect(sub, entries);
+        else collect(decoded, entries);
+    }
+    if (entries.count == 0) return @[];
+
+    NSMutableArray *results = [NSMutableArray array];
+    NSMutableSet<NSString *> *seen = [NSMutableSet set];
+    for (id item in entries) {
+        NSString *type = nil, *title = nil, *subtitle = nil;
+        if ([item isKindOfClass:[NSDictionary class]]) {
+            NSDictionary *entry = item;
+            type = [entry[@"UIApplicationShortcutItemType"] isKindOfClass:[NSString class]] ? entry[@"UIApplicationShortcutItemType"] : nil;
+            title = [entry[@"UIApplicationShortcutItemTitle"] isKindOfClass:[NSString class]] ? entry[@"UIApplicationShortcutItemTitle"] : nil;
+            subtitle = [entry[@"UIApplicationShortcutItemSubtitle"] isKindOfClass:[NSString class]] ? entry[@"UIApplicationShortcutItemSubtitle"] : nil;
+        } else {
+            UIApplicationShortcutItem *entry = item;
+            type = entry.type;
+            title = entry.localizedTitle;
+            subtitle = entry.localizedSubtitle;
+        }
+        if (type.length == 0 || [seen containsObject:type]) continue;
+        [seen addObject:type];
+
+        DXSBMetadataShortcutItem *result = [[DXSBMetadataShortcutItem alloc] init];
+        result.type = type;
+        result.localizedTitle = title.length > 0 ? title : type;
+        result.localizedSubtitle = subtitle;
+        [results addObject:result];
+    }
+    return results;
+}
+
+// App Shortcuts build metadata (appintentsmetadataprocessor output): the
+// autoShortcuts of Metadata.appintents/extract.actionsdata in the app root,
+// PlugIns/*.appex and Frameworks/*.framework. Titles are localization keys;
+// .loctable resources are parsed manually (NSBundle does not resolve them on
+// iOS 15/16), with Chinese scripts folded onto CN/TW regions.
+static NSString *DXSBBestLocaleForLoctable(NSDictionary *table) {
+    if (![table isKindOfClass:[NSDictionary class]] || table.count == 0) return nil;
+    NSMutableDictionary *byLowercase = [NSMutableDictionary dictionary];
+    for (NSString *key in table) byLowercase[key.lowercaseString] = key;
+
+    for (NSString *language in [NSLocale preferredLanguages]) {
+        NSArray *parts = [[language stringByReplacingOccurrencesOfString:@"-" withString:@"_"]
+            componentsSeparatedByString:@"_"];
+        if (parts.count == 0) continue;
+        NSString *base = ((NSString *)parts[0]).lowercaseString;
+
+        NSMutableArray *candidates = [NSMutableArray array];
+        if (parts.count >= 3) {
+            NSString *script = ((NSString *)parts[1]).lowercaseString;
+            NSString *region = [script isEqualToString:@"hans"] ? @"cn" : ([script isEqualToString:@"hant"] ? @"tw" : nil);
+            if (region) [candidates addObject:[NSString stringWithFormat:@"%@_%@", base, region]];
+        }
+        if (parts.count >= 2) [candidates addObject:[NSString stringWithFormat:@"%@_%@", base, ((NSString *)parts[1]).lowercaseString]];
+        [candidates addObject:base];
+
+        for (NSString *candidate in candidates) {
+            NSString *match = byLowercase[candidate];
+            if (match) return match;
+        }
+    }
+    return byLowercase[@"en"] ?: byLowercase[@"en_us"];
+}
+
+static NSString *DXSBLocalizedAppIntentTitle(NSString *key, NSBundle *bundle, NSArray *loctables) {
+    if (key.length == 0) return nil;
+    if (bundle) {
+        for (NSString *tableName in @[@"AppIntents", @"Localizable"]) {
+            NSString *value = [bundle localizedStringForKey:key value:nil table:tableName];
+            if ([value isKindOfClass:[NSString class]] && value.length > 0 && ![value isEqualToString:key]) return value;
+        }
+    }
+    for (NSDictionary *table in loctables) {
+        NSString *locale = DXSBBestLocaleForLoctable(table);
+        if (!locale) continue;
+        NSString *value = [table isKindOfClass:[NSDictionary class]] ? table[locale][key] : nil;
+        if ([value isKindOfClass:[NSString class]] && value.length > 0) return value;
+    }
+    return key;
+}
+
+static NSArray *DXSBAppIntentShortcutItemsFromProxy(id proxy) {
+    NSURL *appURL = DXSBReadObjectProperty(proxy, @"bundleURL");
+    if (![appURL isKindOfClass:[NSURL class]]) return @[];
+
+    NSMutableArray<NSURL *> *bundleURLs = [NSMutableArray arrayWithObject:appURL];
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    for (NSString *subdirectory in @[@"PlugIns", @"Frameworks"]) {
+        NSURL *directoryURL = [appURL URLByAppendingPathComponent:subdirectory];
+        for (NSURL *childURL in [fileManager contentsOfDirectoryAtURL:directoryURL
+                                               includingPropertiesForKeys:nil
+                                                                  options:NSDirectoryEnumerationSkipsHiddenFiles
+                                                                    error:nil]) {
+            NSString *extension = childURL.pathExtension.lowercaseString;
+            if ([extension isEqualToString:@"appex"] || [extension isEqualToString:@"framework"] ||
+                [extension isEqualToString:@"bundle"]) {
+                [bundleURLs addObject:childURL];
+            }
+        }
+    }
+
+    NSMutableArray *results = [NSMutableArray array];
+    NSMutableSet<NSString *> *seen = [NSMutableSet set];
+    for (NSURL *containerURL in bundleURLs) {
+        NSURL *actionsURL = [[containerURL URLByAppendingPathComponent:@"Metadata.appintents"]
+            URLByAppendingPathComponent:@"extract.actionsdata"];
+        NSData *data = [NSData dataWithContentsOfFile:actionsURL.path];
+        if (!data) continue;
+        id document = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        if (![document isKindOfClass:[NSDictionary class]]) continue;
+        id shortcuts = document[@"autoShortcuts"];
+        if (![shortcuts isKindOfClass:[NSArray class]]) shortcuts = document[@"appShortcuts"];
+        if (![shortcuts isKindOfClass:[NSArray class]]) continue;
+
+        NSBundle *bundle = [NSBundle bundleWithURL:containerURL];
+        NSMutableArray<NSDictionary *> *loctables = [NSMutableArray array];
+        if (bundle) {
+            for (NSURL *url in [bundle URLsForResourcesWithExtension:@"loctable" subdirectory:nil]) {
+                NSDictionary *table = [NSDictionary dictionaryWithContentsOfURL:url];
+                if (![table isKindOfClass:[NSDictionary class]]) continue;
+                for (NSString *key in table) {
+                    if ([table[key] isKindOfClass:[NSDictionary class]]) {
+                        [loctables addObject:table];
+                        break;
+                    }
                 }
-                root[@"apps"] = apps;
-                root[@"format"] = @1;
-                if ([root writeToFile:TypeXSBShortcutsPath atomically:YES]) {
-                    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
-                                                         (__bridge CFStringRef)kShortcutSnapshotChangedIdentifier,
-                                                         NULL, NULL, YES);
+            }
+        }
+        for (NSDictionary *shortcut in shortcuts) {
+            if (![shortcut isKindOfClass:[NSDictionary class]]) continue;
+            NSString *action = [shortcut[@"actionIdentifier"] isKindOfClass:[NSString class]] ? shortcut[@"actionIdentifier"] : nil;
+            if (action.length == 0) action = [shortcut[@"intentIdentifier"] isKindOfClass:[NSString class]] ? shortcut[@"intentIdentifier"] : nil;
+            if (action.length == 0 || [seen containsObject:action]) continue;
+            [seen addObject:action];
+
+            id shortTitle = shortcut[@"shortTitle"];
+            NSString *titleKey = nil;
+            if ([shortTitle isKindOfClass:[NSDictionary class]] && [shortTitle[@"key"] isKindOfClass:[NSString class]]) {
+                titleKey = shortTitle[@"key"];
+            } else if ([shortTitle isKindOfClass:[NSString class]]) {
+                titleKey = shortTitle;
+            }
+
+            DXSBMetadataShortcutItem *entry = [[DXSBMetadataShortcutItem alloc] init];
+            entry.type = action;
+            entry.localizedTitle = DXSBLocalizedAppIntentTitle(titleKey.length > 0 ? titleKey : action, bundle, loctables) ?: action;
+            [results addObject:entry];
+        }
+    }
+    return results;
+}
+
+// Merged metadata fallback for one app: static, dynamic, App Intents —
+// deduplicated by type in that priority order.
+static NSArray *DXSBMetadataShortcutItemsForBundleIdentifier(NSString *bundleIdentifier) {
+    id proxy = DXSBProxyForBundleIdentifier(bundleIdentifier);
+    if (!proxy) return @[];
+
+    NSMutableArray *items = [NSMutableArray array];
+    NSMutableSet<NSString *> *seen = [NSMutableSet set];
+    for (NSArray *scanned in @[
+        DXSBStaticShortcutItemsFromProxy(proxy),
+        DXSBDynamicShortcutItemsFromProxy(proxy, bundleIdentifier),
+        DXSBAppIntentShortcutItemsFromProxy(proxy),
+    ]) {
+        for (id item in scanned) {
+            NSString *type = DXSBReadStringProperty(item, @"type");
+            if (type.length == 0 || [seen containsObject:type]) continue;
+            [seen addObject:type];
+            [items addObject:item];
+        }
+    }
+    return items;
+}
+
+static NSArray *DXSBSBApplicationShortcutItems(NSString *bundleIdentifier) {
+    id app = DXSBSBApplicationForBundleIdentifier(bundleIdentifier);
+
+    NSMutableArray *items = [NSMutableArray array];
+    if (app) {
+        id info = DXSBReadObjectProperty(app, @"info");
+        NSArray *staticItems = DXSBReadObjectProperty(info, @"staticApplicationShortcutItems")
+            ?: DXSBReadObjectProperty(app, @"staticApplicationShortcutItems");
+        if ([staticItems isKindOfClass:[NSArray class]]) [items addObjectsFromArray:staticItems];
+        NSArray *dynamicItems = DXSBReadObjectProperty(app, @"dynamicApplicationShortcutItems");
+        if ([dynamicItems isKindOfClass:[NSArray class]]) [items addObjectsFromArray:dynamicItems];
+        NSArray *launchable = DXSBLaunchableShortcutItems(items);
+        if (launchable.count > 0) return launchable;
+    }
+
+    // iOS 16 uses only SpringBoard's resolved static + dynamic model, matching
+    // SquidGesturePro. A bundle scan would reintroduce raw localization keys,
+    // stale dynamic data and App Intent rows that are not in this API's menu.
+    if (@available(iOS 17.0, *)) {
+        // Preserve the already-working iOS 17 fallback for an app whose icon
+        // view and SBApplication model both answer no composed items.
+        return DXSBLaunchableShortcutItems(DXSBMetadataShortcutItemsForBundleIdentifier(bundleIdentifier));
+    }
+    return @[];
+}
+
+// One iOS 16 application record produced by the same two Launch Services
+// passes used by SquidGesturePro: type 0 (system) and type 1 (user). Returning
+// nil means the private API was unavailable or threw; an empty-but-valid scan
+// is represented by an empty array so callers can avoid publishing stale data.
+static NSArray<NSDictionary *> *DXSBiOS16InstalledApplicationRecords(void) {
+    DXSBEnsureLaunchServicesLoaded();
+    Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
+    SEL sharedSelector = NSSelectorFromString(@"defaultWorkspace");
+    SEL enumerateSelector = NSSelectorFromString(@"enumerateApplicationsOfType:block:");
+    NSMutableArray<NSDictionary *> *records = [NSMutableArray array];
+    NSMutableSet<NSString *> *seen = [NSMutableSet set];
+    void (^appendRecord)(id, BOOL) = ^(id object, BOOL launchServicesObject) {
+        NSString *bundleIdentifier = launchServicesObject
+            ? (DXSBReadStringProperty(object, @"applicationIdentifier")
+               ?: DXSBReadStringProperty(object, @"bundleIdentifier"))
+            : (DXSBReadStringProperty(object, @"bundleIdentifier")
+               ?: DXSBReadStringProperty(object, @"applicationIdentifier"));
+        if (!DXIsValidBundleIdentifier(bundleIdentifier) || [seen containsObject:bundleIdentifier]) return;
+        [seen addObject:bundleIdentifier];
+
+        NSString *name = launchServicesObject
+            ? DXSBReadStringProperty(object, @"localizedName")
+            : (DXSBReadStringProperty(object, @"displayName")
+               ?: DXSBReadStringProperty(object, @"applicationDisplayName"));
+        NSMutableDictionary *record = [@{@"bundleID": bundleIdentifier} mutableCopy];
+        if (name.length > 0) record[@"name"] = name;
+        [records addObject:record];
+    };
+
+    if (workspaceClass && [workspaceClass respondsToSelector:sharedSelector]) {
+        id workspace = ((id (*)(id, SEL))objc_msgSend)(workspaceClass, sharedSelector);
+        if (workspace && [workspace respondsToSelector:enumerateSelector]) {
+            @try {
+                for (NSUInteger type = 0; type <= 1; type++) {
+                    ((void (*)(id, SEL, NSUInteger, void (^)(id)))objc_msgSend)(
+                        workspace, enumerateSelector, type, ^(id proxy) {
+                            appendRecord(proxy, YES);
+                        });
                 }
             } @catch (NSException *exception) {
-                NSLog(@"[TypeX] sbshortcuts: catalogue refresh failed (%@)", exception);
+                NSLog(@"[TypeX] sbshortcuts: iOS 16 SGP application enumeration failed (%@)", exception);
             }
+        }
+    }
+
+    // Some RootHide iOS 16 SpringBoard builds do not vend Launch Services to
+    // injected dylibs even after the framework is loaded. SpringBoard already
+    // owns the authoritative application collection, so union it here. This
+    // remains the same SBApplication data source used for shortcut extraction.
+    id controller = DXSBSBApplicationController();
+    id allApplications = DXSBReadObjectProperty(controller, @"allApplications");
+    if ([allApplications conformsToProtocol:@protocol(NSFastEnumeration)]) {
+        for (id application in allApplications) appendRecord(application, NO);
+    }
+    if (records.count == 0) {
+        id allBundleIdentifiers = DXSBReadObjectProperty(controller, @"allBundleIdentifiers");
+        if ([allBundleIdentifiers conformsToProtocol:@protocol(NSFastEnumeration)]) {
+            for (id bundleIdentifier in allBundleIdentifiers) {
+                if (!DXIsValidBundleIdentifier(bundleIdentifier) || [seen containsObject:bundleIdentifier]) continue;
+                [seen addObject:bundleIdentifier];
+                [records addObject:@{@"bundleID": bundleIdentifier}];
+            }
+        }
+    }
+    return records;
+}
+
+// Rebuilds the iOS 16 catalogue from SpringBoard's own model in one main-thread
+// transaction. For every LSApplicationProxy, resolve SBApplication through
+// SBApplicationController, then concatenate its static and dynamic shortcut
+// arrays (with the SGP-observed info object as fallback). The new snapshot replaces the old one,
+// so removed apps/actions cannot survive as stale rows.
+static BOOL DXSBiOS16RebuildShortcutCatalogue(void) {
+    NSCAssert([NSThread isMainThread], @"iOS 16 shortcut catalogue must use SpringBoard's main thread");
+    DXSBWriteShortcutRefreshStatus(@"enumerating-applications", nil);
+
+    NSArray<NSDictionary *> *records = DXSBiOS16InstalledApplicationRecords();
+    if (records.count == 0) {
+        NSLog(@"[TypeX] sbshortcuts: iOS 16 SGP catalogue not published because enumeration was unavailable");
+        DXSBWriteShortcutRefreshStatus(@"application-enumeration-empty", nil);
+        return NO;
+    }
+    DXSBWriteShortcutRefreshStatus(@"reading-springboard-model",
+                                   @{@"applicationCount": @(records.count)});
+
+    NSMutableDictionary *apps = [NSMutableDictionary dictionary];
+    NSUInteger staticCount = 0;
+    NSUInteger dynamicCount = 0;
+    NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+    for (NSDictionary *record in records) {
+        NSString *bundleIdentifier = record[@"bundleID"];
+        id application = DXSBSBApplicationForBundleIdentifier(bundleIdentifier);
+        if (!application) continue;
+
+        // SBApplication itself has exposed both shortcut arrays since iOS 10.
+        // Some iOS 16 builds also surface the static array through its `info`
+        // object (the route observed in SGP), so support both system-model
+        // locations without scanning the app bundle.
+        NSArray *staticItems = DXSBReadObjectProperty(application, @"staticApplicationShortcutItems");
+        NSArray *dynamicItems = DXSBReadObjectProperty(application, @"dynamicApplicationShortcutItems");
+        id info = DXSBReadObjectProperty(application, @"info");
+        if (![staticItems isKindOfClass:[NSArray class]]) {
+            staticItems = DXSBReadObjectProperty(info, @"staticApplicationShortcutItems");
+        }
+        if (![dynamicItems isKindOfClass:[NSArray class]]) {
+            dynamicItems = DXSBReadObjectProperty(info, @"dynamicApplicationShortcutItems");
+        }
+        if (![staticItems isKindOfClass:[NSArray class]]) staticItems = @[];
+        if (![dynamicItems isKindOfClass:[NSArray class]]) dynamicItems = @[];
+
+        NSMutableArray *resolvedItems = [NSMutableArray arrayWithCapacity:staticItems.count + dynamicItems.count];
+        [resolvedItems addObjectsFromArray:staticItems];
+        [resolvedItems addObjectsFromArray:dynamicItems];
+        NSArray *normalized = DXSBNormalizedShortcutItems(resolvedItems);
+        if (normalized.count == 0) continue;
+
+        staticCount += staticItems.count;
+        dynamicCount += dynamicItems.count;
+        DXSBRememberLiveShortcutItems(resolvedItems, bundleIdentifier);
+        NSMutableDictionary *entry = [@{@"items": normalized, @"updated": @(now)} mutableCopy];
+        NSString *name = record[@"name"];
+        if (name.length == 0) name = DXSBDisplayNameForBundleIdentifier(bundleIdentifier);
+        if (name.length > 0) entry[@"name"] = name;
+        apps[bundleIdentifier] = entry;
+    }
+
+    // A nonempty installed-app scan followed by zero resolved shortcut groups
+    // means SBApplicationController was not ready. Keep the prior snapshot and
+    // let reopening the picker retry instead of replacing valid data with nil.
+    if (apps.count == 0) {
+        NSLog(@"[TypeX] sbshortcuts: iOS 16 SGP catalogue not published because SpringBoard returned no shortcut groups");
+        DXSBWriteShortcutRefreshStatus(@"shortcut-groups-empty",
+                                       @{@"applicationCount": @(records.count)});
+        return NO;
+    }
+
+    NSDictionary *root = @{
+        @"format": @3,
+        @"source": @"springboard-sgp-ios16",
+        @"apps": apps,
+    };
+    @try {
+        if (![root writeToFile:TypeXSBShortcutsPath atomically:YES]) {
+            NSLog(@"[TypeX] sbshortcuts: iOS 16 SGP catalogue write failed");
+            DXSBWriteShortcutRefreshStatus(@"catalogue-write-failed", nil);
+            return NO;
+        }
+        NSLog(@"[TypeX] sbshortcuts: iOS 16 SGP catalogue built for %lu of %lu applications (static %lu, dynamic %lu)",
+              (unsigned long)apps.count, (unsigned long)records.count,
+              (unsigned long)staticCount, (unsigned long)dynamicCount);
+        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                             (__bridge CFStringRef)kShortcutSnapshotChangedIdentifier,
+                                             NULL, NULL, YES);
+        DXSBWriteShortcutRefreshStatus(@"published", @{
+            @"applicationCount": @(records.count),
+            @"groupCount": @(apps.count),
+            @"staticCount": @(staticCount),
+            @"dynamicCount": @(dynamicCount),
         });
+        return YES;
+    } @catch (NSException *exception) {
+        NSLog(@"[TypeX] sbshortcuts: iOS 16 SGP catalogue publish failed (%@)", exception);
+        DXSBWriteShortcutRefreshStatus(@"catalogue-publish-exception",
+                                       @{@"reason": exception.reason ?: @"unknown"});
+        return NO;
+    }
+}
+
+// SpringBoard's application model can still be warming after a userspace
+// restart. Retry with a short backoff, and also call this proactively at
+// SpringBoard startup so opening Settings is not the only catalogue trigger.
+static void DXSBiOS16ScheduleShortcutCatalogueRebuild(NSUInteger attempt) {
+    NSTimeInterval delay = attempt == 0 ? 0.0 : MIN(2.0 * attempt, 8.0);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (DXSBiOS16RebuildShortcutCatalogue()) return;
+        if (attempt < 4) DXSBiOS16ScheduleShortcutCatalogueRebuild(attempt + 1);
     });
+}
+
+// Merges freshly fetched items into the shared catalogue plist and
+// republishes it.  Read-modify-write: per-app entries this run did not fetch
+// (real long-press captures, other refresh runs) survive untouched.
+static void DXSBMergeShortcutCatalogue(NSDictionary<NSString *, NSArray *> *fetched) {
+    if (fetched.count == 0) return;
+    @try {
+        NSMutableDictionary *root = [[NSDictionary dictionaryWithContentsOfFile:TypeXSBShortcutsPath] mutableCopy]
+            ?: [NSMutableDictionary dictionary];
+        NSMutableDictionary *apps = [root[@"apps"] mutableCopy] ?: [NSMutableDictionary dictionary];
+        NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+        for (NSString *bundleIdentifier in fetched) {
+            NSArray *items = fetched[bundleIdentifier];
+            NSArray *normalized = DXSBNormalizedShortcutItems(items);
+            if (normalized.count == 0) continue;
+            DXSBRememberLiveShortcutItems(items, bundleIdentifier);
+            NSMutableDictionary *entry = [NSMutableDictionary dictionary];
+            entry[@"items"] = normalized;
+            entry[@"updated"] = @(now);
+            NSString *displayName = DXSBDisplayNameForBundleIdentifier(bundleIdentifier);
+            if (displayName.length > 0) entry[@"name"] = displayName;
+            apps[bundleIdentifier] = entry;
+        }
+        root[@"apps"] = apps;
+        root[@"format"] = @2;
+        if ([root writeToFile:TypeXSBShortcutsPath atomically:YES]) {
+            CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                                 (__bridge CFStringRef)kShortcutSnapshotChangedIdentifier,
+                                                 NULL, NULL, YES);
+        }
+    } @catch (NSException *exception) {
+        NSLog(@"[TypeX] sbshortcuts: catalogue refresh failed (%@)", exception);
+    }
+}
+
+// Populates the Settings catalogue without requiring a manual long press for
+// every app.  iOS 17+ asks SpringBoard's icon view to build the same menu the
+// Home Screen shows, with the shortcut service running in parallel and the
+// SBApplication static/dynamic data source as its own fallback for apps the
+// service cannot answer for.  iOS 16 and earlier build the catalogue exactly
+// the way the reference gesture tweak does: every installed app resolved
+// through SBApplicationController, its static (Info.plist) and runtime
+// dynamic shortcut items read straight out of SpringBoard's model — fully
+// synchronous, with the icon-view fetch round-trips and the readiness wait
+// skipped, because they never answer reliably there.
+static void DXSBRefreshShortcutSnapshots(NSArray<NSString *> *bundleIdentifiers) {
+    if (@available(iOS 17.0, *)) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSMutableDictionary<NSString *, id> *iconViews = [NSMutableDictionary dictionary];
+            NSMutableDictionary<NSString *, NSArray *> *immediate = [NSMutableDictionary dictionary];
+            for (NSString *bundleIdentifier in bundleIdentifiers) {
+                id iconView = DXSBIconViewForBundleIdentifier(bundleIdentifier);
+                if (!iconView) continue;
+                iconViews[bundleIdentifier] = iconView;
+                NSArray *items = DXSBShortcutItemsFromIconView(iconView, YES);
+                if (items.count > 0) immediate[bundleIdentifier] = items;
+            }
+
+            dispatch_group_t readiness = dispatch_group_create();
+            __block NSDictionary<NSString *, NSArray *> *serviceItems = @{};
+            dispatch_group_async(readiness, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+                NSMutableDictionary<NSString *, NSArray *> *fetched = [NSMutableDictionary dictionary];
+                for (NSString *bundleIdentifier in bundleIdentifiers) {
+                    NSArray *items = DXSBSBApplicationShortcutItems(bundleIdentifier);
+                    if (items.count > 0) fetched[bundleIdentifier] = items;
+                }
+                serviceItems = [fetched copy];
+            });
+            // Newer icon views finish their fetch asynchronously. Keep each view
+            // alive and give SpringBoard a short window before reading it again.
+            dispatch_group_enter(readiness);
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                dispatch_group_leave(readiness);
+            });
+
+            dispatch_group_notify(readiness, dispatch_get_main_queue(), ^{
+                NSMutableDictionary<NSString *, NSArray *> *fetched = [serviceItems mutableCopy]
+                    ?: [NSMutableDictionary dictionary];
+                [immediate enumerateKeysAndObjectsUsingBlock:^(NSString *bundleIdentifier, NSArray *items, BOOL *stop) {
+                    fetched[bundleIdentifier] = items;
+                }];
+                [iconViews enumerateKeysAndObjectsUsingBlock:^(NSString *bundleIdentifier, id iconView, BOOL *stop) {
+                    NSArray *items = DXSBShortcutItemsFromIconView(iconView, NO);
+                    if (items.count > 0) fetched[bundleIdentifier] = items;
+                }];
+                DXSBMergeShortcutCatalogue(fetched);
+            });
+        });
+        return;
+    }
+
+    // iOS 16 is intentionally isolated from the icon-view/service/metadata
+    // machinery above. SBApplicationController is a SpringBoard model object;
+    // resolving it on the main thread also avoids the early-nil and background
+    // access failures of the old legacy path.
+    DXSBiOS16ScheduleShortcutCatalogueRebuild(0);
 }
 
 static NSArray *(*dx_SBIconView_effectiveItems_orig)(id, SEL);
@@ -1603,13 +2426,24 @@ static void DXSBInstallShortcutCaptureHooks(NSUInteger attempt) {
                                                                object:nil];
                     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, reloadPrefsNotificationCallback, (CFStringRef)kPrefsChangedIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                     if (isSpringBoard) {
+                        // Clear requests carried over from an earlier session
+                        // or an upgrade window BEFORE the observer exists (see
+                        // the purge comment) — they must never execute here.
+                        DXSBPurgePendingActionRequests();
                         // Only SpringBoard consumes 打开应用 requests; other
                         // processes ignore the notification entirely.
                         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, pendingActionRequestCallback, (CFStringRef)kPendingActionRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, shortcutRefreshRequestCallback, (CFStringRef)kShortcutRefreshRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                         // Capture the real icon-menu quick actions (see the
                         // capture module above) for the Settings picker.
-                        DXSBInstallShortcutCaptureHooks(0);
+                        if (@available(iOS 17.0, *)) {
+                            DXSBInstallShortcutCaptureHooks(0);
+                        } else {
+                            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4.0 * NSEC_PER_SEC)),
+                                           dispatch_get_main_queue(), ^{
+                                DXSBiOS16ScheduleShortcutCatalogueRebuild(0);
+                            });
+                        }
                     }
                 }
             }

@@ -1,5 +1,7 @@
 #import "DXPAppInfo.h"
 #import "../common.h"
+#import <dlfcn.h>
+#import <objc/message.h>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -8,14 +10,15 @@
 @property (nonatomic, readonly, copy) NSString *applicationIdentifier;
 @property (nonatomic, readonly, copy) NSString *bundleIdentifier;
 @property (nonatomic, readonly, copy) NSString *localizedName;
-@property (nonatomic, readonly, strong) NSURL *bundleURL;
-@property (nonatomic, readonly, strong) NSURL *dataContainerURL;
-@property (nonatomic, readonly, copy) NSDictionary *infoDictionary;
 @end
 
 @interface LSApplicationWorkspace : NSObject
 + (instancetype)defaultWorkspace;
 - (NSArray *)allInstalledApplications;
+// The per-type enumeration answered reliably inside the Settings process on
+// iOS 14+ for reference tweaks; allInstalledApplications (below) has blocked
+// indefinitely where Launch Services never came up (iOS 16).
+- (void)enumerateApplicationsOfType:(NSUInteger)type block:(void (^)(LSApplicationProxy *proxy))block;
 @end
 
 @interface UIImage (TypeXAppIcon)
@@ -29,36 +32,120 @@
 
 @implementation DXPAppInfo
 
-// MobileCoreServices is not linked into this bundle, so the class must be
-// resolved at runtime instead of being referenced directly.
++ (void)ensureLaunchServicesLoaded {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        // Settings on iOS 17 normally has LaunchServices loaded already;
+        // iOS 16 does not. Keep both framework locations for compatibility.
+        for (NSString *path in @[
+            @"/System/Library/Frameworks/MobileCoreServices.framework/MobileCoreServices",
+            @"/System/Library/Frameworks/CoreServices.framework/CoreServices",
+        ]) {
+            if (dlopen(path.fileSystemRepresentation, RTLD_LAZY | RTLD_LOCAL)) break;
+        }
+    });
+}
+
 + (Class)appProxyClass {
+    [self ensureLaunchServicesLoaded];
     return NSClassFromString(@"LSApplicationProxy");
 }
 
 + (NSArray<LSApplicationProxy *> *)installedAppProxies {
+    [self ensureLaunchServicesLoaded];
     Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
-    if (!workspaceClass) return @[];
-    id workspace = [workspaceClass performSelector:@selector(defaultWorkspace)];
-    if (!workspace || ![workspace respondsToSelector:@selector(allInstalledApplications)]) return @[];
-    NSArray *proxies = [workspace performSelector:@selector(allInstalledApplications)];
-    return proxies ?: @[];
+    if (!workspaceClass) {
+        NSLog(@"[TypeX] shortcuts: LSApplicationWorkspace unavailable");
+        return @[];
+    }
+    @try {
+        id workspace = [workspaceClass performSelector:@selector(defaultWorkspace)];
+        if (!workspace) {
+            NSLog(@"[TypeX] shortcuts: default workspace unavailable");
+            return @[];
+        }
+
+        // Primary: enumerateApplicationsOfType:block:, asked once for system
+        // (0) and once for user (1) apps and merged — the same passes the
+        // reference tweaks run inside Settings. The block is invoked
+        // synchronously, so results are complete when the call returns.
+        SEL enumerateSelector = @selector(enumerateApplicationsOfType:block:);
+        if ([workspace respondsToSelector:enumerateSelector]) {
+            Class proxyClass = [self appProxyClass];
+            NSMutableArray *enumerated = [NSMutableArray array];
+            BOOL threw = NO;
+            @try {
+                for (NSUInteger type = 0; type <= 1; type++) {
+                    ((void (*)(id, SEL, NSUInteger, void (^)(LSApplicationProxy *)))objc_msgSend)(
+                        workspace, enumerateSelector, type, ^(LSApplicationProxy *proxy) {
+                            if (!proxyClass || [proxy isKindOfClass:proxyClass]) [enumerated addObject:proxy];
+                        });
+                }
+            } @catch (NSException *exception) {
+                NSLog(@"[TypeX] shortcuts: enumerateApplicationsOfType failed (%@)", exception);
+                threw = YES;
+            }
+            if (!threw && enumerated.count > 0) {
+                NSLog(@"[TypeX] shortcuts: enumerated %lu installed applications", (unsigned long)enumerated.count);
+                return enumerated;
+            }
+        }
+
+        // Fallback: the whole-array fetch, fast where Launch Services is
+        // already warm (iOS 17 Settings).
+        if (![workspace respondsToSelector:@selector(allInstalledApplications)]) {
+            NSLog(@"[TypeX] shortcuts: default workspace cannot enumerate applications");
+            return @[];
+        }
+        NSArray *proxies = [workspace performSelector:@selector(allInstalledApplications)];
+        if (![proxies isKindOfClass:[NSArray class]]) return @[];
+        NSLog(@"[TypeX] shortcuts: enumerated %lu installed applications", (unsigned long)proxies.count);
+        return proxies;
+    } @catch (NSException *exception) {
+        NSLog(@"[TypeX] shortcuts: application enumeration failed (%@)", exception);
+        return @[];
+    }
 }
 
 + (NSString *)bundleIDForProxy:(LSApplicationProxy *)proxy {
-    for (NSString *bundleID in @[proxy.applicationIdentifier, proxy.bundleIdentifier]) {
-        if ([bundleID isKindOfClass:[NSString class]] && bundleID.length > 0) return bundleID;
+    NSString *bundleID = nil;
+    @try {
+        if ([proxy respondsToSelector:@selector(applicationIdentifier)]) {
+            bundleID = proxy.applicationIdentifier;
+        }
+        if (![bundleID isKindOfClass:[NSString class]] || bundleID.length == 0) {
+            bundleID = [proxy respondsToSelector:@selector(bundleIdentifier)] ? proxy.bundleIdentifier : nil;
+        }
+    } @catch (__unused NSException *exception) {
+        bundleID = nil;
     }
+    if ([bundleID isKindOfClass:[NSString class]] && bundleID.length > 0) return bundleID;
     return nil;
+}
+
++ (NSString *)localizedNameForProxy:(LSApplicationProxy *)proxy {
+    NSString *name = nil;
+    @try {
+        if ([proxy respondsToSelector:@selector(localizedName)]) {
+            name = proxy.localizedName;
+        }
+    } @catch (__unused NSException *exception) {
+        name = nil;
+    }
+    return [name isKindOfClass:[NSString class]] && name.length > 0 ? name : nil;
 }
 
 + (NSArray<DXPAppInfo *> *)installedApps {
     NSMutableArray<DXPAppInfo *> *apps = [NSMutableArray array];
     NSMutableSet<NSString *> *seen = [NSMutableSet set];
+    Class proxyClass = [self appProxyClass];
     for (LSApplicationProxy *proxy in [self installedAppProxies]) {
-        if (![proxy isKindOfClass:[self appProxyClass]]) continue;
+        if (proxyClass && ![proxy isKindOfClass:proxyClass]) continue;
+        if (![proxy respondsToSelector:@selector(applicationIdentifier)] &&
+            ![proxy respondsToSelector:@selector(bundleIdentifier)]) continue;
         NSString *bundleID = [self bundleIDForProxy:proxy];
-        NSString *name = proxy.localizedName;
-        if (bundleID.length == 0 || ![name isKindOfClass:[NSString class]] || name.length == 0) continue;
+        NSString *name = [self localizedNameForProxy:proxy];
+        if (bundleID.length == 0 || name.length == 0) continue;
         if ([seen containsObject:bundleID]) continue;
         [seen addObject:bundleID];
 
@@ -73,358 +160,25 @@
     return apps;
 }
 
-// Number of app proxies seen by the most recent -appShortcutGroups scan;
-// surfaced in the picker's empty state so a total failure (enumeration broke,
-// no plist readable) is visible without a syslog capture.
-static NSInteger DXLastShortcutScanApplicationCount = 0;
-+ (NSInteger)lastShortcutScanApplicationCount {
-    return DXLastShortcutScanApplicationCount;
-}
-
-// Reads an app's Info.plist dictionary. NSBundle first — the path AltList
-// proved on device — then the proxy's own infoDictionary, then a raw file
-// read of <bundleURL>/Info.plist. Returns nil only when none resolve.
-+ (NSDictionary *)infoDictionaryForProxy:(LSApplicationProxy *)proxy {
-    NSURL *bundleURL = proxy.bundleURL;
-    if (!bundleURL) return nil;
-
-    NSBundle *bundle = [NSBundle bundleWithURL:bundleURL];
-    NSDictionary *info = bundle.infoDictionary;
-    if (info.count > 0) return info;
-
-    if ([proxy respondsToSelector:@selector(infoDictionary)]) info = proxy.infoDictionary;
-    if (info.count > 0) return info;
-
-    return [NSDictionary dictionaryWithContentsOfURL:[bundleURL URLByAppendingPathComponent:@"Info.plist"]];
-}
-
-// Quick-action declarations can live in the app, an extension or a framework
-// that supplies the system app's App Intents. Enumerate bundle containers
-// recursively so the iOS 16 Photos layout is covered as well as iOS 17.
-+ (NSArray<NSURL *> *)shortcutContainerURLsForAppURL:(NSURL *)appURL {
-    if (![appURL isKindOfClass:[NSURL class]]) return @[];
-    NSMutableArray<NSURL *> *result = [NSMutableArray arrayWithObject:appURL];
-    NSDirectoryEnumerator<NSURL *> *enumerator = [[NSFileManager defaultManager]
-        enumeratorAtURL:appURL
-        includingPropertiesForKeys:@[NSURLIsDirectoryKey]
-        options:NSDirectoryEnumerationSkipsHiddenFiles
-        errorHandler:^BOOL(NSURL *url, NSError *error) {
-            return YES;
-        }];
-    for (NSURL *url in enumerator) {
-        NSString *extension = url.pathExtension.lowercaseString;
-        if ([extension isEqualToString:@"appex"] ||
-            [extension isEqualToString:@"framework"] ||
-            [extension isEqualToString:@"bundle"]) {
-            [result addObject:url];
-            if (result.count >= 512) break;
-        }
-    }
-    return result;
-}
-
-// Extracts every static UIApplicationShortcutItems declaration belonging to
-// an app. Static titles are keys into the declaring bundle's InfoPlist.strings.
-+ (NSArray<DXPAppShortcutItem *> *)staticShortcutItemsForProxy:(LSApplicationProxy *)proxy {
-    NSMutableArray<DXPAppShortcutItem *> *results = [NSMutableArray array];
-    NSMutableSet<NSString *> *seen = [NSMutableSet set];
-    for (NSURL *bundleURL in [self shortcutContainerURLsForAppURL:proxy.bundleURL]) {
-        NSBundle *stringsBundle = [NSBundle bundleWithURL:bundleURL];
-        NSDictionary *info = stringsBundle.infoDictionary;
-        if (info.count == 0 && [bundleURL isEqual:proxy.bundleURL]) {
-            info = [self infoDictionaryForProxy:proxy];
-        }
-        if (info.count == 0) {
-            info = [NSDictionary dictionaryWithContentsOfURL:[bundleURL URLByAppendingPathComponent:@"Info.plist"]];
-        }
-        NSArray *items = [info[@"UIApplicationShortcutItems"] isKindOfClass:[NSArray class]]
-            ? info[@"UIApplicationShortcutItems"] : nil;
-        for (NSDictionary *item in items) {
-            if (![item isKindOfClass:[NSDictionary class]]) continue;
-            NSString *type = [item[@"UIApplicationShortcutItemType"] isKindOfClass:[NSString class]] ? item[@"UIApplicationShortcutItemType"] : nil;
-            NSString *titleKey = [item[@"UIApplicationShortcutItemTitle"] isKindOfClass:[NSString class]] ? item[@"UIApplicationShortcutItemTitle"] : nil;
-            if (type.length == 0 && titleKey.length == 0) continue;
-            if (type.length == 0) type = titleKey;
-            if ([seen containsObject:type]) continue;
-            [seen addObject:type];
-
-            NSString *title = titleKey.length > 0
-                ? [stringsBundle localizedStringForKey:titleKey value:titleKey table:@"InfoPlist"] : nil;
-            NSString *subtitleKey = [item[@"UIApplicationShortcutItemSubtitle"] isKindOfClass:[NSString class]] ? item[@"UIApplicationShortcutItemSubtitle"] : nil;
-            NSString *subtitle = subtitleKey.length > 0
-                ? [stringsBundle localizedStringForKey:subtitleKey value:subtitleKey table:@"InfoPlist"] : nil;
-
-            DXPAppShortcutItem *entry = [[DXPAppShortcutItem alloc] init];
-            entry.type = type;
-            entry.title = title.length > 0 ? title : (titleKey.length > 0 ? titleKey : type);
-            entry.subtitle = subtitle.length > 0 ? subtitle : nil;
-            entry.source = DXPAppShortcutSourceStatic;
-            [results addObject:entry];
-        }
-    }
-    return results;
-}
-
-// Decodes archived UIApplicationShortcutItem payloads, should UIKit persist
-// encoded objects instead of plain dictionaries. Secure decoding validates the
-// whole object graph, so the class set must also cover the plist-safe types an
-// item's userInfo can contain. Returns nil on any mismatch.
-+ (id)decodedShortcutItemsFromData:(NSData *)data {
-    NSSet *classes = [NSSet setWithArray:@[
-        [NSArray class], [NSDictionary class], [NSString class], [NSNumber class],
-        [NSURL class], [NSData class], [NSDate class], [UIApplicationShortcutItem class],
-    ]];
-    return [NSKeyedUnarchiver unarchivedObjectOfClasses:classes fromData:data error:nil];
-}
-
-// Extracts one app's dynamic quick actions. When the app calls setShortcutItems:,
-// UIKit persists them under the same UIApplicationShortcutItems key in the app's
-// own data-container preferences, which a mobile-uid process (Settings) can read
-// across containers on a jailbroken device. Dynamic items carry real localized
-// strings, so no InfoPlist lookup applies.
-+ (NSArray<DXPAppShortcutItem *> *)dynamicShortcutItemsForProxy:(LSApplicationProxy *)proxy
-                                                       bundleID:(NSString *)bundleID {
-    if (![proxy respondsToSelector:@selector(dataContainerURL)]) return @[];
-    NSURL *containerURL = proxy.dataContainerURL;
-    if (![containerURL isKindOfClass:[NSURL class]]) return @[];
-
-    NSString *prefsPath = [[containerURL URLByAppendingPathComponent:@"Library/Preferences"]
-        URLByAppendingPathComponent:[NSString stringWithFormat:@"%@.plist", bundleID]].path;
-    NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:prefsPath];
-    if (![prefs isKindOfClass:[NSDictionary class]]) return @[];
-    id payload = prefs[@"UIApplicationShortcutItems"];
-    if (!payload) return @[];
-
-    // Accept the payload in every shape UIKit has used: a plain array of
-    // dictionaries, a single encoded blob, or an array mixing both. Anything
-    // undecodable is dropped rather than failing the whole app.
-    void (^collect)(id, NSMutableArray *) = ^(id entry, NSMutableArray *outItems) {
-        if ([entry isKindOfClass:[NSDictionary class]] ||
-            [entry isKindOfClass:[UIApplicationShortcutItem class]]) [outItems addObject:entry];
-    };
-    NSMutableArray *entries = [NSMutableArray array];
-    if ([payload isKindOfClass:[NSArray class]]) {
-        for (id entry in payload) {
-            if ([entry isKindOfClass:[NSData class]]) {
-                id decoded = [self decodedShortcutItemsFromData:entry];
-                if ([decoded isKindOfClass:[NSArray class]]) for (id sub in decoded) collect(sub, entries);
-                else collect(decoded, entries);
-            } else {
-                collect(entry, entries);
-            }
-        }
-    } else if ([payload isKindOfClass:[NSData class]]) {
-        id decoded = [self decodedShortcutItemsFromData:payload];
-        if ([decoded isKindOfClass:[NSArray class]]) for (id sub in decoded) collect(sub, entries);
-        else collect(decoded, entries);
-    }
-    if (entries.count == 0) return @[];
-
-    NSMutableArray<DXPAppShortcutItem *> *results = [NSMutableArray array];
-    NSMutableSet<NSString *> *seen = [NSMutableSet set];
-    for (id item in entries) {
-        NSString *type = nil, *title = nil, *subtitle = nil;
-        if ([item isKindOfClass:[NSDictionary class]]) {
-            NSDictionary *entry = item;
-            type = [entry[@"UIApplicationShortcutItemType"] isKindOfClass:[NSString class]] ? entry[@"UIApplicationShortcutItemType"] : nil;
-            title = [entry[@"UIApplicationShortcutItemTitle"] isKindOfClass:[NSString class]] ? entry[@"UIApplicationShortcutItemTitle"] : nil;
-            subtitle = [entry[@"UIApplicationShortcutItemSubtitle"] isKindOfClass:[NSString class]] ? entry[@"UIApplicationShortcutItemSubtitle"] : nil;
-        } else {
-            UIApplicationShortcutItem *entry = item;
-            type = entry.type;
-            title = entry.localizedTitle;
-            subtitle = entry.localizedSubtitle;
-        }
-        if (type.length == 0) continue;
-        if ([seen containsObject:type]) continue;
-        [seen addObject:type];
-
-        DXPAppShortcutItem *result = [[DXPAppShortcutItem alloc] init];
-        result.type = type;
-        result.title = title.length > 0 ? title : type;
-        result.subtitle = subtitle;
-        result.source = DXPAppShortcutSourceDynamic;
-        [results addObject:result];
-    }
-    return results;
-}
-
-// App Shortcuts (iOS 16+) live in the bundle as build-time metadata:
-// appintentsmetadataprocessor compiles the AppShortcutsProvider into
-// <bundle>/Metadata.appintents/extract.actionsdata, whose autoShortcuts array
-// is exactly what fills the icon context menu, Spotlight and the Shortcuts
-// app. Titles in that file are localization keys; on iOS 15/16 NSBundle does
-// not resolve .loctable resources, so they are looked up manually too.
-// Extensions (PlugIns/*.appex) can declare their own shortcuts (e.g. Weather);
-// the system shows those under the parent app, so they are folded in here.
-+ (NSArray<NSDictionary *> *)readableLoctablesForBundle:(NSBundle *)bundle {
-    NSMutableArray<NSDictionary *> *tables = [NSMutableArray array];
-    if (!bundle) return tables;
-    for (NSURL *url in [bundle URLsForResourcesWithExtension:@"loctable" subdirectory:nil]) {
-        NSDictionary *table = [NSDictionary dictionaryWithContentsOfURL:url];
-        if (![table isKindOfClass:[NSDictionary class]]) continue;
-        for (NSString *key in table) {
-            if ([table[key] isKindOfClass:[NSDictionary class]]) {
-                [tables addObject:table];
-                break;
-            }
-        }
-    }
-    return tables;
-}
-
-// Picks the loctable locale ("zh_CN", "en", "pt_BR") closest to the device's
-// preferred languages ("zh-Hans-CN", "zh-Hans", "zh"). Apple loctables tag
-// regions rather than scripts, so Chinese scripts fold onto CN/TW.
-+ (NSString *)bestLocaleForTable:(NSDictionary *)table {
-    if (table.count == 0) return nil;
-    NSMutableDictionary *byLowercase = [NSMutableDictionary dictionary];
-    for (NSString *key in table) byLowercase[key.lowercaseString] = key;
-
-    for (NSString *language in [NSLocale preferredLanguages]) {
-        NSArray *parts = [[language stringByReplacingOccurrencesOfString:@"-" withString:@"_"]
-            componentsSeparatedByString:@"_"];
-        if (parts.count == 0) continue;
-        NSString *base = ((NSString *)parts[0]).lowercaseString;
-
-        NSMutableArray *candidates = [NSMutableArray array];
-        if (parts.count >= 3) {
-            NSString *script = ((NSString *)parts[1]).lowercaseString;
-            NSString *region = [script isEqualToString:@"hans"] ? @"cn" : ([script isEqualToString:@"hant"] ? @"tw" : nil);
-            if (region) [candidates addObject:[NSString stringWithFormat:@"%@_%@", base, region]];
-        }
-        if (parts.count >= 2) [candidates addObject:[NSString stringWithFormat:@"%@_%@", base, ((NSString *)parts[1]).lowercaseString]];
-        [candidates addObject:base];
-
-        for (NSString *candidate in candidates) {
-            NSString *match = byLowercase[candidate];
-            if (match) return match;
-        }
-    }
-    return byLowercase[@"en"] ?: byLowercase[@"en_us"];
-}
-
-+ (NSString *)localizedAppIntentTitleForKey:(NSString *)key
-                                   inBundle:(NSBundle *)bundle
-                                  loctables:(NSArray<NSDictionary *> *)loctables {
-    if (key.length == 0) return nil;
-    for (id tableRef in @[[NSNull null], @"AppIntents", @"Localizable"]) {
-        NSString *value = [bundle localizedStringForKey:key value:nil
-                                                  table:[tableRef isKindOfClass:[NSString class]] ? tableRef : nil];
-        if ([value isKindOfClass:[NSString class]] && value.length > 0 && ![value isEqualToString:key]) return value;
-    }
-    for (NSDictionary *table in loctables) {
-        NSString *locale = [self bestLocaleForTable:table];
-        if (!locale) continue;
-        NSString *value = table[locale][key];
-        if ([value isKindOfClass:[NSString class]] && value.length > 0) return value;
-    }
-    return key;
-}
-
-+ (NSArray<DXPAppShortcutItem *> *)appIntentShortcutItemsForProxy:(LSApplicationProxy *)proxy {
-    NSURL *appURL = proxy.bundleURL;
-    if (![appURL isKindOfClass:[NSURL class]]) return @[];
-
-    // Metadata.appintents exists wherever the AppShortcutsProvider is
-    // compiled, not only in the app root: extensions (PlugIns/*.appex, e.g.
-    // Weather) AND embedded frameworks (Frameworks/*.framework — Photos'
-    // menu items live in PhotosUICore.framework, not the app bundle root).
-    // The icon long-press menu merges them all, so every container is read.
-    NSArray<NSURL *> *bundleURLs = [self shortcutContainerURLsForAppURL:appURL];
-
-    NSMutableArray<DXPAppShortcutItem *> *results = [NSMutableArray array];
-    NSMutableSet<NSString *> *seen = [NSMutableSet set];
-    for (NSURL *containerURL in bundleURLs) {
-        NSURL *actionsURL = [[containerURL URLByAppendingPathComponent:@"Metadata.appintents"]
-            URLByAppendingPathComponent:@"extract.actionsdata"];
-        NSData *data = [NSData dataWithContentsOfFile:actionsURL.path];
-        if (!data) continue;
-        id document = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-        if (![document isKindOfClass:[NSDictionary class]]) continue;
-        id shortcuts = document[@"autoShortcuts"];
-        if (![shortcuts isKindOfClass:[NSArray class]]) shortcuts = document[@"appShortcuts"];
-        if (![shortcuts isKindOfClass:[NSArray class]]) {
-            NSLog(@"[TypeX] shortcuts: Metadata.appintents without shortcuts array in %@", containerURL.path ?: @"");
-            continue;
-        }
-
-        NSBundle *bundle = [NSBundle bundleWithURL:containerURL];
-        NSArray<NSDictionary *> *loctables = [self readableLoctablesForBundle:bundle];
-        for (NSDictionary *shortcut in shortcuts) {
-            if (![shortcut isKindOfClass:[NSDictionary class]]) continue;
-            NSString *action = [shortcut[@"actionIdentifier"] isKindOfClass:[NSString class]] ? shortcut[@"actionIdentifier"] : nil;
-            if (action.length == 0) action = [shortcut[@"intentIdentifier"] isKindOfClass:[NSString class]] ? shortcut[@"intentIdentifier"] : nil;
-            if (action.length == 0 || [seen containsObject:action]) continue;
-            [seen addObject:action];
-
-            id shortTitle = shortcut[@"shortTitle"];
-            NSString *titleKey = nil;
-            if ([shortTitle isKindOfClass:[NSDictionary class]] && [shortTitle[@"key"] isKindOfClass:[NSString class]]) {
-                titleKey = shortTitle[@"key"];
-            } else if ([shortTitle isKindOfClass:[NSString class]]) {
-                titleKey = shortTitle;
-            }
-
-            DXPAppShortcutItem *entry = [[DXPAppShortcutItem alloc] init];
-            entry.type = action;
-            entry.title = [self localizedAppIntentTitleForKey:titleKey.length > 0 ? titleKey : action
-                                                     inBundle:bundle loctables:loctables] ?: action;
-            entry.source = DXPAppShortcutSourceAppIntent;
-            [results addObject:entry];
-        }
-    }
-    return results;
-}
-
-// Merges one app's quick actions from all three sources into a group
-// dictionary, or nil when the app declares none. A type found in several
-// sources is kept once, in priority order (static, dynamic, App Shortcuts),
-// so the list never shows the same menu action twice.
-+ (NSDictionary *)shortcutGroupForProxy:(LSApplicationProxy *)proxy
-                               bundleID:(NSString *)bundleID
-                                   name:(NSString *)name {
-    // Reading another app's metadata goes through private lookup, bundle
-    // localization and container files; an exception there must only skip
-    // that app instead of crashing Settings when the page is opened.
-    NSArray<DXPAppShortcutItem *> *sourceItems[3];
-    @try {
-        sourceItems[0] = [self staticShortcutItemsForProxy:proxy] ?: @[];
-        sourceItems[1] = [self dynamicShortcutItemsForProxy:proxy bundleID:bundleID] ?: @[];
-        sourceItems[2] = [self appIntentShortcutItemsForProxy:proxy] ?: @[];
-    } @catch (NSException *exception) {
-        NSLog(@"[TypeX] shortcuts: skipped %@ (%@)", bundleID, exception);
-        return nil;
-    }
-    if (sourceItems[0].count == 0 && sourceItems[1].count == 0 && sourceItems[2].count == 0) return nil;
-
-    NSMutableSet<NSString *> *seenTypes = [NSMutableSet set];
-    NSMutableArray<DXPAppShortcutItem *> *items = [NSMutableArray array];
-    for (NSUInteger index = 0; index < 3; index++) {
-        for (DXPAppShortcutItem *item in sourceItems[index]) {
-            if ([seenTypes containsObject:item.type]) continue;
-            [seenTypes addObject:item.type];
-            [items addObject:item];
-        }
-    }
-    return @{@"name": name, @"bundleID": bundleID, @"items": [items copy]};
-}
-
-// Live icon-menu captures written by the SpringBoard side of the tweak
-// (TypeXSBShortcutsPath). A capture is a snapshot of one long-press, so
-// entries older than DXSBShortcutCaptureMaxAge are dropped rather than
-// outliving the app's own shortcut changes. The file lives under the shared
-// snapshot directory, which Settings reads like every other TypeX shared
-// preference.
-+ (NSDictionary<NSString *, NSArray<DXPAppShortcutItem *> *> *)springBoardCapturedShortcutsByBundleID {
+// The whole catalogue is authored inside SpringBoard (see TypeX.xm): the
+// catalogue refresh writes every installed app's system-resolved static and
+// dynamic quick actions — the Home Screen menu's own data source, read via
+// SBApplicationController — plus each app's localized display name, and real
+// long-press captures overlay the same file. The Settings side only reads
+// the shared plist: no Launch Services enumeration, bundle scanning or App
+// Intents metadata parsing happens here at all, because the Settings process
+// cannot do those reliably on every iOS version (iOS 16 blocked Launch
+// Services enumeration indefinitely). Entries older than
+// DXSBShortcutCaptureMaxAge are dropped.
++ (NSArray<NSDictionary *> *)appShortcutGroups {
     @try {
         NSDictionary *root = [NSDictionary dictionaryWithContentsOfFile:TypeXSBShortcutsPath];
         NSDictionary *apps = [root[@"apps"] isKindOfClass:[NSDictionary class]] ? root[@"apps"] : nil;
-        if (apps.count == 0) return @{};
+        if (apps.count == 0) return @[];
 
         NSTimeInterval cutoff = [NSDate timeIntervalSinceReferenceDate] - DXSBShortcutCaptureMaxAge;
-        NSMutableDictionary<NSString *, NSArray<DXPAppShortcutItem *> *> *result = [NSMutableDictionary dictionary];
-        for (NSString *bundleID in apps.allKeys) {
+        NSMutableArray<NSDictionary *> *groups = [NSMutableArray array];
+        for (NSString *bundleID in apps) {
             if (![bundleID isKindOfClass:[NSString class]] || bundleID.length == 0) continue;
             NSDictionary *entry = [apps[bundleID] isKindOfClass:[NSDictionary class]] ? apps[bundleID] : nil;
             NSArray *rawItems = [entry[@"items"] isKindOfClass:[NSArray class]] ? entry[@"items"] : nil;
@@ -446,83 +200,19 @@ static NSInteger DXLastShortcutScanApplicationCount = 0;
                 item.source = DXPAppShortcutSourceSpringBoard;
                 [items addObject:item];
             }
-            if (items.count > 0) result[bundleID] = items;
-        }
-        return result;
-    } @catch (NSException *exception) {
-        NSLog(@"[TypeX] shortcuts: unreadable SpringBoard capture file (%@)", exception);
-        return @{};
-    }
-}
+            if (items.count == 0) continue;
 
-// A current SpringBoard snapshot is the authoritative menu for the app. Do
-// not append metadata-only rows: App Intents metadata may use a different
-// internal identifier from the composed SBS item, which would otherwise leave
-// raw localization keys (for example MOST_RECENT_PHOTO) beside the real,
-// localized Photos actions. Metadata remains the fallback when no live
-// snapshot could be fetched.
-+ (NSDictionary *)groupByPrependingCapturedItems:(NSArray<DXPAppShortcutItem *> *)capturedItems
-                                            group:(NSDictionary *)group
-                                         bundleID:(NSString *)bundleID
-                                             name:(NSString *)name {
-    return @{@"name": name, @"bundleID": bundleID, @"items": [capturedItems copy]};
-}
-
-+ (NSArray<NSDictionary *> *)appShortcutGroups {
-    @try {
-        NSDictionary<NSString *, NSArray<DXPAppShortcutItem *> *> *captured = [self springBoardCapturedShortcutsByBundleID];
-        NSMutableArray<NSDictionary *> *groups = [NSMutableArray array];
-        NSMutableSet<NSString *> *seen = [NSMutableSet set];
-        NSInteger scanned = 0, readable = 0;
-        for (LSApplicationProxy *proxy in [self installedAppProxies]) {
-            if (![proxy isKindOfClass:[self appProxyClass]]) continue;
-            NSString *bundleID = [self bundleIDForProxy:proxy];
-            NSString *name = proxy.localizedName;
-            if (bundleID.length == 0 || ![name isKindOfClass:[NSString class]] || name.length == 0) continue;
-            if ([seen containsObject:bundleID]) continue;
-            [seen addObject:bundleID];
-            scanned++;
-
-            // Reading another app's metadata goes through private lookup and
-            // bundle localization; an exception there must only skip that app
-            // instead of crashing Settings when the page is opened.
-            NSDictionary *group = nil;
-            @try {
-                group = [self shortcutGroupForProxy:proxy bundleID:bundleID name:name];
-            } @catch (NSException *exception) {
-                NSLog(@"[TypeX] shortcuts: skipped %@ (%@)", bundleID, exception);
-                group = nil;
-            }
-            // The composed SpringBoard list is the exact icon menu, so it
-            // replaces metadata guesses and also gives a group to apps whose
-            // metadata scan came up empty.
-            NSArray<DXPAppShortcutItem *> *capturedItems = captured[bundleID];
-            if (capturedItems.count > 0) {
-                group = [self groupByPrependingCapturedItems:capturedItems group:group bundleID:bundleID name:name];
-            }
-            if (group) {
-                readable++;
-                [groups addObject:group];
-            }
+            NSString *entryName = [entry[@"name"] isKindOfClass:[NSString class]] ? entry[@"name"] : nil;
+            NSString *name = entryName.length > 0 ? entryName : bundleID;
+            [groups addObject:@{@"name": name, @"bundleID": bundleID, @"items": items}];
         }
-        DXLastShortcutScanApplicationCount = scanned;
-        NSInteger sourceCounts[4] = {0, 0, 0, 0};
-        for (NSDictionary *group in groups) {
-            for (DXPAppShortcutItem *item in group[@"items"]) {
-                if ([item isKindOfClass:[DXPAppShortcutItem class]] &&
-                    item.source >= DXPAppShortcutSourceStatic && item.source <= DXPAppShortcutSourceSpringBoard) {
-                    sourceCounts[item.source]++;
-                }
-            }
-        }
-        NSLog(@"[TypeX] shortcuts scan: %ld apps, %ld with quick actions (static %ld, dynamic %ld, app intents %ld, live %ld)",
-              (long)scanned, (long)readable, (long)sourceCounts[0], (long)sourceCounts[1], (long)sourceCounts[2], (long)sourceCounts[3]);
         [groups sortUsingComparator:^NSComparisonResult(NSDictionary *left, NSDictionary *right) {
             return [left[@"name"] localizedStandardCompare:right[@"name"]];
         }];
+        NSLog(@"[TypeX] shortcuts: %ld groups from the shared catalogue", (long)groups.count);
         return groups;
     } @catch (NSException *exception) {
-        NSLog(@"[TypeX] shortcuts scan failed: %@", exception);
+        NSLog(@"[TypeX] shortcuts: shared catalogue unreadable (%@)", exception);
         return @[];
     }
 }

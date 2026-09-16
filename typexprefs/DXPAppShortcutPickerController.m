@@ -21,7 +21,6 @@ static NSBundle *tweakBundle;
 @property (nonatomic, strong) UISearchController *searchController;
 @property (nonatomic, copy) NSString *searchText;
 @property (nonatomic, strong) NSArray<NSDictionary *> *groups;
-@property (nonatomic, strong) NSArray<NSString *> *shortcutRefreshBundleIDs;
 @property (nonatomic, assign) BOOL didRequestShortcutRefresh;
 - (void)loadGroups;
 - (void)requestSpringBoardShortcutRefreshIfNeeded;
@@ -44,18 +43,15 @@ static void DXPShortcutSnapshotChanged(CFNotificationCenterRef center,
 
 - (void)loadGroups {
     __weak typeof(self) weakSelf = self;
+    // The catalogue is one small shared plist authored by SpringBoard: a
+    // plain read that renders immediately and refreshes on the Darwin
+    // change notification after each catalogue rebuild.
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSArray<NSDictionary *> *groups = [DXPAppInfo appShortcutGroups] ?: @[];
-        NSMutableOrderedSet<NSString *> *bundleIDs = [NSMutableOrderedSet orderedSet];
-        for (DXPAppInfo *app in [DXPAppInfo installedApps]) {
-            if (DXIsValidBundleIdentifier(app.bundleID)) [bundleIDs addObject:app.bundleID];
-            if (bundleIDs.count >= 2048) break;
-        }
         dispatch_async(dispatch_get_main_queue(), ^{
             __strong typeof(weakSelf) strongSelf = weakSelf;
             if (!strongSelf) return;
             strongSelf.groups = groups;
-            strongSelf.shortcutRefreshBundleIDs = bundleIDs.array;
             [strongSelf.tableView reloadData];
             [strongSelf updateFooter];
             [strongSelf requestSpringBoardShortcutRefreshIfNeeded];
@@ -63,18 +59,21 @@ static void DXPShortcutSnapshotChanged(CFNotificationCenterRef center,
     });
 }
 
-// The Settings process can parse bundle metadata, but only SpringBoard has
-// full access to the final composed menu. Request one catalogue refresh after
-// the initial scan; the Darwin response reloads the picker with localized,
-// current SBSApplicationShortcutItem titles.
+// SpringBoard composes the real menu and is the only process with reliable
+// access to it: request one full catalogue refresh after the first paint.
+// The request carries no bundle list on purpose — SpringBoard enumerates
+// from its own Launch Services, which also covers Settings processes that
+// cannot enumerate anything (iOS 16). The Darwin response reloads the picker
+// with the composed SBSApplicationShortcutItem titles.
 - (void)requestSpringBoardShortcutRefreshIfNeeded {
     if (self.didRequestShortcutRefresh) return;
     self.didRequestShortcutRefresh = YES;
 
-    if (self.shortcutRefreshBundleIDs.count == 0) return;
-
-    NSDictionary *request = @{@"bundles": self.shortcutRefreshBundleIDs};
-    if (![request writeToFile:TypeXShortcutRefreshRequestPath atomically:YES]) return;
+    if (![ @{@"all": @YES} writeToFile:TypeXShortcutRefreshRequestPath atomically:YES]) return;
+    [@{
+        @"phase": @"request-written",
+        @"updated": @([NSDate timeIntervalSinceReferenceDate]),
+    } writeToFile:TypeXShortcutRefreshStatusPath atomically:YES];
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                          (__bridge CFStringRef)kShortcutRefreshRequestIdentifier,
                                          NULL, NULL, YES);
@@ -132,20 +131,14 @@ static void DXPShortcutSnapshotChanged(CFNotificationCenterRef center,
     return items[indexPath.row];
 }
 
-// Explains what the page lists (static items from each app bundle plus the
-// dynamic items apps registered on this device) and doubles as the empty-state
-// view. When empty, the scanned-app count distinguishes "no app declares
-// shortcuts" from "the scan found no apps at all".
+// Explains what the page lists (the shared catalogue SpringBoard authored
+// from each app's resolved quick actions) and doubles as the empty-state
+// view; the empty case points at the background build so a just-installed
+// state is not mistaken for a broken one.
 - (void)updateFooter {
-    NSString *text;
-    if ([self filteredGroups].count > 0) {
-        text = LOCALIZED(@"STATIC_SHORTCUTS_FOOTER");
-    } else {
-        NSInteger scanned = [DXPAppInfo lastShortcutScanApplicationCount];
-        text = scanned > 0
-            ? [NSString stringWithFormat:LOCALIZED(@"NO_APP_SHORTCUTS_SCANNED"), (long)scanned]
-            : LOCALIZED(@"NO_APP_SHORTCUTS");
-    }
+    NSString *text = [self filteredGroups].count > 0
+        ? LOCALIZED(@"STATIC_SHORTCUTS_FOOTER")
+        : LOCALIZED(@"NO_APP_SHORTCUTS");
 
     CGFloat width = self.tableView.bounds.size.width - 40;
     UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(20, 8, width, 40)];

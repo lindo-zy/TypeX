@@ -18,7 +18,7 @@ TypeX_FILES = $(wildcard *.x) $(wildcard *.m) $(wildcard *.mm) $(wildcard *.xm)
 TypeX_CFLAGS = -fobjc-arc
 TypeX_LIBRARIES =
 TypeX_FRAMEWORKS = UIKit CoreGraphics QuartzCore SafariServices
-TypeX_PRIVATE_FRAMEWORKS = AppSupport Preferences FrontBoardServices SpringBoardServices
+TypeX_PRIVATE_FRAMEWORKS = AppSupport Preferences FrontBoardServices SpringBoardServices MobileCoreServices
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 SUBPROJECTS += typexprefs

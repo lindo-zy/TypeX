@@ -11,6 +11,9 @@
 static const NSInteger DXCustomActionToastTag = 0x54584341;
 static const NSInteger DXSubActionPanelOverlayTag = 0x54585341;
 static __weak DXCollectionView *DXActiveSubActionPanelOwner;
+// Strong handle on the dedicated panel window (iOS 17+ presentation path);
+// created per present, hidden and released on dismiss.
+static UIWindow *DXSubActionPanelFloatingHostWindow;
 
 typedef void (^DXCustomActionOpenCompletion)(BOOL success);
 
@@ -1933,9 +1936,10 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }
 }
 
-// The @@@ placeholder receives the active input control's complete text:
-// percent-encoded for URL payloads, raw when the text lands in the input
-// field itself.
+// The @@@ placeholder receives the active input control's complete text,
+// percent-encoded. URL-ish payloads only (url / url scheme / legacy /
+// shortcut name) — text actions carry their own {{...}} templates and no
+// longer expand @@@.
 -(NSString *)expandedCustomActionPayload:(NSString *)payload escaped:(BOOL)escaped {
     if (payload.length == 0 || ![payload containsString:@"@@@"]) return payload;
     NSString *parameter = [self currentInputTextForCustomAction];
@@ -1943,18 +1947,103 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     return [payload stringByReplacingOccurrencesOfString:@"@@@" withString:parameter];
 }
 
-// Sends the configured text (template) to the active input field, at the
-// cursor, through the same channel the built-in paste action uses. The
-// private UIKeyboardImpl insert must stay a last-resort fallback: calling it
-// as the primary path crashes host apps on iOS 17, and no built-in action
-// reaches it in practice (their delegate-first ladder answers first).
--(void)performTextCustomAction:(NSString *)template {
-    NSString *text = [self expandedCustomActionPayload:template escaped:NO];
-    if (text.length == 0) {
-        [self showCustomActionLinkError];
+// Date/time piece for a text-action template. en_US_POSIX pins the digits and
+// separators so the user's 12-hour switch or calendar override cannot bend
+// the fixed formats.
+-(NSString *)formattedDateTimeForTemplate:(NSString *)format {
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    formatter.locale = [[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"];
+    formatter.dateFormat = format;
+    return [formatter stringFromDate:[NSDate date]] ?: @"";
+}
+
+// Text-action templates: {{clipboard}} {{selection}} {{date1}} {{date2}}
+// {{now1}} {{now2}} {{time}}, freely combinable. {{clipboard}} only expands
+// for textual clipboard content — an image on the pasteboard leaves the
+// placeholder untouched. Substitution runs in a single left-to-right pass so
+// a value pulled out of the clipboard or the field is never rescanned for
+// further placeholders; unknown {{...}} text passes through as-is.
+// {{selection}} folds the field's own content into the output, which the
+// caller learns through replacesField: the result must swap the whole
+// content, not append at the caret.
+-(NSString *)expandedTextTemplate:(NSString *)template replacesField:(BOOL *)replacesField {
+    if (template.length == 0 || ![template containsString:@"{{"]) return template;
+    if (replacesField) *replacesField = [template containsString:@"{{selection}}"];
+
+    NSString *clipboardText = nil;
+    if ([template containsString:@"{{clipboard}}"]) {
+        UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
+        clipboardText = pasteboard.hasStrings ? pasteboard.string : nil;
+    }
+
+    NSDictionary<NSString *, NSString *> *values = @{
+        @"{{clipboard}}": clipboardText ?: @"{{clipboard}}",
+        @"{{selection}}": [self currentInputTextForCustomAction],
+        @"{{date1}}": [self formattedDateTimeForTemplate:@"yyyy/MM/dd"],
+        @"{{date2}}": [self formattedDateTimeForTemplate:@"yyyy-MM-dd"],
+        @"{{now1}}": [self formattedDateTimeForTemplate:@"yyyy/MM/dd-HH:mm:ss"],
+        @"{{now2}}": [self formattedDateTimeForTemplate:@"yyyy-MM-dd-HH:mm:ss"],
+        @"{{time}}": [self formattedDateTimeForTemplate:@"HH:mm:ss"],
+    };
+
+    NSMutableString *output = [NSMutableString string];
+    NSRange search = NSMakeRange(0, template.length);
+    while (search.location < template.length) {
+        NSRange open = [template rangeOfString:@"{{" options:0 range:search];
+        if (open.location == NSNotFound) {
+            [output appendString:[template substringFromIndex:search.location]];
+            break;
+        }
+        if (open.location > search.location) {
+            [output appendString:[template substringWithRange:NSMakeRange(search.location, open.location - search.location)]];
+        }
+        NSRange close = [template rangeOfString:@"}}" options:0 range:NSMakeRange(open.location, template.length - open.location)];
+        if (close.location == NSNotFound) {
+            [output appendString:[template substringFromIndex:open.location]];
+            break;
+        }
+        NSString *placeholder = [template substringWithRange:NSMakeRange(open.location, NSMaxRange(close) - open.location)];
+        [output appendString:values[placeholder] ?: placeholder];
+        search.location = NSMaxRange(close);
+        search.length = template.length - search.location;
+    }
+    return output;
+}
+
+// Whole-content swap for {{selection}}: clears the document in place the same
+// way deleteAllAction does (direct whole-range selection, so no selection
+// highlight or handles ever appear). An empty field or an unusable protocol
+// skips the clear; the caller's insert then degrades to appending, which is
+// the correct result for an empty field anyway.
+-(void)clearAllInputTextForSelectionTemplate {
+    UIKeyboardImpl *impl = kbImpl ?: [objc_getClass("UIKeyboardImpl") activeInstance];
+    if (!impl) return;
+
+    if ([delegate respondsToSelector:@selector(selectedTextRange)]) {
+        UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
+        UITextRange *wholeRange = [tempDelegate textRangeFromPosition:[tempDelegate beginningOfDocument]
+                                                           toPosition:[tempDelegate endOfDocument]];
+        if (wholeRange == nil || [[tempDelegate textInRange:wholeRange] length] == 0) return;
+        tempDelegate.selectedTextRange = wholeRange;
+    }else if ([delegate respondsToSelector:@selector(selectAll:)]) {
+        [delegate selectAll:nil];
+    }else if ([delegate respondsToSelector:@selector(selectAll)]) {
+        [delegate selectAll];
+    }else{
         return;
     }
 
+    [impl deleteFromInput];
+    [impl clearTransientState];
+    [impl clearAnimations];
+    [impl setCaretBlinks:YES];
+}
+
+// Inserts at the caret through the same channel the built-in paste action
+// uses. The private UIKeyboardImpl insert must stay a last-resort fallback:
+// calling it as the primary path crashes host apps on iOS 17, and no built-in
+// action reaches it in practice (their delegate-first ladder answers first).
+-(void)insertTextIntoInputField:(NSString *)text {
     // insertText: is UIKeyInput — every real text responder
     // (UITextField/UITextView/web editors) implements it.
     if (delegate && [delegate respondsToSelector:@selector(insertText:)]) {
@@ -1981,6 +2070,21 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }
 }
 
+// Sends the configured text template to the active input field: plain text
+// lands at the cursor; a {{selection}} template replaces the whole field
+// content with the expanded output.
+-(void)performTextCustomAction:(NSString *)template {
+    BOOL replacesField = NO;
+    NSString *text = [self expandedTextTemplate:template replacesField:&replacesField];
+    if (text.length == 0) {
+        [self showCustomActionLinkError];
+        return;
+    }
+
+    if (replacesField) [self clearAllInputTextForSelectionTemplate];
+    [self insertTextIntoInputField:text];
+}
+
 // In-app open for the url type. SFSafariViewController needs a presenting
 // view controller, which only exists in host-app processes; SpringBoard (and
 // any presentation failure) returns NO so the caller falls back to the
@@ -2003,18 +2107,38 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }
 }
 
-// 打开应用 rides the SpringBoard channel instead of launching from the
-// keyboard process: restricted hosts (WeChat) block keyboard-side app
-// launches. The request is a plist {action, bundle} written into the shared
-// TypeX directory and announced with a Darwin notification; the
-// SpringBoard-injected dylib consumes it (see TypeX.xm) and performs the
-// launch natively. Fire-and-forget — SpringBoard has no failure channel back.
--(void)requestSpringBoardOpenApplication:(NSString *)bundleIdentifier {
-    NSDictionary *request = @{@"action": @"openapp", @"bundle": bundleIdentifier};
-    [request writeToFile:TypeXPendingActionPath atomically:YES];
+// Posts one pending-action request into the shared directory under a UNIQUE
+// file name (millisecond timestamp + UUID, see common.h): the old single
+// fixed path lost every request but the last of a burst — a URL-scheme tap
+// could execute a leftover 打开应用 request, or nothing at all, when two
+// writes landed between SpringBoard's reads. Fire-and-forget: SpringBoard
+// has no failure channel back.
+-(void)postPendingActionRequest:(NSDictionary *)request {
+    NSString *fileName = [NSString stringWithFormat:@"%@%013llu-%@.plist",
+                          TypeXPendingActionPrefix,
+                          (unsigned long long)([[NSDate date] timeIntervalSince1970] * 1000.0),
+                          [NSUUID UUID].UUIDString];
+    NSString *path = [TypeXCachePath stringByAppendingPathComponent:fileName];
+    if (![request writeToFile:path atomically:YES]) return;
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                          (__bridge CFStringRef)kPendingActionRequestIdentifier,
                                          NULL, NULL, YES);
+    // Re-post only while this exact file still exists. Once SpringBoard has
+    // consumed it there is no second notification for the same tap.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (![[NSFileManager defaultManager] fileExistsAtPath:path]) return;
+        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                             (__bridge CFStringRef)kPendingActionRequestIdentifier,
+                                             NULL, NULL, YES);
+    });
+}
+
+// 打开应用 rides the SpringBoard channel instead of launching from the
+// keyboard process: restricted hosts (WeChat) block keyboard-side app
+// launches.
+-(void)requestSpringBoardOpenApplication:(NSString *)bundleIdentifier {
+    [self postPendingActionRequest:@{@"action": @"openapp", @"bundle": bundleIdentifier}];
 }
 
 // App icon quick actions must be dispatched by SpringBoard. Besides avoiding
@@ -2023,29 +2147,21 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 // immediately before launching the owning app.
 -(void)requestSpringBoardOpenShortcut:(NSString *)shortcutType
                      bundleIdentifier:(NSString *)bundleIdentifier {
-    NSDictionary *request = @{
+    [self postPendingActionRequest:@{
         @"action": @"openshortcut",
         @"bundle": bundleIdentifier,
         @"shortcuttype": shortcutType,
-    };
-    [request writeToFile:TypeXPendingActionPath atomically:YES];
-    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
-                                         (__bridge CFStringRef)kPendingActionRequestIdentifier,
-                                         NULL, NULL, YES);
+    }];
 }
 
-// 悬浮面板 (sub-action) URL schemes ride the same channel: an open issued
-// from inside the host process is intercepted by restricted hosts, and
-// identity-gated schemes refuse host requesters outright, so the open must
-// be performed by SpringBoard itself. Fire-and-forget like openapp — the
-// payload is validated here and again on the SpringBoard side
-// (DXIsOpenableSchemeURLString).
+// URL schemes (typed, legacy-classified, or the legacy 快捷方式 shortcuts://
+// payload) ride this channel: an open issued from inside the host process is
+// intercepted by restricted hosts, and identity-gated schemes refuse host
+// requesters outright, so the open must be performed by SpringBoard itself.
+// Fire-and-forget like openapp — the payload is validated here and again on
+// the SpringBoard side (DXIsOpenableSchemeURLString).
 -(void)requestSpringBoardOpenURL:(NSURL *)url {
-    NSDictionary *request = @{@"action": @"openurl", @"url": url.absoluteString};
-    [request writeToFile:TypeXPendingActionPath atomically:YES];
-    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
-                                         (__bridge CFStringRef)kPendingActionRequestIdentifier,
-                                         NULL, NULL, YES);
+    [self postPendingActionRequest:@{@"action": @"openurl", @"url": url.absoluteString}];
 }
 
 -(BOOL)dispatchWebURLCustomAction:(NSString *)link inApp:(BOOL)inApp {
@@ -2086,13 +2202,13 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 // execution path; legacy entries without a type keep the old auto-detecting
 // link behavior. Sub-action-only types (打开应用 / 快捷方式) stay inert when
 // reached through a button gesture instead of the sub-action chain.
-// URL-scheme opens (typed or legacy-classified) go through the SpringBoard
-// channel when the action runs from the 悬浮面板/sub-action path: opens from
-// inside the host process get intercepted there.
+// URL-scheme opens (typed or legacy-classified), 打开应用 and 快捷方式 always
+// execute through the SpringBoard channel: opens issued from inside the host
+// process are intercepted by restricted hosts (WeChat), no matter which
+// gesture triggered the action.
 -(BOOL)dispatchLinkActionSelector:(NSString *)selectorName
                            sender:(UIButton *)sender
-       allowingSubActionOnlyTypes:(BOOL)allowSubActionOnly
-routingURLSchemesThroughSpringBoard:(BOOL)viaSpringBoard {
+       allowingSubActionOnlyTypes:(BOOL)allowSubActionOnly {
     NSDictionary *entry = preferencesLinkActionForSelector(selectorName);
     if (!entry) return NO;
 
@@ -2149,21 +2265,29 @@ routingURLSchemesThroughSpringBoard:(BOOL)viaSpringBoard {
         }
 
         // Entries configured before the quick-action payload keep the
-        // Shortcuts-app name (or full shortcuts:// URL) behavior.
+        // Shortcuts-app name (or full shortcuts:// URL) behavior. The open
+        // itself rides the SpringBoard channel like every other 快捷方式
+        // execution: an openURL issued from inside the host (keyboard)
+        // process is intercepted by restricted hosts, so SpringBoard performs
+        // it; direct opening stays only for SpringBoard itself.
         if (itemType.length == 0) {
             NSString *payload = [self expandedCustomActionPayload:link escaped:YES];
             NSURL *url = [payload containsString:@"://"] ? [NSURL URLWithString:payload]
                 : [NSURL URLWithString:[@"shortcuts://run-shortcut?name=" stringByAppendingString:payload]];
-            if (!url || url.scheme.length == 0) {
+            if (!url || url.scheme.length == 0 || !DXIsOpenableSchemeURLString(url.absoluteString)) {
                 [self showCustomActionLinkError];
                 [self autoPaginationControl];
                 return YES;
             }
-            [self openCustomActionURL:url completion:^(BOOL success) {
-                if (!success) {
-                    [self showCustomActionLinkError];
-                }
-            }];
+            if (isSpringBoard) {
+                [self openCustomActionURL:url completion:^(BOOL success) {
+                    if (!success) {
+                        [self showCustomActionLinkError];
+                    }
+                }];
+            } else {
+                [self requestSpringBoardOpenURL:url];
+            }
             [self autoPaginationControl];
             return YES;
         }
@@ -2187,14 +2311,14 @@ routingURLSchemesThroughSpringBoard:(BOOL)viaSpringBoard {
             return YES;
         }
         NSURL *url = [NSURL URLWithString:payload];
-        if (viaSpringBoard) {
-            [self requestSpringBoardOpenURL:url];
-        } else {
+        if (isSpringBoard) {
             [self openCustomActionURL:url completion:^(BOOL success) {
                 if (!success) {
                     [self showCustomActionLinkError];
                 }
             }];
+        } else {
+            [self requestSpringBoardOpenURL:url];
         }
         [self autoPaginationControl];
         return YES;
@@ -2226,25 +2350,32 @@ routingURLSchemesThroughSpringBoard:(BOOL)viaSpringBoard {
         }
 
         NSURL *url = [NSURL URLWithString:link];
-        if (viaSpringBoard) {
-            [self requestSpringBoardOpenURL:url];
-        } else {
+        if (isSpringBoard) {
             [self openCustomActionURL:url completion:^(BOOL success) {
                 if (!success) {
                     [self showCustomActionLinkError];
                 }
             }];
+        } else {
+            [self requestSpringBoardOpenURL:url];
         }
         [self autoPaginationControl];
         return YES;
     }
 
+    // Legacy bundle-ID links launch through the same SpringBoard channel as
+    // the typed 打开应用 action: a FrontBoard open issued from inside a
+    // restricted host is blocked there.
     if ([self isBundleIdentifier:link]) {
-        [self openApplicationWithBundleIdentifier:link completion:^(BOOL success) {
-            if (!success) {
-                [self showCustomActionLinkError];
-            }
-        }];
+        if (isSpringBoard) {
+            [self openApplicationWithBundleIdentifier:link completion:^(BOOL success) {
+                if (!success) {
+                    [self showCustomActionLinkError];
+                }
+            }];
+        } else {
+            [self requestSpringBoardOpenApplication:link];
+        }
         [self autoPaginationControl];
         return YES;
     }
@@ -2264,13 +2395,12 @@ routingURLSchemesThroughSpringBoard:(BOOL)viaSpringBoard {
 -(void)dispatchConfiguredActionSelector:(NSString *)selectorName
                                  sender:(UIButton *)sender
              allowingSubActionOnlyTypes:(BOOL)allowSubActionOnly {
-    // Sub-action executions (悬浮面板 item taps, single-chain runs) route
-    // URL schemes through the SpringBoard channel — the routing flag follows
-    // the sub-action flag — so restricted hosts cannot intercept the open.
+    // URL-scheme / 打开应用 / 快捷方式 opens route through the SpringBoard
+    // channel for every gesture (悬浮面板, taps, swipes), so restricted hosts
+    // cannot intercept the open.
     if ([self dispatchLinkActionSelector:selectorName
                                    sender:sender
-                 allowingSubActionOnlyTypes:allowSubActionOnly
-          routingURLSchemesThroughSpringBoard:allowSubActionOnly]) return;
+               allowingSubActionOnlyTypes:allowSubActionOnly]) return;
     if (![DXShortcutsGenerator isVisibleShortcutSelector:selectorName]) {
         return;
     }
@@ -2318,21 +2448,73 @@ routingURLSchemesThroughSpringBoard:(BOOL)viaSpringBoard {
     return [UIImage systemImageNamed:@"square.grid.2x2"];
 }
 
+// Creates (or reuses) the dedicated window that hosts the floating panel on
+// iOS 17+. There the system keyboard is a remotely hosted window whose
+// hierarchy no longer reliably renders foreign full-screen overlays or
+// routes their touches, so the panel lives in its own window instead: same
+// scene as the app's key window (falling back to the source window's scene,
+// then any foreground-active scene), full-screen, at a level above every
+// system window (status bar/alert/keyboard stay far below this). The window
+// is never made key, so the text input keeps first responder and the panel's
+// actions dispatch exactly as before. Returns nil when no usable scene
+// exists and the caller should fall back to the source window.
+static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
+    UIWindowScene *scene = DXKeyWindow().windowScene;
+    if (!scene) scene = sourceWindow.windowScene;
+    if (!scene) {
+        for (UIScene *candidate in UIApplication.sharedApplication.connectedScenes) {
+            if ([candidate isKindOfClass:[UIWindowScene class]] &&
+                candidate.activationState == UISceneActivationStateForegroundActive) {
+                scene = (UIWindowScene *)candidate;
+                break;
+            }
+        }
+    }
+    if (!scene) return nil;
+
+    if (DXSubActionPanelFloatingHostWindow) {
+        if (DXSubActionPanelFloatingHostWindow.windowScene == scene) {
+            DXSubActionPanelFloatingHostWindow.frame = scene.coordinateSpace.bounds;
+            DXSubActionPanelFloatingHostWindow.hidden = NO;
+            return DXSubActionPanelFloatingHostWindow;
+        }
+        DXSubActionPanelFloatingHostWindow.hidden = YES;
+        DXSubActionPanelFloatingHostWindow = nil;
+    }
+
+    UIWindow *window = [[UIWindow alloc] initWithWindowScene:scene];
+    window.frame = scene.coordinateSpace.bounds;
+    window.backgroundColor = UIColor.clearColor;
+    window.windowLevel = 1000000.0;
+    window.hidden = NO;
+    DXSubActionPanelFloatingHostWindow = window;
+    return window;
+}
+
 -(CGFloat)subActionPanelAnchorYInWindow:(UIWindow *)window {
-    CGRect toolbarFrame = [self convertRect:self.bounds toView:window];
+    // Measured inside the toolbar's own window first: convertRect:toView: is
+    // only defined within one window's hierarchy, and the iOS 17+ floating
+    // host window is not an ancestor of the toolbar. That window is
+    // full-screen at the scene origin, so its coordinates equal the source
+    // window's screen coordinates, which convertRect:toWindow:nil provides.
+    UIWindow *sourceWindow = self.window ?: [self keyWindow] ?: window;
+    CGRect toolbarFrame = [self convertRect:self.bounds toView:sourceWindow];
     CGFloat anchorY = CGRectGetMinY(toolbarFrame);
-    CGFloat minimumUsefulY = window.safeAreaInsets.top + 40.0;
-    CGFloat minimumWideWidth = CGRectGetWidth(window.bounds) * 0.72;
+    CGFloat minimumUsefulY = sourceWindow.safeAreaInsets.top + 40.0;
+    CGFloat minimumWideWidth = CGRectGetWidth(sourceWindow.bounds) * 0.72;
 
     // The bottom toolbar lives near the keyboard's bottom. Walk through its
     // full-width keyboard ancestors to find the keyboard's upper edge. The top
     // accessory toolbar is already at that edge, so its own frame wins.
-    for (UIView *ancestor = self.superview; ancestor && ancestor != window; ancestor = ancestor.superview) {
-        CGRect frame = [ancestor convertRect:ancestor.bounds toView:window];
+    for (UIView *ancestor = self.superview; ancestor && ancestor != sourceWindow; ancestor = ancestor.superview) {
+        CGRect frame = [ancestor convertRect:ancestor.bounds toView:sourceWindow];
         CGFloat candidateY = CGRectGetMinY(frame);
         if (CGRectGetWidth(frame) >= minimumWideWidth && candidateY > minimumUsefulY && candidateY < anchorY) {
             anchorY = candidateY;
         }
+    }
+    if (window != sourceWindow) {
+        anchorY = [sourceWindow convertRect:CGRectMake(0, anchorY, 1, 1) toWindow:nil].origin.y;
     }
     return anchorY;
 }
@@ -2348,8 +2530,18 @@ routingURLSchemesThroughSpringBoard:(BOOL)viaSpringBoard {
     self.subActionPanelSourceButton = nil;
     if (DXActiveSubActionPanelOwner == self) DXActiveSubActionPanelOwner = nil;
 
+    // The dedicated iOS 17+ host window dies with its overlay. Captured
+    // before the overlay leaves the hierarchy — afterwards its window reads
+    // as nil.
+    UIWindow *floatingHost = (overlay.window == DXSubActionPanelFloatingHostWindow)
+        ? DXSubActionPanelFloatingHostWindow : nil;
+
     void (^removePanel)(void) = ^{
         [overlay removeFromSuperview];
+        if (floatingHost) {
+            floatingHost.hidden = YES;
+            if (DXSubActionPanelFloatingHostWindow == floatingHost) DXSubActionPanelFloatingHostWindow = nil;
+        }
         if (completion) completion();
     };
     if (!animated) {
@@ -2384,22 +2576,33 @@ routingURLSchemesThroughSpringBoard:(BOOL)viaSpringBoard {
 
 -(void)presentSubActionChooserForButton:(UIButton *)button selectors:(NSArray<NSString *> *)selectors {
     if (selectors.count == 0) return;
-    UIWindow *window = button.window ?: self.window ?: [self keyWindow];
-    if (!window) return;
+    UIWindow *sourceWindow = button.window ?: self.window ?: [self keyWindow];
+    if (!sourceWindow) return;
+
+    // iOS 17+ presents in its own window (see DXSubActionPanelCreateHostWindow);
+    // older iOS keeps overlaying the keyboard's window directly, where the
+    // panel has always rendered and hit-tested correctly.
+    UIWindow *hostWindow = sourceWindow;
+    if (@available(iOS 17.0, *)) {
+        UIWindow *floating = DXSubActionPanelCreateHostWindow(sourceWindow);
+        if (floating) hostWindow = floating;
+    }
+    NSLog(@"[TypeX] panel: presenting %lu sub-actions in %@ (floating host: %d)",
+          (unsigned long)selectors.count, NSStringFromClass(hostWindow.class), hostWindow != sourceWindow);
 
     if (DXActiveSubActionPanelOwner && DXActiveSubActionPanelOwner != self) {
         [DXActiveSubActionPanelOwner dismissSubActionPanelAnimated:NO completion:nil];
     }
     [self dismissSubActionPanelAnimated:NO completion:nil];
 
-    UIControl *overlay = [[UIControl alloc] initWithFrame:window.bounds];
+    UIControl *overlay = [[UIControl alloc] initWithFrame:hostWindow.bounds];
     overlay.tag = DXSubActionPanelOverlayTag;
     overlay.backgroundColor = UIColor.clearColor;
     overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [overlay addTarget:self action:@selector(subActionPanelBackgroundTapped:) forControlEvents:UIControlEventTouchUpInside];
-    [window addSubview:overlay];
+    [hostWindow addSubview:overlay];
 
-    CGFloat windowWidth = CGRectGetWidth(window.bounds);
+    CGFloat windowWidth = CGRectGetWidth(hostWindow.bounds);
     CGFloat panelScale = preferencesFloat([self scopedPreferenceKey:kSubActionPanelScaleKey],
                                           subActionPanelScaleDefault) / 100.0;
     panelScale = MIN(1.2, MAX(0.5, panelScale));
@@ -2416,8 +2619,8 @@ routingURLSchemesThroughSpringBoard:(BOOL)viaSpringBoard {
     NSInteger rows = (selectors.count + columns - 1) / columns;
     CGFloat contentHeight = panelPadding * 2.0 + rows * itemHeight;
 
-    CGFloat safeTop = window.safeAreaInsets.top + 8.0;
-    CGFloat anchorY = [self subActionPanelAnchorYInWindow:window];
+    CGFloat safeTop = hostWindow.safeAreaInsets.top + 8.0;
+    CGFloat anchorY = [self subActionPanelAnchorYInWindow:hostWindow];
     CGFloat availableHeight = MAX(itemHeight + panelPadding * 2.0, anchorY - safeTop - 8.0);
     CGFloat panelHeight = MIN(contentHeight, MIN(availableHeight, 300.0 * panelScale));
     CGFloat panelY = MAX(safeTop, anchorY - panelHeight - 8.0);

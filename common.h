@@ -129,7 +129,8 @@ static inline BOOL DXIsSubActionOnlyCustomActionType(NSString *type) {
 // (Settings, SpringBoard) can refresh the snapshot without a helper daemon.
 #define TypeXCachePath DX_ROOT_PATH_NS(@"/Library/TypeX")
 #define TypeXSharedPrefsPath DX_ROOT_PATH_NS(@"/Library/TypeX/shared.plist")
-// 打开应用、应用长按快捷项 and 面板 URL scheme requests ride a file + Darwin notification
+// 打开应用、应用长按快捷项, 面板 URL scheme and 快捷方式 (shortcuts://)
+// requests ride a file + Darwin notification
 // channel into SpringBoard: the writing process posts
 // kPendingActionRequestIdentifier; the SpringBoard-injected dylib consumes
 // the file and performs the open natively. Opens made from inside a host
@@ -139,13 +140,27 @@ static inline BOOL DXIsSubActionOnlyCustomActionType(NSString *type) {
 // identifier, "openshortcut" with a bundle identifier plus the app-defined
 // UIApplicationShortcutItemType, and "openurl" with a scheme-validated URL
 // string — the channel never carries shell commands or arbitrary selectors.
+// Every request lands in its OWN file (TypeXPendingActionPrefix + timestamp
+// + UUID under the shared directory): the single fixed path lost every
+// request but the last of a burst when two writes landed between
+// SpringBoard's reads, executing the wrong action for a notification. The
+// timestamp in the name is the drain order on the SpringBoard side.
+// Reliability guard rails: SpringBoard purges leftover request files at dylib
+// load (before the observer registers — anything present pre-launch predates
+// this session, and executing it would replay a dead tap), the drain drops
+// requests older than its staleness window, merges a duplicate copy of an
+// action already executed in the same or a nearby drain, and paces consecutive
+// launches; the writer re-posts only while its request file remains unconsumed,
+// so a lost delivery cannot strand a file or execute an already-consumed tap.
 #define TypeXPendingActionPath DX_ROOT_PATH_NS(@"/Library/TypeX/pendingaction.plist")
+#define TypeXPendingActionPrefix @"pendingaction-"
 #define kPendingActionRequestIdentifier @"com.lindo.typex/pendingaction"
 
 // Settings asks SpringBoard to refresh the composed quick-action catalogue
 // through a separate request file so opening the picker cannot overwrite an
 // application/URL action that is being dispatched at the same moment.
 #define TypeXShortcutRefreshRequestPath DX_ROOT_PATH_NS(@"/Library/TypeX/shortcutrefresh.plist")
+#define TypeXShortcutRefreshStatusPath DX_ROOT_PATH_NS(@"/Library/TypeX/shortcutstatus.plist")
 #define kShortcutRefreshRequestIdentifier @"com.lindo.typex/shortcutrefresh"
 #define kShortcutSnapshotChangedIdentifier @"com.lindo.typex/shortcutschanged"
 
@@ -155,8 +170,9 @@ static inline BOOL DXIsSubActionOnlyCustomActionType(NSString *type) {
 // only SpringBoard can see, such as system-merged suggestions — per bundle
 // ID under the shared snapshot.  The Settings-side picker merges this file
 // as its freshest source (see DXPAppInfo):
-//   {format: 1, apps: {bundleID: {items: [{type, title, subtitle}],
-//                                   updated: <timeIntervalSinceReferenceDate>}}}
+//   {format: N, source: optional source name,
+//    apps: {bundleID: {items: [{type, title, subtitle}],
+//                      updated: <timeIntervalSinceReferenceDate>}}}
 #define TypeXSBShortcutsPath DX_ROOT_PATH_NS(@"/Library/TypeX/sbshortcuts.plist")
 // Captures are snapshots of one long-press; older ones must not outlive the
 // app's own shortcut changes, so the Settings side drops stale entries.
@@ -404,19 +420,4 @@ typedef NS_ENUM(NSInteger, DXStudlyCapsType){
 @property (nonatomic, copy) NSString *targetContentIdentifier;
 @property (nonatomic, copy) NSDictionary *userInfo;
 @property (nonatomic, retain) NSData *userInfoData;
-@end
-
-// SpringBoardServices' full-access shortcut catalogue. On iOS 16/17 the
-// synchronous selector returns SBSApplicationShortcutServiceFetchResult;
-// composedApplicationShortcutItems is the list SpringBoard formed after
-// merging the app's static and dynamic items.
-@interface SBSApplicationShortcutService : NSObject
-- (id)applicationShortcutItemsOfTypes:(unsigned long long)types
-                   forBundleIdentifier:(NSString *)bundleIdentifier;
-@end
-
-@interface SBSApplicationShortcutServiceFetchResult : NSObject
-@property (nonatomic, readonly) NSArray *composedApplicationShortcutItems;
-@property (nonatomic, readonly) NSArray *dynamicApplicationShortcutItems;
-@property (nonatomic, readonly) NSArray *staticApplicationShortcutItems;
 @end

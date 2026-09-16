@@ -246,7 +246,9 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
 
 - (NSString *)payloadBoxPlaceholder {
     if ([_displayedType isEqualToString:kCustomActionTypeURLScheme]) return @"example://open";
-    return LOCALIZED(@"TEXT_BOX_PLACEHOLDER");
+    // The text payload box carries no hint; the usage list lives in the
+    // section footer instead.
+    return @"";
 }
 
 #pragma mark - Table view
@@ -329,8 +331,9 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
         self.payloadBoxCell.textView.delegate = self;
         self.payloadBoxCell.textView.text = [self.entry[@"link"] isKindOfClass:[NSString class]] ? self.entry[@"link"] : @"";
     }
-    self.payloadBoxCell.placeholderLabel.text = [self payloadBoxPlaceholder];
-    self.payloadBoxCell.placeholderLabel.hidden = self.payloadBoxCell.textView.text.length > 0;
+    NSString *placeholder = [self payloadBoxPlaceholder];
+    self.payloadBoxCell.placeholderLabel.text = placeholder;
+    self.payloadBoxCell.placeholderLabel.hidden = placeholder.length == 0 || self.payloadBoxCell.textView.text.length > 0;
     return self.payloadBoxCell;
 }
 
@@ -457,7 +460,8 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
 #pragma mark - Text view
 
 - (void)textViewDidChange:(UITextView *)textView {
-    self.payloadBoxCell.placeholderLabel.hidden = textView.text.length > 0;
+    self.payloadBoxCell.placeholderLabel.hidden =
+        self.payloadBoxCell.placeholderLabel.text.length == 0 || textView.text.length > 0;
 }
 
 #pragma mark - Text fields

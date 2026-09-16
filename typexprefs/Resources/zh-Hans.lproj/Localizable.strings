@@ -160,11 +160,10 @@
 "SUB_ACTION_ONLY_SUFFIX" = "（仅子动作）";
 "URL_SCHEME_SETTINGS" = "URL Scheme 设置";
 "TEXT_SETTINGS" = "文本设置";
-"TEXT_BOX_PLACEHOLDER" = "输入要发送到输入框的文本，支持 @@@ 模板。";
 "URL_SETTINGS" = "URL 设置";
 "OPEN_IN_APP" = "APP内打开";
 "TYPE_FOOTER_URL_SCHEME" = "点击后执行 URL Scheme 打开跳转，沿用系统跳转方式；使用 @@@ 可传入当前输入框的内容作为入参。";
-"TYPE_FOOTER_TEXT" = "点击后将配置的文本发送到当前输入框或文本框；支持模板，@@@ 会替换为输入框当前内容。";
+"TYPE_FOOTER_TEXT" = "点击后将配置的文本发送到当前输入框，支持以下模板，可自由组合：\n{{clipboard}}：替换为剪贴板文本（剪贴板为图片时不替换）\n{{selection}}：替换为输入框当前内容，输出将整体替换输入框内容\n{{date1}}：当前日期，如 2026/09/15\n{{date2}}：当前日期，如 2026-09-15\n{{now1}}：当前日期+时间，如 2026/09/15-22:16:33\n{{now2}}：当前日期+时间，如 2026-09-15-22:16:33\n{{time}}：当前时间，如 22:16:33\n示例：设置为“你好:{{clipboard}}”，剪贴板为 alice 时输出“你好:alice”；设置为“你好:{{selection}}”，输入框内容为 123 时输入框变为“你好:123”";
 "TYPE_FOOTER_OPEN_APP" = "选择点击后打开的应用；该类型仅可在子动作中使用。";
 "TYPE_FOOTER_URL" = "点击后打开该网址，可选择在 APP 内或 APP 外打开；url 支持入参替换，使用 @@@ 传入当前输入框的内容。";
 "TYPE_FOOTER_SHORTCUT" = "选择应用长按菜单中的快捷项，点击后执行该项；该类型仅可在子动作中使用。";
@@ -177,9 +176,8 @@
 "SEARCH_PLACEHOLDER" = "搜索";
 "SELECTED" = "已选择";
 "UNSELECTED" = "未选择";
-"NO_APP_SHORTCUTS" = "没有找到应用快捷方式";
-"STATIC_SHORTCUTS_FOOTER" = "列出各应用的长按图标快捷方式：包括安装包内声明的静态项、应用运行时注册并保存在本机的动态项，以及在桌面长按图标时从真实菜单实时捕获的条目（含系统合并的建议；长按一次即可捕获）。系统桌面本身每个应用最多显示 4 项。";
-"NO_APP_SHORTCUTS_SCANNED" = "已扫描 %ld 个应用，未发现快捷方式；动态项会在应用注册后出现在此列表。";
+"NO_APP_SHORTCUTS" = "没有找到应用快捷方式。目录由系统桌面在后台构建：稍等片刻后重开此页；在桌面长按任意图标也会立即补充该应用的菜单。";
+"STATIC_SHORTCUTS_FOOTER" = "列出各应用的长按图标快捷方式：由系统桌面在后台从每个应用已解析的静态声明与运行时注册项构建；桌面长按图标时会以真实菜单（含系统合并的建议）实时覆盖。系统桌面本身每个应用最多显示 4 项。";
 "SHORTCUT_SOURCE_STATIC" = "静态";
 "SHORTCUT_SOURCE_DYNAMIC" = "动态";
 "SHORTCUT_SOURCE_APPINTENT" = "App 快捷指令";
