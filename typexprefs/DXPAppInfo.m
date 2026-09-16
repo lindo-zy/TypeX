@@ -14,10 +14,8 @@
 
 @interface LSApplicationWorkspace : NSObject
 + (instancetype)defaultWorkspace;
-- (NSArray *)allInstalledApplications;
-// The per-type enumeration answered reliably inside the Settings process on
-// iOS 14+ for reference tweaks; allInstalledApplications (below) has blocked
-// indefinitely where Launch Services never came up (iOS 16).
+// The reference implementation performs these two synchronous passes. Avoid
+// allInstalledApplications: it can block while LaunchServices is cold.
 - (void)enumerateApplicationsOfType:(NSUInteger)type block:(void (^)(LSApplicationProxy *proxy))block;
 @end
 
@@ -91,16 +89,8 @@
             }
         }
 
-        // Fallback: the whole-array fetch, fast where Launch Services is
-        // already warm (iOS 17 Settings).
-        if (![workspace respondsToSelector:@selector(allInstalledApplications)]) {
-            NSLog(@"[TypeX] shortcuts: default workspace cannot enumerate applications");
-            return @[];
-        }
-        NSArray *proxies = [workspace performSelector:@selector(allInstalledApplications)];
-        if (![proxies isKindOfClass:[NSArray class]]) return @[];
-        NSLog(@"[TypeX] shortcuts: enumerated %lu installed applications", (unsigned long)proxies.count);
-        return proxies;
+        NSLog(@"[TypeX] shortcuts: typed application enumeration returned no applications");
+        return @[];
     } @catch (NSException *exception) {
         NSLog(@"[TypeX] shortcuts: application enumeration failed (%@)", exception);
         return @[];
@@ -144,8 +134,8 @@
         if (![proxy respondsToSelector:@selector(applicationIdentifier)] &&
             ![proxy respondsToSelector:@selector(bundleIdentifier)]) continue;
         NSString *bundleID = [self bundleIDForProxy:proxy];
-        NSString *name = [self localizedNameForProxy:proxy];
-        if (bundleID.length == 0 || name.length == 0) continue;
+        NSString *name = [self localizedNameForProxy:proxy] ?: bundleID;
+        if (bundleID.length == 0) continue;
         if ([seen containsObject:bundleID]) continue;
         [seen addObject:bundleID];
 
@@ -160,30 +150,24 @@
     return apps;
 }
 
-// The whole catalogue is authored inside SpringBoard (see TypeX.xm): the
-// catalogue refresh writes every installed app's system-resolved static and
-// dynamic quick actions — the Home Screen menu's own data source, read via
-// SBApplicationController — plus each app's localized display name, and real
-// long-press captures overlay the same file. The Settings side only reads
-// the shared plist: no Launch Services enumeration, bundle scanning or App
-// Intents metadata parsing happens here at all, because the Settings process
-// cannot do those reliably on every iOS version (iOS 16 blocked Launch
-// Services enumeration indefinitely). Entries older than
-// DXSBShortcutCaptureMaxAge are dropped.
+// SpringBoard replaces the entire format-3 snapshot after reading each
+// SBApplication's current dynamic and static items. Settings only decodes the
+// stable display fields; execution resolves the original item again.
 + (NSArray<NSDictionary *> *)appShortcutGroups {
     @try {
-        NSDictionary *root = [NSDictionary dictionaryWithContentsOfFile:TypeXSBShortcutsPath];
+        NSDictionary *root = DXQuickActionSharedValue(TypeXQuickActionSnapshotKey);
+        if (![root[@"format"] isKindOfClass:[NSNumber class]] || [root[@"format"] integerValue] != 3) {
+            return @[];
+        }
         NSDictionary *apps = [root[@"apps"] isKindOfClass:[NSDictionary class]] ? root[@"apps"] : nil;
         if (apps.count == 0) return @[];
 
-        NSTimeInterval cutoff = [NSDate timeIntervalSinceReferenceDate] - DXSBShortcutCaptureMaxAge;
         NSMutableArray<NSDictionary *> *groups = [NSMutableArray array];
         for (NSString *bundleID in apps) {
             if (![bundleID isKindOfClass:[NSString class]] || bundleID.length == 0) continue;
             NSDictionary *entry = [apps[bundleID] isKindOfClass:[NSDictionary class]] ? apps[bundleID] : nil;
             NSArray *rawItems = [entry[@"items"] isKindOfClass:[NSArray class]] ? entry[@"items"] : nil;
-            double updated = [entry[@"updated"] isKindOfClass:[NSNumber class]] ? [entry[@"updated"] doubleValue] : 0;
-            if (rawItems.count == 0 || updated < cutoff) continue;
+            if (rawItems.count == 0) continue;
 
             NSMutableArray<DXPAppShortcutItem *> *items = [NSMutableArray array];
             NSMutableSet<NSString *> *seenTypes = [NSMutableSet set];
@@ -197,7 +181,9 @@
                 item.type = type;
                 item.title = [raw[@"title"] isKindOfClass:[NSString class]] ? raw[@"title"] : type;
                 item.subtitle = [raw[@"subtitle"] isKindOfClass:[NSString class]] ? raw[@"subtitle"] : nil;
-                item.source = DXPAppShortcutSourceSpringBoard;
+                NSString *source = [raw[@"source"] isKindOfClass:[NSString class]] ? raw[@"source"] : nil;
+                item.source = [source isEqualToString:@"dynamic"]
+                    ? DXPAppShortcutSourceDynamic : DXPAppShortcutSourceStatic;
                 [items addObject:item];
             }
             if (items.count == 0) continue;

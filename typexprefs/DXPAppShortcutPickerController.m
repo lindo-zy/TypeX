@@ -21,6 +21,7 @@ static NSBundle *tweakBundle;
 @property (nonatomic, strong) UISearchController *searchController;
 @property (nonatomic, copy) NSString *searchText;
 @property (nonatomic, strong) NSArray<NSDictionary *> *groups;
+@property (nonatomic, strong) NSArray<NSString *> *refreshBundleIdentifiers;
 @property (nonatomic, assign) BOOL didRequestShortcutRefresh;
 - (void)loadGroups;
 - (void)requestSpringBoardShortcutRefreshIfNeeded;
@@ -48,10 +49,16 @@ static void DXPShortcutSnapshotChanged(CFNotificationCenterRef center,
     // change notification after each catalogue rebuild.
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSArray<NSDictionary *> *groups = [DXPAppInfo appShortcutGroups] ?: @[];
+        NSArray<DXPAppInfo *> *installedApps = [DXPAppInfo installedApps] ?: @[];
+        NSMutableArray<NSString *> *bundleIdentifiers = [NSMutableArray arrayWithCapacity:installedApps.count];
+        for (DXPAppInfo *app in installedApps) {
+            if (app.bundleID.length > 0) [bundleIdentifiers addObject:app.bundleID];
+        }
         dispatch_async(dispatch_get_main_queue(), ^{
             __strong typeof(weakSelf) strongSelf = weakSelf;
             if (!strongSelf) return;
             strongSelf.groups = groups;
+            strongSelf.refreshBundleIdentifiers = bundleIdentifiers;
             [strongSelf.tableView reloadData];
             [strongSelf updateFooter];
             [strongSelf requestSpringBoardShortcutRefreshIfNeeded];
@@ -61,19 +68,25 @@ static void DXPShortcutSnapshotChanged(CFNotificationCenterRef center,
 
 // SpringBoard composes the real menu and is the only process with reliable
 // access to it: request one full catalogue refresh after the first paint.
-// The request carries no bundle list on purpose — SpringBoard enumerates
-// from its own Launch Services, which also covers Settings processes that
-// cannot enumerate anything (iOS 16). The Darwin response reloads the picker
-// with the composed SBSApplicationShortcutItem titles.
+// Settings supplies the same two-pass LaunchServices enumeration used by the
+// reference implementation. SpringBoard has an application-registry fallback
+// if that list is empty.
 - (void)requestSpringBoardShortcutRefreshIfNeeded {
     if (self.didRequestShortcutRefresh) return;
+    NSString *requestID = [NSUUID UUID].UUIDString;
+    NSDictionary *request = @{
+        @"format": @3,
+        @"requestID": requestID,
+        @"bundles": self.refreshBundleIdentifiers ?: @[],
+    };
+    if (!DXSetQuickActionSharedValue(request, TypeXQuickActionRequestKey)) return;
     self.didRequestShortcutRefresh = YES;
-
-    if (![ @{@"all": @YES} writeToFile:TypeXShortcutRefreshRequestPath atomically:YES]) return;
-    [@{
+    DXSetQuickActionSharedValue(@{
         @"phase": @"request-written",
+        @"requestID": requestID,
+        @"requestedApps": @(self.refreshBundleIdentifiers.count),
         @"updated": @([NSDate timeIntervalSinceReferenceDate]),
-    } writeToFile:TypeXShortcutRefreshStatusPath atomically:YES];
+    }, TypeXQuickActionStatusKey);
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                          (__bridge CFStringRef)kShortcutRefreshRequestIdentifier,
                                          NULL, NULL, YES);
@@ -179,18 +192,9 @@ static void DXPShortcutSnapshotChanged(CFNotificationCenterRef center,
     DXPAppShortcutItem *item = [self itemForIndexPath:indexPath];
     if (item) {
         cell.textLabel.text = item.title ?: item.type;
-        // Source tag tells the four planes apart: a live entry captured from
-        // the real SpringBoard menu (freshest, includes system-merged
-        // suggestions), a dynamic entry (present only because the app
-        // registered it on this device), an App Shortcut (iOS 16+ App
-        // Intents), and a static one from the app bundle.
-        NSString *source = item.source == DXPAppShortcutSourceSpringBoard
-            ? LOCALIZED(@"SHORTCUT_SOURCE_SPRINGBOARD")
-            : (item.source == DXPAppShortcutSourceDynamic
-                ? LOCALIZED(@"SHORTCUT_SOURCE_DYNAMIC")
-                : (item.source == DXPAppShortcutSourceAppIntent
-                    ? LOCALIZED(@"SHORTCUT_SOURCE_APPINTENT")
-                    : LOCALIZED(@"SHORTCUT_SOURCE_STATIC")));
+        NSString *source = item.source == DXPAppShortcutSourceDynamic
+            ? LOCALIZED(@"SHORTCUT_SOURCE_DYNAMIC")
+            : LOCALIZED(@"SHORTCUT_SOURCE_STATIC");
         cell.detailTextLabel.text = item.type.length > 0
             ? [NSString stringWithFormat:@"%@ · %@", item.type, source]
             : source;

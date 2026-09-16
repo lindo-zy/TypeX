@@ -175,12 +175,10 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SEARCH_PLACEHOLDER" = "Search";
 "SELECTED" = "Selected";
 "UNSELECTED" = "Not Selected";
-"NO_APP_SHORTCUTS" = "No app shortcuts found. The catalogue is built by SpringBoard in the background; reopen this page in a moment. Long-pressing any icon on the Home Screen also adds that app\u2019s entries right away.";
-"STATIC_SHORTCUTS_FOOTER" = "Lists each app\u2019s long-press quick actions, built in the background by SpringBoard from each app\u2019s resolved static declarations and runtime-registered items; long-pressing an icon on the Home Screen overlays the real menu (including system-merged suggestions). The Home Screen itself shows at most four entries per app.";
+"NO_APP_SHORTCUTS" = "No app shortcuts found. SpringBoard is refreshing the current static and dynamic shortcuts; reopen this page in a moment.";
+"STATIC_SHORTCUTS_FOOTER" = "Lists each app\u2019s current static declarations and runtime-registered quick actions as resolved by SpringBoard. The shortcut object is resolved again immediately before execution.";
 "SHORTCUT_SOURCE_STATIC" = "Static";
 "SHORTCUT_SOURCE_DYNAMIC" = "Dynamic";
-"SHORTCUT_SOURCE_APPINTENT" = "App Shortcut";
-"SHORTCUT_SOURCE_SPRINGBOARD" = "Live";
 
 //=====================SHELL COMMAND BEHAVIOR=====================
 "SHELL_TITLE" = "Title";

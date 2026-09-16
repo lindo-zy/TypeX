@@ -156,27 +156,42 @@ static inline BOOL DXIsSubActionOnlyCustomActionType(NSString *type) {
 #define TypeXPendingActionPrefix @"pendingaction-"
 #define kPendingActionRequestIdentifier @"com.lindo.typex/pendingaction"
 
-// Settings asks SpringBoard to refresh the composed quick-action catalogue
-// through a separate request file so opening the picker cannot overwrite an
-// application/URL action that is being dispatched at the same moment.
-#define TypeXShortcutRefreshRequestPath DX_ROOT_PATH_NS(@"/Library/TypeX/shortcutrefresh.plist")
-#define TypeXShortcutRefreshStatusPath DX_ROOT_PATH_NS(@"/Library/TypeX/shortcutstatus.plist")
+// Settings and SpringBoard exchange quick-action data through an isolated
+// CFPreferences domain. On RootHide iOS 16, SpringBoard can read shared files
+// but its sandbox rejects direct writes under /Library/TypeX; cfprefsd provides
+// the supported cross-process persistence path. Requests carry
+// {format: 3, requestID, bundles}; responses replace one complete generation.
+#define TypeXQuickActionDomain @"com.lindo.typex.quickactions"
+#define TypeXQuickActionRequestKey @"request-v3"
+#define TypeXQuickActionStatusKey @"status-v3"
+#define TypeXQuickActionSnapshotKey @"snapshot-v3"
 #define kShortcutRefreshRequestIdentifier @"com.lindo.typex/shortcutrefresh"
 #define kShortcutSnapshotChangedIdentifier @"com.lindo.typex/shortcutschanged"
 
-// Real icon-menu quick actions captured inside SpringBoard (see TypeX.xm):
-// hooks around the shortcut-menu data source (SBIconView /
-// SBIconController) persist the exact merged item list — including entries
-// only SpringBoard can see, such as system-merged suggestions — per bundle
-// ID under the shared snapshot.  The Settings-side picker merges this file
-// as its freshest source (see DXPAppInfo):
-//   {format: N, source: optional source name,
-//    apps: {bundleID: {items: [{type, title, subtitle}],
-//                      updated: <timeIntervalSinceReferenceDate>}}}
-#define TypeXSBShortcutsPath DX_ROOT_PATH_NS(@"/Library/TypeX/sbshortcuts.plist")
-// Captures are snapshots of one long-press; older ones must not outlive the
-// app's own shortcut changes, so the Settings side drops stale entries.
-#define DXSBShortcutCaptureMaxAge (7.0 * 24 * 3600)
+// Complete SpringBoard-authored snapshot of each app's current static and
+// dynamic UIApplicationShortcutItems. The value is replaced as one generation,
+// so removed apps and actions cannot survive an incremental merge:
+//   {format: 3, generation: requestID, updated: time,
+//    apps: {bundleID: {name, items: [{type, title, subtitle, source}]}}}
+
+static inline id DXQuickActionSharedValue(NSString *key) {
+    CFStringRef domain = (__bridge CFStringRef)TypeXQuickActionDomain;
+    CFPreferencesSynchronize(domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+    return CFBridgingRelease(CFPreferencesCopyValue((__bridge CFStringRef)key,
+                                                    domain,
+                                                    kCFPreferencesCurrentUser,
+                                                    kCFPreferencesAnyHost));
+}
+
+static inline BOOL DXSetQuickActionSharedValue(id value, NSString *key) {
+    CFStringRef domain = (__bridge CFStringRef)TypeXQuickActionDomain;
+    CFPreferencesSetValue((__bridge CFStringRef)key,
+                          (__bridge CFPropertyListRef)value,
+                          domain,
+                          kCFPreferencesCurrentUser,
+                          kCFPreferencesAnyHost);
+    return CFPreferencesSynchronize(domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+}
 
 // Reverse-DNS shape test shared with the SpringBoard-side request handler so
 // the channel can never be coerced into acting on a non-identifier payload.
@@ -402,22 +417,4 @@ typedef NS_ENUM(NSInteger, DXStudlyCapsType){
 - (void)openApplication:(id)request
                 options:(id)options
       withResultHandler:(void (^)(NSError *error))resultHandler;
-@end
-
-// Home-screen quick action object used by SpringBoard's long-press menu. TypeX
-// passes the current object to SBIconView's own activation entry so both
-// UIApplicationShortcutItem and App Intents-backed actions follow the system
-// dispatch path.
-@class SBSApplicationShortcutIcon;
-
-@interface SBSApplicationShortcutItem : NSObject
-@property (nonatomic, assign) unsigned long long activationMode;
-@property (nonatomic, copy) NSString *type;
-@property (nonatomic, copy) NSString *localizedTitle;
-@property (nonatomic, copy) NSString *localizedSubtitle;
-@property (nonatomic, retain) SBSApplicationShortcutIcon *icon;
-@property (nonatomic, copy) NSString *bundleIdentifierToLaunch;
-@property (nonatomic, copy) NSString *targetContentIdentifier;
-@property (nonatomic, copy) NSDictionary *userInfo;
-@property (nonatomic, retain) NSData *userInfoData;
 @end

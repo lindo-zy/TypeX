@@ -2142,9 +2142,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 // App icon quick actions must be dispatched by SpringBoard. Besides avoiding
-// host-process launch restrictions, SpringBoard can re-fetch the complete
-// SBSApplicationShortcutItem (userInfo/targetContentIdentifier included)
-// immediately before launching the owning app.
+// host-process launch restrictions, the provider re-fetches the current item
+// (including userInfo/targetContentIdentifier) immediately before activation.
 -(void)requestSpringBoardOpenShortcut:(NSString *)shortcutType
                      bundleIdentifier:(NSString *)bundleIdentifier {
     [self postPendingActionRequest:@{
