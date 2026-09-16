@@ -1012,18 +1012,15 @@ static void shortcutRefreshRequestCallback(CFNotificationCenterRef center,
     for (id value in rawBundles) {
         if (DXIsValidBundleIdentifier(value)) [bundleIdentifiers addObject:value];
     }
-    // iOS 16 deliberately receives an empty list here: its dedicated SGP-style
-    // path enumerates LSApplicationProxy objects itself so the localized app
-    // name and bundle identifier come from the same authoritative pass. iOS 17
-    // keeps the existing icon-menu path and only needs bundle identifiers.
-    if (@available(iOS 17.0, *)) {
-        if (bundleIdentifiers.count == 0) {
-            [bundleIdentifiers addObjectsFromArray:DXSBAllInstalledBundleIdentifiers()];
-        }
-        if (bundleIdentifiers.count == 0) {
-            NSLog(@"[TypeX] sbshortcuts: refresh request with no enumerable applications");
-            return;
-        }
+    // The catalogue pipeline is the same on every OS version, so an empty
+    // bundle list (the picker can no longer enumerate on some iOS versions)
+    // is always filled from SpringBoard's own Launch Services.
+    if (bundleIdentifiers.count == 0) {
+        [bundleIdentifiers addObjectsFromArray:DXSBAllInstalledBundleIdentifiers()];
+    }
+    if (bundleIdentifiers.count == 0) {
+        NSLog(@"[TypeX] sbshortcuts: refresh request with no enumerable applications");
+        return;
     }
     DXSBRefreshShortcutSnapshots(bundleIdentifiers.array);
 }
@@ -1749,9 +1746,10 @@ static NSString *DXSBDisplayNameForBundleIdentifier(NSString *bundleIdentifier) 
 
 // The bundle-metadata scanners below are the proven Settings-side sources
 // (static Info.plist items, UIKit-persisted dynamic items, App Intents
-// build metadata), ported to run inside SpringBoard as the iOS 16 fallback:
-// on iOS 16 the SBApplication model above frequently answers nothing, which
-// left the catalogue completely empty there.
+// build metadata), ported to run inside SpringBoard. They are the universal
+// fallback for apps whose SBApplication model answers nothing — frequent
+// enough on some iOS builds (notably iOS 16) to empty the catalogue without
+// it — and run on every OS version.
 
 static id DXSBProxyForBundleIdentifier(NSString *bundleIdentifier) {
     DXSBEnsureLaunchServicesLoaded();
@@ -2034,195 +2032,12 @@ static NSArray *DXSBSBApplicationShortcutItems(NSString *bundleIdentifier) {
         if (launchable.count > 0) return launchable;
     }
 
-    // iOS 16 uses only SpringBoard's resolved static + dynamic model, matching
-    // SquidGesturePro. A bundle scan would reintroduce raw localization keys,
-    // stale dynamic data and App Intent rows that are not in this API's menu.
-    if (@available(iOS 17.0, *)) {
-        // Preserve the already-working iOS 17 fallback for an app whose icon
-        // view and SBApplication model both answer no composed items.
-        return DXSBLaunchableShortcutItems(DXSBMetadataShortcutItemsForBundleIdentifier(bundleIdentifier));
-    }
-    return @[];
-}
-
-// One iOS 16 application record produced by the same two Launch Services
-// passes used by SquidGesturePro: type 0 (system) and type 1 (user). Returning
-// nil means the private API was unavailable or threw; an empty-but-valid scan
-// is represented by an empty array so callers can avoid publishing stale data.
-static NSArray<NSDictionary *> *DXSBiOS16InstalledApplicationRecords(void) {
-    DXSBEnsureLaunchServicesLoaded();
-    Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
-    SEL sharedSelector = NSSelectorFromString(@"defaultWorkspace");
-    SEL enumerateSelector = NSSelectorFromString(@"enumerateApplicationsOfType:block:");
-    NSMutableArray<NSDictionary *> *records = [NSMutableArray array];
-    NSMutableSet<NSString *> *seen = [NSMutableSet set];
-    void (^appendRecord)(id, BOOL) = ^(id object, BOOL launchServicesObject) {
-        NSString *bundleIdentifier = launchServicesObject
-            ? (DXSBReadStringProperty(object, @"applicationIdentifier")
-               ?: DXSBReadStringProperty(object, @"bundleIdentifier"))
-            : (DXSBReadStringProperty(object, @"bundleIdentifier")
-               ?: DXSBReadStringProperty(object, @"applicationIdentifier"));
-        if (!DXIsValidBundleIdentifier(bundleIdentifier) || [seen containsObject:bundleIdentifier]) return;
-        [seen addObject:bundleIdentifier];
-
-        NSString *name = launchServicesObject
-            ? DXSBReadStringProperty(object, @"localizedName")
-            : (DXSBReadStringProperty(object, @"displayName")
-               ?: DXSBReadStringProperty(object, @"applicationDisplayName"));
-        NSMutableDictionary *record = [@{@"bundleID": bundleIdentifier} mutableCopy];
-        if (name.length > 0) record[@"name"] = name;
-        [records addObject:record];
-    };
-
-    if (workspaceClass && [workspaceClass respondsToSelector:sharedSelector]) {
-        id workspace = ((id (*)(id, SEL))objc_msgSend)(workspaceClass, sharedSelector);
-        if (workspace && [workspace respondsToSelector:enumerateSelector]) {
-            @try {
-                for (NSUInteger type = 0; type <= 1; type++) {
-                    ((void (*)(id, SEL, NSUInteger, void (^)(id)))objc_msgSend)(
-                        workspace, enumerateSelector, type, ^(id proxy) {
-                            appendRecord(proxy, YES);
-                        });
-                }
-            } @catch (NSException *exception) {
-                NSLog(@"[TypeX] sbshortcuts: iOS 16 SGP application enumeration failed (%@)", exception);
-            }
-        }
-    }
-
-    // Some RootHide iOS 16 SpringBoard builds do not vend Launch Services to
-    // injected dylibs even after the framework is loaded. SpringBoard already
-    // owns the authoritative application collection, so union it here. This
-    // remains the same SBApplication data source used for shortcut extraction.
-    id controller = DXSBSBApplicationController();
-    id allApplications = DXSBReadObjectProperty(controller, @"allApplications");
-    if ([allApplications conformsToProtocol:@protocol(NSFastEnumeration)]) {
-        for (id application in allApplications) appendRecord(application, NO);
-    }
-    if (records.count == 0) {
-        id allBundleIdentifiers = DXSBReadObjectProperty(controller, @"allBundleIdentifiers");
-        if ([allBundleIdentifiers conformsToProtocol:@protocol(NSFastEnumeration)]) {
-            for (id bundleIdentifier in allBundleIdentifiers) {
-                if (!DXIsValidBundleIdentifier(bundleIdentifier) || [seen containsObject:bundleIdentifier]) continue;
-                [seen addObject:bundleIdentifier];
-                [records addObject:@{@"bundleID": bundleIdentifier}];
-            }
-        }
-    }
-    return records;
-}
-
-// Rebuilds the iOS 16 catalogue from SpringBoard's own model in one main-thread
-// transaction. For every LSApplicationProxy, resolve SBApplication through
-// SBApplicationController, then concatenate its static and dynamic shortcut
-// arrays (with the SGP-observed info object as fallback). The new snapshot replaces the old one,
-// so removed apps/actions cannot survive as stale rows.
-static BOOL DXSBiOS16RebuildShortcutCatalogue(void) {
-    NSCAssert([NSThread isMainThread], @"iOS 16 shortcut catalogue must use SpringBoard's main thread");
-    DXSBWriteShortcutRefreshStatus(@"enumerating-applications", nil);
-
-    NSArray<NSDictionary *> *records = DXSBiOS16InstalledApplicationRecords();
-    if (records.count == 0) {
-        NSLog(@"[TypeX] sbshortcuts: iOS 16 SGP catalogue not published because enumeration was unavailable");
-        DXSBWriteShortcutRefreshStatus(@"application-enumeration-empty", nil);
-        return NO;
-    }
-    DXSBWriteShortcutRefreshStatus(@"reading-springboard-model",
-                                   @{@"applicationCount": @(records.count)});
-
-    NSMutableDictionary *apps = [NSMutableDictionary dictionary];
-    NSUInteger staticCount = 0;
-    NSUInteger dynamicCount = 0;
-    NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
-    for (NSDictionary *record in records) {
-        NSString *bundleIdentifier = record[@"bundleID"];
-        id application = DXSBSBApplicationForBundleIdentifier(bundleIdentifier);
-        if (!application) continue;
-
-        // SBApplication itself has exposed both shortcut arrays since iOS 10.
-        // Some iOS 16 builds also surface the static array through its `info`
-        // object (the route observed in SGP), so support both system-model
-        // locations without scanning the app bundle.
-        NSArray *staticItems = DXSBReadObjectProperty(application, @"staticApplicationShortcutItems");
-        NSArray *dynamicItems = DXSBReadObjectProperty(application, @"dynamicApplicationShortcutItems");
-        id info = DXSBReadObjectProperty(application, @"info");
-        if (![staticItems isKindOfClass:[NSArray class]]) {
-            staticItems = DXSBReadObjectProperty(info, @"staticApplicationShortcutItems");
-        }
-        if (![dynamicItems isKindOfClass:[NSArray class]]) {
-            dynamicItems = DXSBReadObjectProperty(info, @"dynamicApplicationShortcutItems");
-        }
-        if (![staticItems isKindOfClass:[NSArray class]]) staticItems = @[];
-        if (![dynamicItems isKindOfClass:[NSArray class]]) dynamicItems = @[];
-
-        NSMutableArray *resolvedItems = [NSMutableArray arrayWithCapacity:staticItems.count + dynamicItems.count];
-        [resolvedItems addObjectsFromArray:staticItems];
-        [resolvedItems addObjectsFromArray:dynamicItems];
-        NSArray *normalized = DXSBNormalizedShortcutItems(resolvedItems);
-        if (normalized.count == 0) continue;
-
-        staticCount += staticItems.count;
-        dynamicCount += dynamicItems.count;
-        DXSBRememberLiveShortcutItems(resolvedItems, bundleIdentifier);
-        NSMutableDictionary *entry = [@{@"items": normalized, @"updated": @(now)} mutableCopy];
-        NSString *name = record[@"name"];
-        if (name.length == 0) name = DXSBDisplayNameForBundleIdentifier(bundleIdentifier);
-        if (name.length > 0) entry[@"name"] = name;
-        apps[bundleIdentifier] = entry;
-    }
-
-    // A nonempty installed-app scan followed by zero resolved shortcut groups
-    // means SBApplicationController was not ready. Keep the prior snapshot and
-    // let reopening the picker retry instead of replacing valid data with nil.
-    if (apps.count == 0) {
-        NSLog(@"[TypeX] sbshortcuts: iOS 16 SGP catalogue not published because SpringBoard returned no shortcut groups");
-        DXSBWriteShortcutRefreshStatus(@"shortcut-groups-empty",
-                                       @{@"applicationCount": @(records.count)});
-        return NO;
-    }
-
-    NSDictionary *root = @{
-        @"format": @3,
-        @"source": @"springboard-sgp-ios16",
-        @"apps": apps,
-    };
-    @try {
-        if (![root writeToFile:TypeXSBShortcutsPath atomically:YES]) {
-            NSLog(@"[TypeX] sbshortcuts: iOS 16 SGP catalogue write failed");
-            DXSBWriteShortcutRefreshStatus(@"catalogue-write-failed", nil);
-            return NO;
-        }
-        NSLog(@"[TypeX] sbshortcuts: iOS 16 SGP catalogue built for %lu of %lu applications (static %lu, dynamic %lu)",
-              (unsigned long)apps.count, (unsigned long)records.count,
-              (unsigned long)staticCount, (unsigned long)dynamicCount);
-        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
-                                             (__bridge CFStringRef)kShortcutSnapshotChangedIdentifier,
-                                             NULL, NULL, YES);
-        DXSBWriteShortcutRefreshStatus(@"published", @{
-            @"applicationCount": @(records.count),
-            @"groupCount": @(apps.count),
-            @"staticCount": @(staticCount),
-            @"dynamicCount": @(dynamicCount),
-        });
-        return YES;
-    } @catch (NSException *exception) {
-        NSLog(@"[TypeX] sbshortcuts: iOS 16 SGP catalogue publish failed (%@)", exception);
-        DXSBWriteShortcutRefreshStatus(@"catalogue-publish-exception",
-                                       @{@"reason": exception.reason ?: @"unknown"});
-        return NO;
-    }
-}
-
-// SpringBoard's application model can still be warming after a userspace
-// restart. Retry with a short backoff, and also call this proactively at
-// SpringBoard startup so opening Settings is not the only catalogue trigger.
-static void DXSBiOS16ScheduleShortcutCatalogueRebuild(NSUInteger attempt) {
-    NSTimeInterval delay = attempt == 0 ? 0.0 : MIN(2.0 * attempt, 8.0);
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        if (DXSBiOS16RebuildShortcutCatalogue()) return;
-        if (attempt < 4) DXSBiOS16ScheduleShortcutCatalogueRebuild(attempt + 1);
-    });
+    // The SBApplication model frequently answers nothing on some iOS builds
+    // (notably iOS 16). The bundle-metadata scan — the same resolved static,
+    // dynamic and App Intents sources the Settings side used before the
+    // catalogue moved into SpringBoard — is the fallback for exactly those
+    // apps, on every OS version.
+    return DXSBLaunchableShortcutItems(DXSBMetadataShortcutItemsForBundleIdentifier(bundleIdentifier));
 }
 
 // Merges freshly fetched items into the shared catalogue plist and
@@ -2260,67 +2075,53 @@ static void DXSBMergeShortcutCatalogue(NSDictionary<NSString *, NSArray *> *fetc
 }
 
 // Populates the Settings catalogue without requiring a manual long press for
-// every app.  iOS 17+ asks SpringBoard's icon view to build the same menu the
-// Home Screen shows, with the shortcut service running in parallel and the
-// SBApplication static/dynamic data source as its own fallback for apps the
-// service cannot answer for.  iOS 16 and earlier build the catalogue exactly
-// the way the reference gesture tweak does: every installed app resolved
-// through SBApplicationController, its static (Info.plist) and runtime
-// dynamic shortcut items read straight out of SpringBoard's model — fully
-// synchronous, with the icon-view fetch round-trips and the readiness wait
-// skipped, because they never answer reliably there.
+// every app. SpringBoard's icon view is asked to build the same menu the
+// Home Screen shows, with the SBApplication static/dynamic data source (and
+// its bundle-metadata fallback) running in parallel for apps the icon view
+// cannot answer for. One pipeline on every supported OS version.
 static void DXSBRefreshShortcutSnapshots(NSArray<NSString *> *bundleIdentifiers) {
-    if (@available(iOS 17.0, *)) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            NSMutableDictionary<NSString *, id> *iconViews = [NSMutableDictionary dictionary];
-            NSMutableDictionary<NSString *, NSArray *> *immediate = [NSMutableDictionary dictionary];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSMutableDictionary<NSString *, id> *iconViews = [NSMutableDictionary dictionary];
+        NSMutableDictionary<NSString *, NSArray *> *immediate = [NSMutableDictionary dictionary];
+        for (NSString *bundleIdentifier in bundleIdentifiers) {
+            id iconView = DXSBIconViewForBundleIdentifier(bundleIdentifier);
+            if (!iconView) continue;
+            iconViews[bundleIdentifier] = iconView;
+            NSArray *items = DXSBShortcutItemsFromIconView(iconView, YES);
+            if (items.count > 0) immediate[bundleIdentifier] = items;
+        }
+
+        dispatch_group_t readiness = dispatch_group_create();
+        __block NSDictionary<NSString *, NSArray *> *serviceItems = @{};
+        dispatch_group_async(readiness, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            NSMutableDictionary<NSString *, NSArray *> *fetched = [NSMutableDictionary dictionary];
             for (NSString *bundleIdentifier in bundleIdentifiers) {
-                id iconView = DXSBIconViewForBundleIdentifier(bundleIdentifier);
-                if (!iconView) continue;
-                iconViews[bundleIdentifier] = iconView;
-                NSArray *items = DXSBShortcutItemsFromIconView(iconView, YES);
-                if (items.count > 0) immediate[bundleIdentifier] = items;
+                NSArray *items = DXSBSBApplicationShortcutItems(bundleIdentifier);
+                if (items.count > 0) fetched[bundleIdentifier] = items;
             }
-
-            dispatch_group_t readiness = dispatch_group_create();
-            __block NSDictionary<NSString *, NSArray *> *serviceItems = @{};
-            dispatch_group_async(readiness, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-                NSMutableDictionary<NSString *, NSArray *> *fetched = [NSMutableDictionary dictionary];
-                for (NSString *bundleIdentifier in bundleIdentifiers) {
-                    NSArray *items = DXSBSBApplicationShortcutItems(bundleIdentifier);
-                    if (items.count > 0) fetched[bundleIdentifier] = items;
-                }
-                serviceItems = [fetched copy];
-            });
-            // Newer icon views finish their fetch asynchronously. Keep each view
-            // alive and give SpringBoard a short window before reading it again.
-            dispatch_group_enter(readiness);
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), ^{
-                dispatch_group_leave(readiness);
-            });
-
-            dispatch_group_notify(readiness, dispatch_get_main_queue(), ^{
-                NSMutableDictionary<NSString *, NSArray *> *fetched = [serviceItems mutableCopy]
-                    ?: [NSMutableDictionary dictionary];
-                [immediate enumerateKeysAndObjectsUsingBlock:^(NSString *bundleIdentifier, NSArray *items, BOOL *stop) {
-                    fetched[bundleIdentifier] = items;
-                }];
-                [iconViews enumerateKeysAndObjectsUsingBlock:^(NSString *bundleIdentifier, id iconView, BOOL *stop) {
-                    NSArray *items = DXSBShortcutItemsFromIconView(iconView, NO);
-                    if (items.count > 0) fetched[bundleIdentifier] = items;
-                }];
-                DXSBMergeShortcutCatalogue(fetched);
-            });
+            serviceItems = [fetched copy];
         });
-        return;
-    }
+        // Newer icon views finish their fetch asynchronously. Keep each view
+        // alive and give SpringBoard a short window before reading it again.
+        dispatch_group_enter(readiness);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            dispatch_group_leave(readiness);
+        });
 
-    // iOS 16 is intentionally isolated from the icon-view/service/metadata
-    // machinery above. SBApplicationController is a SpringBoard model object;
-    // resolving it on the main thread also avoids the early-nil and background
-    // access failures of the old legacy path.
-    DXSBiOS16ScheduleShortcutCatalogueRebuild(0);
+        dispatch_group_notify(readiness, dispatch_get_main_queue(), ^{
+            NSMutableDictionary<NSString *, NSArray *> *fetched = [serviceItems mutableCopy]
+                ?: [NSMutableDictionary dictionary];
+            [immediate enumerateKeysAndObjectsUsingBlock:^(NSString *bundleIdentifier, NSArray *items, BOOL *stop) {
+                fetched[bundleIdentifier] = items;
+            }];
+            [iconViews enumerateKeysAndObjectsUsingBlock:^(NSString *bundleIdentifier, id iconView, BOOL *stop) {
+                NSArray *items = DXSBShortcutItemsFromIconView(iconView, NO);
+                if (items.count > 0) fetched[bundleIdentifier] = items;
+            }];
+            DXSBMergeShortcutCatalogue(fetched);
+        });
+    });
 }
 
 static NSArray *(*dx_SBIconView_effectiveItems_orig)(id, SEL);
@@ -2435,15 +2236,10 @@ static void DXSBInstallShortcutCaptureHooks(NSUInteger attempt) {
                         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, pendingActionRequestCallback, (CFStringRef)kPendingActionRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, shortcutRefreshRequestCallback, (CFStringRef)kShortcutRefreshRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                         // Capture the real icon-menu quick actions (see the
-                        // capture module above) for the Settings picker.
-                        if (@available(iOS 17.0, *)) {
-                            DXSBInstallShortcutCaptureHooks(0);
-                        } else {
-                            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4.0 * NSEC_PER_SEC)),
-                                           dispatch_get_main_queue(), ^{
-                                DXSBiOS16ScheduleShortcutCatalogueRebuild(0);
-                            });
-                        }
+                        // capture module above) for the Settings picker. The
+                        // hooks resolve at runtime, so a version without a
+                        // symbol just degrades to no captures.
+                        DXSBInstallShortcutCaptureHooks(0);
                     }
                 }
             }
