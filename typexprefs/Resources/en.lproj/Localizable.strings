@@ -156,17 +156,13 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "ACTION_TYPE_URL_SCHEME" = "URL Scheme";
 "ACTION_TYPE_TEXT" = "Text";
 "ACTION_TYPE_URL" = "URL";
-"SUB_ACTION_ONLY_SUFFIX" = " (Sub-actions only)";
 "URL_SCHEME_SETTINGS" = "URL Scheme";
 "TEXT_SETTINGS" = "Text";
 "URL_SETTINGS" = "URL";
 "OPEN_IN_APP" = "Open in App";
 "TYPE_FOOTER_URL_SCHEME" = "Opens the URL scheme when tapped. Use @@@ to pass the current input field's text as a parameter.";
 "TYPE_FOOTER_TEXT" = "Sends the configured text to the current input field. Supported templates, freely combinable:\n{{clipboard}}: clipboard text (left untouched while the clipboard holds an image)\n{{selection}}: the field's current text — the output replaces the whole field content\n{{date1}}: today's date, e.g. 2026/09/15\n{{date2}}: today's date, e.g. 2026-09-15\n{{now1}}: date + time, e.g. 2026/09/15-22:16:33\n{{now2}}: date + time, e.g. 2026-09-15-22:16:33\n{{time}}: current time, e.g. 22:16:33\nExample: “Hi:{{clipboard}}” with “alice” on the clipboard outputs “Hi:alice”; “Hi:{{selection}}” with 123 in the field turns the field into “Hi:123”";
-"TYPE_FOOTER_OPEN_APP" = "Pick the app to open. This type can only be used in sub-actions.";
 "TYPE_FOOTER_URL" = "Opens the web URL, either inside this app or outside. Use @@@ to pass the current input field's text as a parameter.";
-"TYPE_FOOTER_SHORTCUT" = "Pick one of an app's home-screen quick actions (the long-press menu); it runs that action. This type can only be used in sub-actions.";
-"OPEN_APP_SETTINGS" = "Open App Settings";
 
 //=====================APP / SHORTCUT PICKERS=====================
 "OPEN_APP" = "Open App";
@@ -229,3 +225,15 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "DEFAULT_BUTTON_NAME" = "Action";
 "TEST_INPUT_FIELD" = "Test Field (tap to try the toolbar buttons)";
 "TEST_INPUT_FIELD_PLACEHOLDER" = "Type here to test the toolbar…";
+
+"LONG_SHELLX_SCREENSHOT" = "ShellX Screenshot";
+"SHORT_SHELLX_SCREENSHOT" = "Shot";
+"LONG_SHELLX_AI_CHAT" = "AI Chat";
+"SHORT_SHELLX_AI_CHAT" = "AI";
+
+/* Custom actions management page (KayokoX-style layout) */
+"CHOOSE_ACTION" = "Choose Action";
+"NO_CUSTOM_ACTIONS" = "No custom actions yet";
+"MANAGE_HINT_TAP_EDIT" = "When not editing, tap an action to edit it";
+"MANAGE_HINT_EDIT_DELETE" = "While editing, tap an action to delete it";
+"ADD_TYPE_HINT" = "Pick a type below to create a new action";

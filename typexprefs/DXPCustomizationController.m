@@ -5,8 +5,17 @@
 static UISearchController *searchController;
 static NSBundle *tweakBundle;
 
+// Header geometry: the test input section sits at the TOP of the header and
+// is collapsed by default; pulling the list down reveals it, scrolling back
+// up (or starting to edit elsewhere) collapses it again. Collapsed height
+// keeps only the toolbar preview; expanded height adds the test section.
+static CGFloat const DXHeaderCollapsedHeight = 66.0;
+static CGFloat const DXHeaderExpandedHeight = 136.0;
+
 @interface DXPCustomizationController ()
 @property(nonatomic, strong) UIView *topToolbarPreview;
+@property(nonatomic, assign) BOOL testFieldExpanded;
+@property(nonatomic, assign) BOOL pullConsumed;
 @end
 
 
@@ -79,26 +88,60 @@ static NSBundle *tweakBundle;
     UIView *header = self.table.tableHeaderView;
     if (!header) return;
     CGFloat width = CGRectGetWidth(self.table.bounds);
-    if (fabs(CGRectGetWidth(header.frame) - width) > 0.5) {
-        header.frame = CGRectMake(0.0, 0.0, width, 136.0);
+    CGFloat height = self.testFieldExpanded ? DXHeaderExpandedHeight : DXHeaderCollapsedHeight;
+    if (fabs(CGRectGetWidth(header.frame) - width) > 0.5 || fabs(CGRectGetHeight(header.frame) - height) > 0.5) {
+        header.frame = CGRectMake(0.0, 0.0, width, height);
         self.table.tableHeaderView = header;
     }
-    self.topToolbarPreview.frame = CGRectMake(16.0, 30.0, MAX(0.0, width - 32.0), 30.0);
-    self.previewTextField.frame = CGRectMake(16.0, 93.0, MAX(0.0, width - 32.0), 36.0);
+    [self layoutHeaderSubviews];
     [self updateTopToolbarPreview];
+}
+
+- (void)layoutHeaderSubviews {
+    CGFloat width = CGRectGetWidth(self.table.bounds);
+    // Collapsed order (test section hidden by the header height):
+    // 测试 title 7, field 30, 预览 title 76, preview 99. When collapsed only
+    // the preview half is visible because the header clips.
+    UILabel *fieldTitle = (UILabel *)[self.table.tableHeaderView viewWithTag:900];
+    UILabel *title = (UILabel *)[self.table.tableHeaderView viewWithTag:901];
+    fieldTitle.frame = CGRectMake(16.0, 7.0, MAX(0.0, width - 32.0), 18.0);
+    self.previewTextField.frame = CGRectMake(16.0, 30.0, MAX(0.0, width - 32.0), 36.0);
+    title.frame = CGRectMake(16.0, 76.0, MAX(0.0, width - 32.0), 18.0);
+    self.topToolbarPreview.frame = CGRectMake(16.0, 99.0, MAX(0.0, width - 32.0), 30.0);
 }
 
 - (void)buildTopToolbarPreview {
     CGFloat width = CGRectGetWidth(self.table.bounds);
-    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0.0, 0.0, width, 136.0)];
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0.0, 0.0, width, DXHeaderCollapsedHeight)];
     header.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(16.0, 7.0, width - 32.0, 18.0)];
+    header.clipsToBounds = YES;
+
+    // ── Test input field (top, pull-down to reveal) ──
+    UILabel *fieldTitle = [[UILabel alloc] initWithFrame:CGRectMake(16.0, 7.0, width - 32.0, 18.0)];
+    fieldTitle.tag = 900;
+    fieldTitle.text = @"测试输入框（下拉显示，再次下拉收起）";
+    fieldTitle.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightSemibold];
+    fieldTitle.textColor = [UIColor secondaryLabelColor];
+    [header addSubview:fieldTitle];
+
+    self.previewTextField = [[UITextField alloc] initWithFrame:CGRectMake(16.0, 30.0, MAX(0.0, width - 32.0), 36.0)];
+    self.previewTextField.placeholder = @"点击此处弹出键盘…";
+    self.previewTextField.font = [UIFont systemFontOfSize:15.0];
+    self.previewTextField.borderStyle = UITextBorderStyleRoundedRect;
+    self.previewTextField.delegate = self;
+    self.previewTextField.returnKeyType = UIReturnKeyDone;
+    self.previewTextField.clearButtonMode = UITextFieldViewModeWhileEditing;
+    [header addSubview:self.previewTextField];
+
+    // ── Toolbar preview ──
+    UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(16.0, 76.0, width - 32.0, 18.0)];
+    title.tag = 901;
     title.text = LOCALIZED(@"TOP_TOOLBAR_PREVIEW");
     title.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightSemibold];
     title.textColor = [UIColor secondaryLabelColor];
     [header addSubview:title];
 
-    self.topToolbarPreview = [[UIView alloc] initWithFrame:CGRectMake(16.0, 30.0, MAX(0.0, width - 32.0), 30.0)];
+    self.topToolbarPreview = [[UIView alloc] initWithFrame:CGRectMake(16.0, 99.0, MAX(0.0, width - 32.0), 30.0)];
     self.topToolbarPreview.layer.cornerRadius = 6.0;
     self.topToolbarPreview.clipsToBounds = YES;
     [header addSubview:self.topToolbarPreview];
@@ -110,23 +153,30 @@ static NSBundle *tweakBundle;
         [self.topToolbarPreview addSubview:button];
     }
 
-    // ── Test input field ──
-    UILabel *fieldTitle = [[UILabel alloc] initWithFrame:CGRectMake(16.0, 70.0, width - 32.0, 18.0)];
-    fieldTitle.text = LOCALIZED(@"TEST_INPUT_HINT") ?: @"测试输入框（点击弹出键盘预览）";
-    fieldTitle.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightSemibold];
-    fieldTitle.textColor = [UIColor secondaryLabelColor];
-    [header addSubview:fieldTitle];
-
-    self.previewTextField = [[UITextField alloc] initWithFrame:CGRectMake(16.0, 93.0, MAX(0.0, width - 32.0), 36.0)];
-    self.previewTextField.placeholder = LOCALIZED(@"TEST_INPUT_PLACEHOLDER") ?: @"点击此处弹出键盘…";
-    self.previewTextField.font = [UIFont systemFontOfSize:15.0];
-    self.previewTextField.borderStyle = UITextBorderStyleRoundedRect;
-    self.previewTextField.delegate = self;
-    self.previewTextField.returnKeyType = UIReturnKeyDone;
-    self.previewTextField.clearButtonMode = UITextFieldViewModeWhileEditing;
-    [header addSubview:self.previewTextField];
-
     self.table.tableHeaderView = header;
+}
+
+// Pull-down gesture on the list: dragging the top of the table down past a
+// threshold toggles the test input at the top of the page (pull to reveal,
+// pull again to collapse). pullConsumed makes one drag fire exactly once.
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
+    if (scrollView != self.table) return;
+    CGFloat offset = scrollView.contentOffset.y;
+    if (scrollView.isTracking && offset < -60.0 && !self.pullConsumed) {
+        self.pullConsumed = YES;
+        [self setTestFieldExpanded:!self.testFieldExpanded];
+    }
+    if (offset > -20.0) self.pullConsumed = NO;
+}
+
+- (void)setTestFieldExpanded:(BOOL)expanded {
+    _testFieldExpanded = expanded;
+    UIView *header = self.table.tableHeaderView;
+    CGFloat width = CGRectGetWidth(self.table.bounds);
+    [UIView animateWithDuration:0.25 animations:^{
+        header.frame = CGRectMake(0.0, 0.0, width, expanded ? DXHeaderExpandedHeight : DXHeaderCollapsedHeight);
+        self.table.tableHeaderView = header;
+    }];
 }
 
 - (void)updateTopToolbarPreview {

@@ -157,17 +157,13 @@
 "ACTION_TYPE_URL_SCHEME" = "URL Scheme";
 "ACTION_TYPE_TEXT" = "文本";
 "ACTION_TYPE_URL" = "URL";
-"SUB_ACTION_ONLY_SUFFIX" = "（仅子动作）";
 "URL_SCHEME_SETTINGS" = "URL Scheme 设置";
 "TEXT_SETTINGS" = "文本设置";
 "URL_SETTINGS" = "URL 设置";
 "OPEN_IN_APP" = "APP内打开";
 "TYPE_FOOTER_URL_SCHEME" = "点击后执行 URL Scheme 打开跳转，沿用系统跳转方式；使用 @@@ 可传入当前输入框的内容作为入参。";
 "TYPE_FOOTER_TEXT" = "点击后将配置的文本发送到当前输入框，支持以下模板，可自由组合：\n{{clipboard}}：替换为剪贴板文本（剪贴板为图片时不替换）\n{{selection}}：替换为输入框当前内容，输出将整体替换输入框内容\n{{date1}}：当前日期，如 2026/09/15\n{{date2}}：当前日期，如 2026-09-15\n{{now1}}：当前日期+时间，如 2026/09/15-22:16:33\n{{now2}}：当前日期+时间，如 2026-09-15-22:16:33\n{{time}}：当前时间，如 22:16:33\n示例：设置为“你好:{{clipboard}}”，剪贴板为 alice 时输出“你好:alice”；设置为“你好:{{selection}}”，输入框内容为 123 时输入框变为“你好:123”";
-"TYPE_FOOTER_OPEN_APP" = "选择点击后打开的应用；该类型仅可在子动作中使用。";
 "TYPE_FOOTER_URL" = "点击后打开该网址，可选择在 APP 内或 APP 外打开；url 支持入参替换，使用 @@@ 传入当前输入框的内容。";
-"TYPE_FOOTER_SHORTCUT" = "选择应用长按菜单中的快捷项，点击后执行该项；该类型仅可在子动作中使用。";
-"OPEN_APP_SETTINGS" = "打开应用设置";
 
 //=====================APP / SHORTCUT PICKERS=====================
 "OPEN_APP" = "打开应用";
@@ -228,3 +224,15 @@
 "DEFAULT_BUTTON_NAME" = "动作";
 "TEST_INPUT_FIELD" = "测试输入框（点击弹出键盘试试按钮）";
 "TEST_INPUT_FIELD_PLACEHOLDER" = "输入文本试试工具栏按钮…";
+
+"LONG_SHELLX_SCREENSHOT" = "ShellX 截图";
+"SHORT_SHELLX_SCREENSHOT" = "截图";
+"LONG_SHELLX_AI_CHAT" = "AI对话";
+"SHORT_SHELLX_AI_CHAT" = "AI";
+
+/* Custom actions management page (KayokoX-style layout) */
+"CHOOSE_ACTION" = "选择动作";
+"NO_CUSTOM_ACTIONS" = "暂无自定义动作";
+"MANAGE_HINT_TAP_EDIT" = "非编辑状态下，点按编辑动作";
+"MANAGE_HINT_EDIT_DELETE" = "编辑状态下，点按删除动作";
+"ADD_TYPE_HINT" = "选择一种类型即可创建新动作";

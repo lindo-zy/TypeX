@@ -53,23 +53,9 @@
 // "url" additionally stores the APP内打开 choice under "inapp" (default YES).
 #define kCustomActionTypeKey @"type"
 #define kCustomActionInAppKey @"inapp"
-// 快捷方式 entries: "link" stores the owning app's bundle identifier and this
-// field the UIApplicationShortcutItemType of the chosen long-press menu item.
-// Entries without it predate the quick-action payload and keep the legacy
-// Shortcuts-app name behavior.
-#define kCustomActionShortcutTypeKey @"shortcuttype"
 #define kCustomActionTypeURLScheme @"urlscheme"
 #define kCustomActionTypeText @"text"
-#define kCustomActionTypeOpenApp @"openapp"
 #define kCustomActionTypeURL @"url"
-#define kCustomActionTypeShortcut @"shortcut"
-
-// 打开应用 and 快捷方式 are only selectable as sub-actions; every other type
-// (and every legacy entry) is universal and may also drive a button gesture.
-static inline BOOL DXIsSubActionOnlyCustomActionType(NSString *type) {
-    return [type isKindOfClass:[NSString class]] &&
-        ([type isEqualToString:kCustomActionTypeOpenApp] || [type isEqualToString:kCustomActionTypeShortcut]);
-}
 // Per-entry field on a shortcut dictionary: set to @YES when the button's tap
 // should run its sub-action chain (long-press behavior) instead of the tap
 // action configured for it.
@@ -129,32 +115,6 @@ static inline BOOL DXIsSubActionOnlyCustomActionType(NSString *type) {
 // (Settings, SpringBoard) can refresh the snapshot without a helper daemon.
 #define TypeXCachePath DX_ROOT_PATH_NS(@"/Library/TypeX")
 #define TypeXSharedPrefsPath DX_ROOT_PATH_NS(@"/Library/TypeX/shared.plist")
-// 打开应用、应用长按快捷项, 面板 URL scheme and 快捷方式 (shortcuts://)
-// requests ride a file + Darwin notification
-// channel into SpringBoard: the writing process posts
-// kPendingActionRequestIdentifier; the SpringBoard-injected dylib consumes
-// the file and performs the open natively. Opens made from inside a host
-// process are blocked by restricted hosts (WeChat), and identity-gated
-// schemes (prefs:, App-Prefs:) only pass when the opener is SpringBoard
-// itself. Three fixed action names are acted on: "openapp" with a plain bundle
-// identifier, "openshortcut" with a bundle identifier plus the app-defined
-// UIApplicationShortcutItemType, and "openurl" with a scheme-validated URL
-// string — the channel never carries shell commands or arbitrary selectors.
-// Every request lands in its OWN file (TypeXPendingActionPrefix + timestamp
-// + UUID under the shared directory): the single fixed path lost every
-// request but the last of a burst when two writes landed between
-// SpringBoard's reads, executing the wrong action for a notification. The
-// timestamp in the name is the drain order on the SpringBoard side.
-// Reliability guard rails: SpringBoard purges leftover request files at dylib
-// load (before the observer registers — anything present pre-launch predates
-// this session, and executing it would replay a dead tap), the drain drops
-// requests older than its staleness window, merges a duplicate copy of an
-// action already executed in the same or a nearby drain, and paces consecutive
-// launches; the writer re-posts only while its request file remains unconsumed,
-// so a lost delivery cannot strand a file or execute an already-consumed tap.
-#define TypeXPendingActionPath DX_ROOT_PATH_NS(@"/Library/TypeX/pendingaction.plist")
-#define TypeXPendingActionPrefix @"pendingaction-"
-#define kPendingActionRequestIdentifier @"com.lindo.typex/pendingaction"
 
 // Settings and SpringBoard exchange quick-action data through an isolated
 // CFPreferences domain. On RootHide iOS 16, SpringBoard can read shared files
@@ -167,6 +127,12 @@ static inline BOOL DXIsSubActionOnlyCustomActionType(NSString *type) {
 #define TypeXQuickActionSnapshotKey @"snapshot-v3"
 #define kShortcutRefreshRequestIdentifier @"com.lindo.typex/shortcutrefresh"
 #define kShortcutSnapshotChangedIdentifier @"com.lindo.typex/shortcutschanged"
+
+// ShellX AI 面板通道：键盘/工具栏进程只写请求（{format:1, requestID, created,
+// mode: text|image|empty, text?}），SpringBoard 端收到 Darwin 通知后整包读取并
+// 调起 ShellX 的 SSAIHostWindow。与快捷方式目录共用隔离域，避免再开共享面。
+#define TypeXAIChatRequestKey @"ai-chat-request"
+#define kAIChatRequestIdentifier @"com.lindo.typex/aichat"
 
 // Complete SpringBoard-authored snapshot of each app's current static and
 // dynamic UIApplicationShortcutItems. The value is replaced as one generation,

@@ -7,7 +7,6 @@
 static NSBundle *tweakBundle;
 
 @interface DXPCustomActionViewController ()
-@property (nonatomic, strong) NSMutableArray<NSMutableDictionary *> *linkActions;
 // Live multi-select state; only maintained while allowsMultipleSelection is on.
 @property (nonatomic, strong) NSMutableSet<NSString *> *pickedSelectors;
 @end
@@ -16,22 +15,13 @@ static NSBundle *tweakBundle;
 
 #pragma mark - Storage
 
-// 打开应用 and 快捷方式 are sub-action-only types. The management page and
-// the sub-action picker subclass list every type; the plain instance pushed
-// by the gesture picker offers only universal actions.
-- (BOOL)showsAllCustomActionTypes {
-    return self.customActionsOnly || [self isKindOfClass:[DXPSubActionPickerController class]];
-}
-
 - (void)reloadPreferences {
     self.prefs = [[[DXPrefsManager sharedInstance] readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
     self.linkActions = [NSMutableArray array];
-    BOOL showAllTypes = [self showsAllCustomActionTypes];
     for (NSDictionary *entry in self.prefs[kLinkActionskey]) {
         if (![entry isKindOfClass:[NSDictionary class]]) continue;
         NSString *selector = entry[@"selector"];
         if (!DXIsLinkActionSelector(selector)) continue;
-        if (!showAllTypes && DXIsSubActionOnlyCustomActionType(entry[kCustomActionTypeKey])) continue;
         [self.linkActions addObject:[entry mutableCopy]];
     }
 
@@ -112,11 +102,38 @@ static NSBundle *tweakBundle;
 
 #pragma mark - Action editor
 
+- (void)startAddFlowForType:(NSString *)type {
+    NSMutableDictionary *entry = [@{
+        @"selector": [kLinkActionSelectorPrefix stringByAppendingString:NSUUID.UUID.UUIDString],
+        @"name": LOCALIZED(@"DEFAULT_BUTTON_NAME"),
+        @"icon": @"link",
+        @"link": @"",
+        kCustomActionTypeKey: type,
+    } mutableCopy];
+    if ([type isEqualToString:kCustomActionTypeURL]) entry[kCustomActionInAppKey] = @YES;
+
+    DXPLinkActionEditorController *editor = [[DXPLinkActionEditorController alloc] init];
+    editor.entry = entry;
+    __weak typeof(self) weakSelf = self;
+    editor.completion = ^(NSDictionary *savedEntry) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        [strongSelf.linkActions addObject:[savedEntry mutableCopy]];
+        [strongSelf persistLinkActions];
+        NSIndexPath *newPath = [NSIndexPath indexPathForRow:strongSelf.linkActions.count - 1
+                                                  inSection:strongSelf.customActionsSection];
+        [strongSelf.tableView insertRowsAtIndexPaths:@[newPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+    };
+    [editor setRootController:[self rootController]];
+    [editor setParentController:[self parentController]];
+    [self pushController:editor];
+}
+
 // 添加 flow: the type is chosen first (URL Scheme preselected as the first
-// entry of the chooser), then the typed editor opens on a PENDING entry.
-// Nothing touches the store here — the action joins the list (and the prefs)
-// only when the editor's 保存 reports the finished entry, so backing out of
-// the editor never leaves a half-configured row behind.
+// entry of the chooser), then startAddFlowForType: runs the pending-entry
+// editor. Nothing touches the store here — the action joins the list (and the
+// prefs) only when the editor's 保存 reports the finished entry, so backing out
+// of the editor never leaves a half-configured row behind.
 - (void)presentAddActionTypeChooser {
     __weak typeof(self) weakSelf = self;
     [DXPLinkActionEditorController presentTypeChooserFromController:self
@@ -124,30 +141,7 @@ static NSBundle *tweakBundle;
                                                          completion:^(NSString *type) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf || type.length == 0) return;
-        NSMutableDictionary *entry = [@{
-            @"selector": [kLinkActionSelectorPrefix stringByAppendingString:NSUUID.UUID.UUIDString],
-            @"name": LOCALIZED(@"DEFAULT_BUTTON_NAME"),
-            @"icon": [DXPLinkActionEditorController defaultIconForType:type],
-            @"link": @"",
-            kCustomActionTypeKey: type,
-        } mutableCopy];
-        if ([type isEqualToString:kCustomActionTypeURL]) entry[kCustomActionInAppKey] = @YES;
-
-        DXPLinkActionEditorController *editor = [[DXPLinkActionEditorController alloc] init];
-        editor.entry = entry;
-        __weak typeof(self) weakEditorOwner = weakSelf;
-        editor.completion = ^(NSDictionary *savedEntry) {
-            __strong typeof(weakEditorOwner) strongOwner = weakEditorOwner;
-            if (!strongOwner) return;
-            [strongOwner.linkActions addObject:[savedEntry mutableCopy]];
-            [strongOwner persistLinkActions];
-            NSIndexPath *newPath = [NSIndexPath indexPathForRow:strongOwner.linkActions.count - 1
-                                                      inSection:strongOwner.customActionsSection];
-            [strongOwner.tableView insertRowsAtIndexPaths:@[newPath] withRowAnimation:UITableViewRowAnimationAutomatic];
-        };
-        [editor setRootController:[strongSelf rootController]];
-        [editor setParentController:[strongSelf parentController]];
-        [strongSelf pushController:editor];
+        [strongSelf startAddFlowForType:type];
     }];
 }
 

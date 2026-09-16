@@ -296,6 +296,108 @@ static void DXRefreshActiveTopToolbar(void) {
 
 static DXTopToolbarLifecycleObserver *topToolbarLifecycleObserver;
 
+// ShellX 悬浮 AI 面板的手工声明（其类由 com.iosdump.shellx dylib 在 SpringBoard
+// 进程内提供；该插件不注入键盘进程，缺失时 %hook 与运行时探测一并 no-op）。
+@interface SSAIHostWindow : UIWindow
+-(instancetype)init;
+-(void)ss_presentWithShot:(id)shot seed:(id)seed persona:(id)persona autoSend:(BOOL)autoSend;
+-(void)destroyWindow;
+@end
+@interface SSAIChatCardController : UIViewController
+@property(nonatomic, retain) UITextView *queryTV;
+@property(nonatomic, readonly, retain) UIImage *attachImage;
+-(void)ss_updatePlaceholder;
+-(void)ss_updateInputHeightAnimated:(BOOL)animated;
+-(void)ss_setChipImage:(UIImage *)image;
+@end
+
+// AI 对话通道的待注入种子。SpringBoard 端回调在调起面板前写入，
+// SSAIChatCardController 的 viewDidAppear 消费后即清空。
+static NSString *g_aiPendingSeedText;
+static BOOL g_aiPendingClipboardImage;
+static double g_aiPendingCreatedAt;
+static SSAIHostWindow *g_aiActiveHostWindow;
+
+// 桌面可见性由 %hook SBHomeScreenViewController 维护（iOS 13-17 稳定类）。
+// 不用 SBMainWorkspace/applicationState 探测——SB 进程里 applicationState 在
+// app 前台时同样是 Active，探测必然失效（3.0.84 的教训）。
+static BOOL g_aiDesktopVisible;
+
+static void DXPresentShellXAIChatNow(void);
+
+// origin=app 的请求等桌面出现再创建面板；延迟超过 5 分钟丢弃。
+static void DXPresentShellXAIChatWhenDesktop(void) {
+    if (!g_aiPendingSeedText && !g_aiPendingClipboardImage) return;
+    if (!g_aiDesktopVisible) return;
+    if ([NSDate date].timeIntervalSince1970 - g_aiPendingCreatedAt > 300.0) {
+        g_aiPendingSeedText = nil;
+        g_aiPendingClipboardImage = NO;
+        return;
+    }
+    DXPresentShellXAIChatNow();
+}
+
+// 面板必须只在桌面上下文创建：app 前台时创建并 makeKeyAndVisible 会让关闭
+// 后的异步收尾（键盘隐藏/触摸独占状态）失去同步，残留窗口继续参与 hitTest
+// 吞掉整个桌面的点击（锁屏解锁重建窗口状态才恢复）。
+static void DXPresentShellXAIChatNow(void) {
+    // 注意：不清 g_aiPendingSeedText/g_aiPendingClipboardImage——它们由卡片
+    // viewDidAppear: 消费（present 异步，卡片在之后才创建），提前清空会导致
+    // 输入框/剪贴板内容注入失效。
+    Class hostClass = objc_getClass("SSAIHostWindow");
+    if (!hostClass) return;
+
+    if (g_aiActiveHostWindow) [g_aiActiveHostWindow destroyWindow];
+    g_aiActiveHostWindow = [[hostClass alloc] init];
+    [g_aiActiveHostWindow ss_presentWithShot:nil seed:nil persona:nil autoSend:NO];
+}
+
+static void DXOpenShellXAIChatWithRequest(NSDictionary *request) {
+    NSString *requestID = [request[@"requestID"] isKindOfClass:[NSString class]] ? request[@"requestID"] : nil;
+    if (requestID.length == 0) return;
+
+    static NSString *lastAIRequestID;
+    @synchronized(TypeXAIChatRequestKey) {
+        if ([lastAIRequestID isEqualToString:requestID]) return;
+        lastAIRequestID = [requestID copy];
+    }
+
+    // 请求带落盘时间戳，超过 30 秒视为陈旧投递（对应旧通知迟到的场景）。
+    double created = [request[@"created"] isKindOfClass:[NSNumber class]] ? [request[@"created"] doubleValue] : 0;
+    if (created <= 0 || fabs([NSDate date].timeIntervalSince1970 - created) > 30.0) return;
+
+    NSString *mode = [request[@"mode"] isKindOfClass:[NSString class]] ? request[@"mode"] : nil;
+    g_aiPendingSeedText = [mode isEqualToString:@"text"] ? request[@"text"] : nil;
+    if (![g_aiPendingSeedText isKindOfClass:[NSString class]]) g_aiPendingSeedText = nil;
+    g_aiPendingClipboardImage = [mode isEqualToString:@"image"];
+    g_aiPendingCreatedAt = created;
+
+    if (!objc_getClass("SSAIHostWindow")) {
+        g_aiPendingSeedText = nil;
+        g_aiPendingClipboardImage = NO;
+        return;
+    }
+
+    NSString *origin = [request[@"origin"] isKindOfClass:[NSString class]] ? request[@"origin"] : nil;
+    if ([origin isEqualToString:@"sb"]) {
+        DXPresentShellXAIChatNow();
+    } else {
+        DXPresentShellXAIChatWhenDesktop();
+    }
+}
+
+static void aiChatRequestCallback(CFNotificationCenterRef center,
+                                  void *observer,
+                                  CFStringRef name,
+                                  const void *object,
+                                  CFDictionaryRef userInfo) {
+    NSDictionary *request = DXQuickActionSharedValue(TypeXAIChatRequestKey);
+    if (![request isKindOfClass:[NSDictionary class]]) return;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        DXOpenShellXAIChatWithRequest(request);
+    });
+}
+
 // Button chrome (height/radius/spacing/border/width scale) is read per
 // configuration inside DXCollectionView; there are no shared globals for it.
 
@@ -896,6 +998,79 @@ CGFloat heightOffset = heightOffsetDefault;
 
 %end
 
+// ShellX AI 卡片：在 viewDidAppear 注入通道带来的种子内容。文本直接写入输入框
+// （只在其为空时，且与手动编辑同源的占位/高度刷新跟随更新）；剪贴板图片走
+// ss_setChipImage:（模型附件 + chip 缩略图一次完成，不覆盖用户已选附件）。
+%hook SSAIChatCardController
+
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+
+    NSString *seed = g_aiPendingSeedText;
+    BOOL pendingClipImage = g_aiPendingClipboardImage;
+    g_aiPendingSeedText = nil;
+    g_aiPendingClipboardImage = NO;
+
+    if (seed.length > 0) {
+        UITextView *queryTV = self.queryTV;
+        if (queryTV && queryTV.text.length == 0) {
+            queryTV.text = seed;
+            [self ss_updatePlaceholder];
+            [self ss_updateInputHeightAnimated:YES];
+        }
+        return;
+    }
+
+    if (pendingClipImage) {
+        UIImage *image = [UIPasteboard generalPasteboard].image;
+        if (image && !self.attachImage) [self ss_setChipImage:image];
+    }
+}
+
+// 关闭时的确定性收尾：卡片自己的关闭动画之后 onDismiss→destroyWindow 是弱引用
+// 异步链，实测会断（窗口 resign key 后长时间不 detach，键盘 5 秒后才隐藏，
+// 残留窗口继续参与 hitTest 吞掉整个桌面的触摸）。这里在 %orig 前抓住 window，
+// 之后同步结束输入会话并补一次 destroyWindow（幂等，ssClosing 守卫），保证
+// 窗口必然 hidden/resign，触摸不再被截留。
+- (void)ss_close {
+    UIWindow *window = self.view.window;
+    %orig;
+    if (!window) return;
+    [window endEditing:YES];
+    if ([window respondsToSelector:@selector(destroyWindow)]) {
+        [(SSAIHostWindow *)window destroyWindow];
+    }
+}
+
+%end
+
+// destroyWindow 走完（无论 ShellX 自己触发还是上面 ss_close 补的）立即清掉
+// 全局强引用，让窗口对象像原生流程一样 dealloc——不留任何全屏僵尸窗口。
+%hook SSAIHostWindow
+
+- (void)destroyWindow {
+    %orig;
+    if (g_aiActiveHostWindow == self) g_aiActiveHostWindow = nil;
+}
+
+%end
+
+// 桌面可见性信号：延迟的 AI 请求在桌面真正出现时才创建面板。
+%hook SBHomeScreenViewController
+
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    g_aiDesktopVisible = YES;
+    DXPresentShellXAIChatWhenDesktop();
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    %orig;
+    g_aiDesktopVisible = NO;
+}
+
+%end
+
 %end
 
 
@@ -1012,238 +1187,6 @@ static void shortcutRefreshRequestCallback(CFNotificationCenterRef center,
                                                      requestID:requestID];
 }
 
-// SpringBoard side of the 打开应用 / 快捷方式 / openurl channel. Opens made from inside
-// a host process are blocked by restricted hosts (WeChat), and identity-gated
-// schemes only pass for SpringBoard itself, so requests ride a plist
-// {action, ...} plus a Darwin notification and are performed here natively.
-// Only the fixed "openapp" (plain bundle identifier), "openshortcut"
-// (bundle identifier plus app-defined type), and "openurl" (scheme-validated
-// URL string) action names are acted on — the channel never carries shell
-// commands or arbitrary selectors.
-//
-// Consumption runs on a dedicated serial queue, never the main queue: a busy
-// main thread must not delay or blackhole panel actions. openurl/openapp are
-// pure service XPC and act right here; openshortcut asks the provider to
-// resolve and activate the current item on SpringBoard's main queue.
-static dispatch_queue_t DXSBPendingActionQueue(void) {
-    static dispatch_queue_t queue;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        queue = dispatch_queue_create("com.lindo.typex.pendingaction", DISPATCH_QUEUE_SERIAL);
-    });
-    return queue;
-}
-
-// Executes one already-consumed request. Pure service XPC runs right here on
-// the serial queue; openshortcut delegates to the SpringBoard provider.
-static void DXSBExecutePendingActionRequest(NSDictionary *request) {
-    NSString *action = [request isKindOfClass:[NSDictionary class]] ? request[@"action"] : nil;
-    NSString *bundle = [request isKindOfClass:[NSDictionary class]] ? request[@"bundle"] : nil;
-    NSString *urlString = [request isKindOfClass:[NSDictionary class]] ? request[@"url"] : nil;
-    NSString *shortcutType = [request isKindOfClass:[NSDictionary class]] ? request[@"shortcuttype"] : nil;
-
-    if ([action isEqualToString:@"openapp"]) {
-        if (!DXIsValidBundleIdentifier(bundle)) return;
-
-        FBSSystemService *service = [FBSSystemService sharedService];
-        SEL openSelector = @selector(openApplication:options:withResult:);
-        BOOL scheduled = NO;
-        if (service && [service respondsToSelector:openSelector]) {
-            @try {
-                [service openApplication:bundle options:@{} withResult:^(NSError *error) {
-                    // A failed launch is not reported back: the keyboard has
-                    // no channel for it and the app switcher stays the retry.
-                    // Syslog is the only place a refusal can be diagnosed.
-                    if (error) {
-                        NSLog(@"[TypeX] pendingaction: openApplication %@ failed: %@", bundle, error);
-                    }
-                }];
-                scheduled = YES;
-            } @catch (__unused NSException *exception) {
-                scheduled = NO;
-            }
-        }
-        if (!scheduled) {
-            int result = SBSLaunchApplicationWithIdentifierAndLaunchOptions(bundle, @{}, @{}, NO);
-            if (result != 0) {
-                NSLog(@"[TypeX] pendingaction: SBS launch of %@ failed (%d)", bundle, result);
-            }
-        }
-        return;
-    }
-
-    if ([action isEqualToString:@"openshortcut"]) {
-        if (!DXIsValidBundleIdentifier(bundle) ||
-            ![shortcutType isKindOfClass:[NSString class]] ||
-            shortcutType.length == 0 || shortcutType.length > 512) return;
-        [DXQuickActionProvider activateShortcutWithBundleIdentifier:bundle type:shortcutType];
-        return;
-    }
-
-    if ([action isEqualToString:@"openurl"]) {
-        if (!DXIsOpenableSchemeURLString(urlString)) return;
-
-        // Opened by SpringBoard itself: the host app cannot intercept the
-        // request, and schemes gated on the requester's identity (prefs:,
-        // App-Prefs:) pass because the requester is SpringBoard. The return
-        // value is the only execution feedback this channel has; a refused
-        // open used to vanish silently and look like a dead tap.
-        NSURL *url = [NSURL URLWithString:urlString];
-        if (!SBSOpenSensitiveURLAndUnlock((__bridge CFURLRef)url, 0)) {
-            NSLog(@"[TypeX] pendingaction: openurl refused by SpringBoard: %@", urlString);
-        }
-    }
-}
-
-// A request older than this is dropped instead of executed: the tap that
-// wrote it is long over, and replaying it onto whatever the user is doing
-// now is exactly the "one tap, two actions" failure.
-static const NSTimeInterval DXSBPendingActionMaxAge = 30.0;
-// Identical requests produced by duplicate gesture/control callbacks can land
-// in separate drains, so per-drain comparison is insufficient. Keep a short
-// process-wide execution window keyed by the semantic payload. A later,
-// intentional tap remains possible after the window expires.
-static const NSTimeInterval DXSBPendingActionDuplicateWindow = 1.0;
-// Consecutive launches inside one drain are paced: each request starts an
-// app-transition transaction, and two transactions racing used to wedge
-// SpringBoard's UI.
-static const NSTimeInterval DXSBPendingActionLaunchGap = 0.8;
-
-static BOOL DXSBPendingActionWasRecentlyExecuted(NSDictionary *request) {
-    static NSMutableDictionary<NSString *, NSNumber *> *executionTimes;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        executionTimes = [NSMutableDictionary dictionary];
-    });
-
-    NSString *key = [NSString stringWithFormat:@"%@|%@|%@|%@",
-                     request[@"action"] ?: @"",
-                     request[@"bundle"] ?: @"",
-                     request[@"url"] ?: @"",
-                     request[@"shortcuttype"] ?: @""];
-    NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
-    NSNumber *previous = executionTimes[key];
-    if (previous && now - previous.doubleValue < DXSBPendingActionDuplicateWindow) return YES;
-    executionTimes[key] = @(now);
-
-    // The queue is serial; cheap opportunistic pruning keeps the table bounded.
-    for (NSString *storedKey in executionTimes.allKeys) {
-        if (now - [executionTimes[storedKey] doubleValue] > DXSBPendingActionMaxAge) {
-            [executionTimes removeObjectForKey:storedKey];
-        }
-    }
-    return NO;
-}
-
-// Every request file currently on disk, oldest first by modification time.
-// The legacy fixed-path file (pre-timestamped builds) carries no
-// "pendingaction-" prefix and is collected explicitly; a name sort cannot
-// order it against the timestamped files, so the ordering comes from the
-// files themselves.
-static NSMutableArray<NSString *> *DXSBPendingActionRequestPaths(void) {
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    NSString *directory = [TypeXPendingActionPath stringByDeletingLastPathComponent];
-    NSMutableArray<NSString *> *paths = [NSMutableArray array];
-    if ([fileManager fileExistsAtPath:TypeXPendingActionPath]) {
-        [paths addObject:TypeXPendingActionPath];
-    }
-    for (NSString *fileName in [fileManager contentsOfDirectoryAtPath:directory error:nil]) {
-        if (![fileName isKindOfClass:[NSString class]]) continue;
-        if (![fileName hasPrefix:@"pendingaction-"] || ![fileName hasSuffix:@".plist"]) continue;
-        [paths addObject:[directory stringByAppendingPathComponent:fileName]];
-    }
-    [paths sortUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
-        NSDate *dateA = [fileManager attributesOfItemAtPath:a error:nil][NSFileModificationDate];
-        NSDate *dateB = [fileManager attributesOfItemAtPath:b error:nil][NSFileModificationDate];
-        NSComparisonResult byDate = [dateA compare:dateB];
-        return byDate != NSOrderedSame ? byDate : [a compare:b];
-    }];
-    // Defensive cap: a runaway writer must not queue an unbounded backlog.
-    // The list is oldest-first, so the oldest overflow is dropped.
-    if (paths.count > 64) {
-        [paths removeObjectsInRange:NSMakeRange(0, paths.count - 64)];
-    }
-    return paths;
-}
-
-// Session-start hygiene: a request present before the observer exists was
-// written by an earlier session (keyboard processes cannot run before
-// SpringBoard) or during an upgrade window where the not-yet-resprited
-// SpringBoard could not consume the writer's files — such files used to ride
-// the NEXT action's drain as a surprise replay. Runs BEFORE the Darwin
-// observer is registered so a later notification can only drain post-sweep
-// files. Never executes anything.
-static void DXSBPurgePendingActionRequests(void) {
-    NSMutableArray<NSString *> *paths = DXSBPendingActionRequestPaths();
-    for (NSString *path in paths) {
-        [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
-    }
-    if (paths.count > 0) {
-        NSLog(@"[TypeX] pendingaction: purged %lu pre-launch request(s)", (unsigned long)paths.count);
-    }
-}
-
-// Drains every queued request file, oldest first. Requests each get their own
-// file because the old single-slot design lost everything but the last write
-// of a burst; Darwin notification coalescing is harmless because one delivery
-// drains every file present. Delivery itself is the channel's only trigger,
-// so a lost delivery used to strand a file until the next action replayed it;
-// the guard rails around this drain (session purge at registration, the
-// writer-side re-post, the staleness drop, the duplicate merge) exist to make
-// that strand harmless instead of a surprise.
-static void DXSBDrainPendingActionRequests(void) {
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    NSMutableArray<NSString *> *requestPaths = DXSBPendingActionRequestPaths();
-
-    NSDictionary *lastExecuted = nil;
-    BOOL launchedSinceGap = NO;
-    for (NSString *path in requestPaths) {
-        NSDictionary *attributes = [fileManager attributesOfItemAtPath:path error:nil];
-        NSDictionary *request = [NSDictionary dictionaryWithContentsOfFile:path];
-        // Consume before acting so a replayed notification cannot repeat
-        // the open — and unconditionally, so an invalid request can never
-        // linger and masquerade as a later action's payload.
-        [fileManager removeItemAtPath:path error:nil];
-        if (![request isKindOfClass:[NSDictionary class]]) continue;
-
-        NSDate *modified = [attributes isKindOfClass:[NSDictionary class]] ? attributes[NSFileModificationDate] : nil;
-        NSTimeInterval age = modified ? -[modified timeIntervalSinceNow] : 0.0;
-        if (age > DXSBPendingActionMaxAge) {
-            NSLog(@"[TypeX] pendingaction: dropped %.0fs-old stale request", age);
-            continue;
-        }
-        if (lastExecuted && [lastExecuted isEqualToDictionary:request]) {
-            // A stranded copy of an action plus the live copy of the same tap
-            // land in one drain together; the second execution is redundant.
-            NSLog(@"[TypeX] pendingaction: merged duplicate %@", request[@"action"] ?: @"request");
-            continue;
-        }
-        if (DXSBPendingActionWasRecentlyExecuted(request)) {
-            NSLog(@"[TypeX] pendingaction: suppressed cross-drain duplicate %@", request[@"action"] ?: @"request");
-            continue;
-        }
-
-        if (launchedSinceGap) [NSThread sleepForTimeInterval:DXSBPendingActionLaunchGap];
-        lastExecuted = request;
-        launchedSinceGap = YES;
-        DXSBExecutePendingActionRequest(request);
-    }
-}
-
-static void pendingActionRequestCallback(CFNotificationCenterRef center,
-                                         void *observer,
-                                         CFStringRef name,
-                                         const void *object,
-                                         CFDictionaryRef userInfo) {
-    // Never the main queue: a busy main thread (catalogue refreshes, Home
-    // Screen work) must not delay or blackhole panel actions. openurl/openapp
-    // are pure service XPC and act right here; openshortcut is handed to the
-    // provider, which performs the SpringBoard model access on the main queue.
-    dispatch_async(DXSBPendingActionQueue(), ^{
-        DXSBDrainPendingActionRequests();
-    });
-}
-
 %ctor {
     
     @autoreleasepool {
@@ -1278,14 +1221,8 @@ static void pendingActionRequestCallback(CFNotificationCenterRef center,
                                                                object:nil];
                     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, reloadPrefsNotificationCallback, (CFStringRef)kPrefsChangedIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                     if (isSpringBoard) {
-                        // Clear requests carried over from an earlier session
-                        // or an upgrade window BEFORE the observer exists (see
-                        // the purge comment) — they must never execute here.
-                        DXSBPurgePendingActionRequests();
-                        // Only SpringBoard consumes 打开应用 requests; other
-                        // processes ignore the notification entirely.
-                        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, pendingActionRequestCallback, (CFStringRef)kPendingActionRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, shortcutRefreshRequestCallback, (CFStringRef)kShortcutRefreshRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+                        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, aiChatRequestCallback, (CFStringRef)kAIChatRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                     }
                 }
             }

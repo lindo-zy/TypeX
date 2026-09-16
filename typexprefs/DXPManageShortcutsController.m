@@ -694,6 +694,16 @@ static NSString *DXFormatSettingsValue(float value, float step, NSString *suffix
         if (DXIsHiddenShortcutSelector(defaultOrderSelector[i])) {
             continue;
         }
+        // ShellX 截图按钮只在检测到 com.iosdump.shellx 已安装且总开关开启时进入目录
+        if ([defaultOrderSelector[i] isEqualToString:@"shellxScreenshotAction:"] &&
+            ![DXShortcutsGenerator isShellXScreenshotAvailable]) {
+            continue;
+        }
+        // AI 对话按钮只要求 ShellX 已安装（悬浮 AI 面板不经过其总开关守卫）
+        if ([defaultOrderSelector[i] isEqualToString:@"shellxAIChatAction:"] &&
+            ![DXShortcutsGenerator isShellXAIChatAvailable]) {
+            continue;
+        }
         [fullOrderDict addObject: @{
             @"label" : defaultOrderLabel[i],
             @"images12" : defaultOrder12[i],

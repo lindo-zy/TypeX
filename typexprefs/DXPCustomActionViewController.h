@@ -23,6 +23,20 @@
 // custom actions for selection only — no add row, no editing.
 @property (nonatomic, assign) BOOL customActionsOnly;
 @property (nonatomic, strong) NSMutableDictionary *prefs;
+// Ordered user-defined action definitions (kLinkActionskey). Public so the
+// standalone management page can render its own two-section layout on top of
+// the shared storage helpers.
+@property (nonatomic, strong) NSMutableArray<NSMutableDictionary *> *linkActions;
+
+// Shared storage helpers for the management page.
+- (void)reloadPreferences;
+- (void)persistLinkActions;
+- (void)writePreferences;
+- (void)removeReferencesToSelector:(NSString *)selector fromPreferences:(NSMutableDictionary *)preferences;
+- (void)pushEditorForCustomRow:(NSInteger)row;
+// 添加 flow on a fixed type: creates a PENDING entry and pushes the editor;
+// the store is only touched when the editor reports the saved entry.
+- (void)startAddFlowForType:(NSString *)type;
 @property(nonatomic, retain) UIBarButtonItem *defaultBtn;
 @property (nonatomic, copy) NSString *configuration;
 @end

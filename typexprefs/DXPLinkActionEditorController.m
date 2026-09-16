@@ -1,22 +1,18 @@
 #import "DXPLinkActionEditorController.h"
-#import "DXPAppPickerController.h"
-#import "DXPAppShortcutPickerController.h"
 #import "../DXHelper.h"
 #import "../common.h"
 
 static NSBundle *tweakBundle;
 
 // Typed rows. 0-2 are shared by every type (类型 / 名称 / 图标); the payload
-// row and its neighbors depend on the entry's type:
+// row depends on the entry's type:
 // - urlscheme: section 1 = full-width 文本框 (multi-line payload box)
 // - text:      section 1 = full-width 文本框 (multi-line payload box)
-// - openapp:   3 = 打开应用 (picker row)
 // - url:       3 = URL 设置 (field), 4 = APP内打开 switch
-// - shortcut:  3 = 快捷方式 (picker row)
 // The box types use two sections: section 0 holds the shared rows, section 1
 // the payload box with the type label as its header and hint as its footer.
-// Entries without a type keep the legacy layout (动作链接 + the two old
-// helper rows) so existing definitions keep editing exactly as before.
+// Entries without a type keep the legacy layout (动作链接) so existing
+// definitions keep editing exactly as before.
 static NSInteger const DXActionRowType = 0;
 static NSInteger const DXActionRowName = 1;
 static NSInteger const DXActionRowIcon = 2;
@@ -26,8 +22,6 @@ static NSInteger const DXActionRowInApp = 4;
 static NSInteger const DXLegacyRowName = 0;
 static NSInteger const DXLegacyRowIcon = 1;
 static NSInteger const DXLegacyRowLink = 2;
-static NSInteger const DXLegacyRowOpenApp = 3;
-static NSInteger const DXLegacyRowShortcutPreview = 4;
 
 // Label left, current value right: the type row and the payload picker rows.
 @interface DXPLinkActionValueCell : UITableViewCell
@@ -81,6 +75,32 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
 }
 @end
 
+// Icon row: the live preview sits right after the 图标 label (leading side),
+// while the config field stays right-aligned as the accessory view.
+@interface DXPLinkActionIconCell : UITableViewCell
+@property (nonatomic, strong) UIImageView *previewView;
+@end
+
+@implementation DXPLinkActionIconCell
+- (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
+    if ((self = [super initWithStyle:style reuseIdentifier:reuseIdentifier])) {
+        self.selectionStyle = UITableViewCellSelectionStyleNone;
+        self.previewView = [[UIImageView alloc] init];
+        self.previewView.contentMode = UIViewContentModeScaleAspectFit;
+        [self.contentView addSubview:self.previewView];
+    }
+    return self;
+}
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGFloat side = 29.0;
+    CGRect frame = CGRectMake(CGRectGetMaxX(self.textLabel.frame) + 8.0,
+                              (CGRectGetHeight(self.contentView.bounds) - side) / 2.0,
+                              side, side);
+    self.previewView.frame = frame;
+}
+@end
+
 @interface DXPLinkActionEditorController ()
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) UITextField *nameField;
@@ -109,25 +129,19 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
     [self loadTweakBundle];
     if ([type isEqualToString:kCustomActionTypeURLScheme]) return LOCALIZED(@"ACTION_TYPE_URL_SCHEME");
     if ([type isEqualToString:kCustomActionTypeText]) return LOCALIZED(@"ACTION_TYPE_TEXT");
-    if ([type isEqualToString:kCustomActionTypeOpenApp]) return LOCALIZED(@"OPEN_APP");
     if ([type isEqualToString:kCustomActionTypeURL]) return LOCALIZED(@"ACTION_TYPE_URL");
-    if ([type isEqualToString:kCustomActionTypeShortcut]) return LOCALIZED(@"SHORTCUTS");
     return type;
 }
 
 + (NSString *)defaultIconForType:(NSString *)type {
     if ([type isEqualToString:kCustomActionTypeText]) return @"doc.text";
-    if ([type isEqualToString:kCustomActionTypeOpenApp]) return @"apps.iphone";
     if ([type isEqualToString:kCustomActionTypeURL]) return @"globe";
-    if ([type isEqualToString:kCustomActionTypeShortcut]) return @"square.grid.2x2";
     return @"link";
 }
 
 // Used by the management page's 添加 flow: the type is chosen here and is
 // then fixed for the entry's life — the editor's 类型 row only displays it.
-// The order places URL Scheme first because it is the default for new
-// actions; sub-action-only types carry a suffix so the restriction is
-// visible before the choice is made.
+// The order places URL Scheme first because it is the default for new actions.
 + (void)presentTypeChooserFromController:(UIViewController *)controller
                              currentType:(NSString *)currentType
                               completion:(void (^)(NSString *type))completion {
@@ -139,15 +153,9 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
         kCustomActionTypeURLScheme,
         kCustomActionTypeText,
         kCustomActionTypeURL,
-        kCustomActionTypeOpenApp,
-        kCustomActionTypeShortcut,
     ];
     for (NSString *type in types) {
-        NSString *title = [self displayNameForType:type];
-        if (DXIsSubActionOnlyCustomActionType(type)) {
-            title = [title stringByAppendingString:LOCALIZED(@"SUB_ACTION_ONLY_SUFFIX")];
-        }
-        [alert addAction:[UIAlertAction actionWithTitle:title
+        [alert addAction:[UIAlertAction actionWithTitle:[self displayNameForType:type]
                                                   style:UIAlertActionStyleDefault
                                                 handler:^(__unused UIAlertAction *action) {
             if (completion) completion(type);
@@ -166,7 +174,7 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
 }
 
 - (NSInteger)rowCount {
-    if (self.isLegacyEntry) return 5;
+    if (self.isLegacyEntry) return 3;
     BOOL hasSwitch = [_displayedType isEqualToString:kCustomActionTypeURL];
     return DXActionRowPayload + 1 + (hasSwitch ? 1 : 0);
 }
@@ -175,9 +183,7 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
     if (self.isLegacyEntry) return LOCALIZED(@"CUSTOM_LINK_ACTION_FOOTER");
     if ([_displayedType isEqualToString:kCustomActionTypeURLScheme]) return LOCALIZED(@"TYPE_FOOTER_URL_SCHEME");
     if ([_displayedType isEqualToString:kCustomActionTypeText]) return LOCALIZED(@"TYPE_FOOTER_TEXT");
-    if ([_displayedType isEqualToString:kCustomActionTypeOpenApp]) return LOCALIZED(@"TYPE_FOOTER_OPEN_APP");
     if ([_displayedType isEqualToString:kCustomActionTypeURL]) return LOCALIZED(@"TYPE_FOOTER_URL");
-    if ([_displayedType isEqualToString:kCustomActionTypeShortcut]) return LOCALIZED(@"TYPE_FOOTER_SHORTCUT");
     return nil;
 }
 
@@ -190,7 +196,7 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
     }
     if (row == DXActionRowName) return self.nameField;
     if (row == DXActionRowIcon) return self.iconField;
-    if (row == DXActionRowPayload && !DXIsSubActionOnlyCustomActionType(_displayedType)) return self.linkField;
+    if (row == DXActionRowPayload) return self.linkField;
     return nil;
 }
 
@@ -198,9 +204,7 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
     if (self.isLegacyEntry) {
         if (row == DXLegacyRowName) return LOCALIZED(@"NAME");
         if (row == DXLegacyRowIcon) return LOCALIZED(@"ICON");
-        if (row == DXLegacyRowLink) return LOCALIZED(@"ACTION_LINK");
-        if (row == DXLegacyRowOpenApp) return LOCALIZED(@"OPEN_APP");
-        return LOCALIZED(@"SHORTCUTS");
+        return LOCALIZED(@"ACTION_LINK");
     }
     if (row == DXActionRowType) return LOCALIZED(@"ACTION_TYPE");
     if (row == DXActionRowName) return LOCALIZED(@"NAME");
@@ -209,8 +213,6 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
         if ([_displayedType isEqualToString:kCustomActionTypeURLScheme]) return LOCALIZED(@"URL_SCHEME_SETTINGS");
         if ([_displayedType isEqualToString:kCustomActionTypeText]) return LOCALIZED(@"TEXT_SETTINGS");
         if ([_displayedType isEqualToString:kCustomActionTypeURL]) return LOCALIZED(@"URL_SETTINGS");
-        if ([_displayedType isEqualToString:kCustomActionTypeOpenApp]) return LOCALIZED(@"OPEN_APP");
-        if ([_displayedType isEqualToString:kCustomActionTypeShortcut]) return LOCALIZED(@"SHORTCUTS");
     }
     if (row == DXActionRowInApp) return LOCALIZED(@"OPEN_IN_APP");
     return @"";
@@ -285,7 +287,14 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
 }
 
 - (UITableViewCell *)fieldCellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:@"DXPLinkActionFieldCell" forIndexPath:indexPath];
+    UITableViewCell *cell;
+    if ([self fieldForRow:indexPath.row] == self.iconField) {
+        DXPLinkActionIconCell *iconCell = [self.tableView dequeueReusableCellWithIdentifier:@"DXPLinkActionIconCell" forIndexPath:indexPath];
+        iconCell.previewView.image = [self currentIconPreviewImage];
+        cell = iconCell;
+    } else {
+        cell = [self.tableView dequeueReusableCellWithIdentifier:@"DXPLinkActionFieldCell" forIndexPath:indexPath];
+    }
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
     cell.accessoryType = UITableViewCellAccessoryNone;
     cell.imageView.image = nil;
@@ -293,33 +302,6 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
     cell.textLabel.text = [self labelForRow:indexPath.row];
     cell.textLabel.font = [UIFont systemFontOfSize:16];
     cell.accessoryView = [self fieldForRow:indexPath.row];
-    return cell;
-}
-
-- (UITableViewCell *)valueCellForRowAtIndexPath:(NSIndexPath *)indexPath detail:(NSString *)detail {
-    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:@"DXPLinkActionValueCell" forIndexPath:indexPath];
-    cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-    cell.textLabel.text = [self labelForRow:indexPath.row];
-    cell.textLabel.font = [UIFont systemFontOfSize:16];
-    cell.detailTextLabel.text = detail;
-    cell.imageView.image = nil;
-    cell.accessoryView = nil;
-    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-    return cell;
-}
-
-// Legacy helper rows keep their icon-led look from before typed actions.
-- (UITableViewCell *)legacyPickerCellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:@"DXPLinkActionPickCell" forIndexPath:indexPath];
-    cell.textLabel.text = [self labelForRow:indexPath.row];
-    cell.textLabel.font = [UIFont systemFontOfSize:16];
-    cell.detailTextLabel.text = nil;
-    cell.imageView.image = (indexPath.row == DXLegacyRowOpenApp
-        ? ([UIImage systemImageNamed:@"apps.iphone"] ?: [UIImage systemImageNamed:@"square.grid.2x2"])
-        : ([UIImage systemImageNamed:@"list.bullet.rectangle"] ?: [UIImage systemImageNamed:@"list.bullet"]));
-    cell.accessoryView = nil;
-    cell.accessoryType = UITableViewCellAccessoryNone;
-    cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     return cell;
 }
 
@@ -338,11 +320,6 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (self.isLegacyEntry) {
-        if (indexPath.row >= DXLegacyRowOpenApp) return [self legacyPickerCellForRowAtIndexPath:indexPath];
-        return [self fieldCellForRowAtIndexPath:indexPath];
-    }
-
     if ([self usesLargePayloadBox] && indexPath.section == 1) {
         return [self payloadBoxCellForRowAtIndexPath:indexPath];
     }
@@ -351,7 +328,7 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
     // indices; single-section typed entries use indexPath.row directly.
     NSInteger row = indexPath.row;
 
-    if (row == DXActionRowType) {
+    if (row == DXActionRowType && !self.isLegacyEntry) {
         // The type is fixed for the life of the entry (chosen in the 添加
         // flow's type chooser); the row only displays it and is never tappable.
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPLinkActionValueCell" forIndexPath:indexPath];
@@ -364,7 +341,7 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
         cell.accessoryType = UITableViewCellAccessoryNone;
         return cell;
     }
-    if (row == DXActionRowInApp) {
+    if (row == DXActionRowInApp && !self.isLegacyEntry) {
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPLinkActionFieldCell" forIndexPath:indexPath];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
         cell.textLabel.text = [self labelForRow:row];
@@ -375,81 +352,16 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
         cell.accessoryView = self.inAppSwitch;
         return cell;
     }
-    if (row == DXActionRowPayload && DXIsSubActionOnlyCustomActionType(_displayedType)) {
-        return [self valueCellForRowAtIndexPath:indexPath detail:[self trimmedValue:self.linkField.text]];
-    }
     return [self fieldCellForRowAtIndexPath:indexPath];
 }
 
 #pragma mark - Row actions
 
-- (void)openAppPicker {
-    [self.view endEditing:YES];
-    DXPAppPickerController *picker = [[DXPAppPickerController alloc] init];
-    picker.currentLink = [self trimmedValue:self.linkField.text];
-    __weak typeof(self) weakSelf = self;
-    picker.completion = ^(NSString *name, NSString *bundleID) {
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf) return;
-        strongSelf.nameField.text = name;
-        strongSelf.linkField.text = bundleID;
-        // Fill the icon field with the bundle ID so the button renders the
-        // app's real icon (saveTapped already validates bundle-ID icons).
-        strongSelf.iconField.text = bundleID;
-        [strongSelf.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:DXActionRowPayload inSection:0]]
-                                    withRowAnimation:UITableViewRowAnimationNone];
-    };
-    [self pushController:picker];
-}
-
-// The 快捷方式 payload is an app quick action (a long-press menu item): the
-// owning app's bundle identifier goes into `link`, the item's
-// UIApplicationShortcutItemType into `shortcuttype`.
-- (void)openShortcutPicker {
-    [self.view endEditing:YES];
-    DXPAppShortcutPickerController *picker = [[DXPAppShortcutPickerController alloc] init];
-    picker.currentBundleID = [self trimmedValue:self.linkField.text];
-    NSString *storedType = self.entry[kCustomActionShortcutTypeKey];
-    picker.currentType = [storedType isKindOfClass:[NSString class]] ? storedType : @"";
-    __weak typeof(self) weakSelf = self;
-    picker.completion = ^(NSString *title, NSString *bundleID, NSString *type) {
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf) return;
-        strongSelf.linkField.text = bundleID;
-        strongSelf.entry[kCustomActionShortcutTypeKey] = type;
-        // Same bundle-ID icon backfill as the open-app type: the button then
-        // renders the owning app's real icon.
-        strongSelf.iconField.text = bundleID;
-        // A freshly added action takes the menu item's own title as its label
-        // until the user types one; re-picking never clobbers a custom name.
-        if ([strongSelf trimmedValue:strongSelf.nameField.text].length == 0) strongSelf.nameField.text = title;
-        [strongSelf.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:DXActionRowPayload inSection:0]]
-                                    withRowAnimation:UITableViewRowAnimationNone];
-    };
-    [self pushController:picker];
-}
-
-// The legacy preview page only lists apps' long-press quick actions; it stays
-// reachable from legacy entries and writes nothing back.
-- (void)openLegacyShortcutPreview {
-    [self.view endEditing:YES];
-    [self pushController:[[DXPAppShortcutPickerController alloc] init]];
-}
-
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
 
-    if (self.isLegacyEntry) {
-        if (indexPath.row == DXLegacyRowOpenApp) [self openAppPicker];
-        else if (indexPath.row == DXLegacyRowShortcutPreview) [self openLegacyShortcutPreview];
-        return;
-    }
-
     // The payload box row handles its own taps (the text view takes focus).
     if ([self usesLargePayloadBox] && indexPath.section == 1) return;
-
-    if (indexPath.row == DXActionRowPayload && [_displayedType isEqualToString:kCustomActionTypeOpenApp]) [self openAppPicker];
-    else if (indexPath.row == DXActionRowPayload && [_displayedType isEqualToString:kCustomActionTypeShortcut]) [self openShortcutPicker];
 }
 
 - (void)inAppSwitchChanged:(UISwitch *)sender {
@@ -480,7 +392,7 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
     if (textField == self.nameField) [self.iconField becomeFirstResponder];
     else if (textField == self.iconField) {
         // The box takes the return-key handoff for box types; the small
-        // payload field elsewhere, and legacy chains into 动作链接.
+        // payload field elsewhere.
         if ([self usesLargePayloadBox]) [self.payloadBoxCell.textView becomeFirstResponder];
         else {
             UITextField *payload = self.isLegacyEntry ? self.linkField : [self fieldForRow:DXActionRowPayload];
@@ -507,9 +419,9 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
     NSString *link = [self payloadCurrentValue];
     if (name.length == 0) name = LOCALIZED(@"DEFAULT_BUTTON_NAME");
     // SF Symbol names and app bundle identifiers are both accepted; anything
-    // else resets to the type's default icon. A bundle-ID icon is loaded once
+    // else resets to the "link" default. A bundle-ID icon is loaded once
     // here so its PNG lands in the shared snapshot for sandboxed toolbar hosts.
-    NSString *defaultIcon = [DXPLinkActionEditorController defaultIconForType:_displayedType] ?: @"link";
+    NSString *defaultIcon = @"link";
     if (icon.length > 0) {
         NSString *bundleID = [DXHelper appIconBundleIDForShortcutItem:@{@"icon": icon}];
         if (bundleID) {
@@ -552,21 +464,54 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
     return field;
 }
 
+#pragma mark - Icon preview
+
+// The icon row renders the config field right-aligned; the preview lives on
+// the label side inside DXPLinkActionIconCell.
+- (void)buildIconAccessory {
+    [self.iconField addTarget:self action:@selector(iconTextChanged:) forControlEvents:UIControlEventEditingChanged];
+}
+
+- (void)iconTextChanged:(__unused UITextField *)sender {
+    [self refreshIconPreview];
+}
+
+- (UIImage *)currentIconPreviewImage {
+    NSString *icon = [self trimmedValue:self.iconField.text];
+    UIImage *image = icon.length ? [DXHelper imageForIconConfig:icon defaultSymbolName:@"link"] : nil;
+    if (!image) image = [UIImage systemImageNamed:@"link"];
+    return image;
+}
+
+// Mirrors the save fallback: bundle ID → app icon, valid SF Symbol → symbol,
+// anything else (or empty) → the "link" default.
+- (void)refreshIconPreview {
+    UIImage *image = [self currentIconPreviewImage];
+    for (DXPLinkActionIconCell *cell in self.tableView.visibleCells) {
+        cell.previewView.image = image;
+    }
+}
+
 - (void)viewDidLoad {
     tweakBundle = [NSBundle bundleWithPath:bundlePath];
     [tweakBundle load];
     [super viewDidLoad];
 
-    // Open-app entries get their own page title; every other type keeps the
-    // generic custom-action one.
-    self.title = [_displayedType isEqualToString:kCustomActionTypeOpenApp]
-        ? LOCALIZED(@"OPEN_APP_SETTINGS") : LOCALIZED(@"CUSTOM_ACTION_SETTINGS");
+    self.title = LOCALIZED(@"CUSTOM_ACTION_SETTINGS");
     self.entry = [self.entry mutableCopy] ?: [NSMutableDictionary dictionary];
     NSString *storedType = self.entry[kCustomActionTypeKey];
-    _displayedType = [storedType isKindOfClass:[NSString class]] ? storedType : @"";
+    // Entries typed before removed types (or carrying garbage) keep editing
+    // as legacy (auto-detecting) actions; only known types stay typed.
+    _displayedType = ([storedType isKindOfClass:[NSString class]] &&
+                      ([storedType isEqualToString:kCustomActionTypeURLScheme] ||
+                       [storedType isEqualToString:kCustomActionTypeText] ||
+                       [storedType isEqualToString:kCustomActionTypeURL])) ? storedType : @"";
 
-    self.nameField = [self newFieldWithText:self.entry[@"name"] placeholder:LOCALIZED(@"DEFAULT_BUTTON_NAME")];
-    self.iconField = [self newFieldWithText:self.entry[@"icon"] placeholder:[DXPLinkActionEditorController defaultIconForType:_displayedType]];
+    NSString *defaultName = ([self trimmedValue:self.entry[@"name"]].length && [self.entry[@"name"] isKindOfClass:[NSString class]])
+        ? self.entry[@"name"] : LOCALIZED(@"DEFAULT_BUTTON_NAME");
+    self.nameField = [self newFieldWithText:defaultName placeholder:LOCALIZED(@"DEFAULT_BUTTON_NAME")];
+    self.iconField = [self newFieldWithText:self.entry[@"icon"] placeholder:@"link"];
+    [self buildIconAccessory];
     self.linkField = [self newFieldWithText:self.entry[@"link"] placeholder:@""];
     [self applyTypeToPayloadField];
     self.linkField.returnKeyType = UIReturnKeyDone;
@@ -583,7 +528,7 @@ static NSInteger const DXLegacyRowShortcutPreview = 4;
     self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPLinkActionFieldCell"];
-    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPLinkActionPickCell"];
+    [self.tableView registerClass:[DXPLinkActionIconCell class] forCellReuseIdentifier:@"DXPLinkActionIconCell"];
     [self.tableView registerClass:[DXPLinkActionValueCell class] forCellReuseIdentifier:@"DXPLinkActionValueCell"];
     [self.tableView registerClass:[DXPLinkActionTextCell class] forCellReuseIdentifier:@"DXPLinkActionTextCell"];
     self.view = self.tableView;
