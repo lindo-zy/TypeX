@@ -128,12 +128,6 @@
 #define kShortcutRefreshRequestIdentifier @"com.lindo.typex/shortcutrefresh"
 #define kShortcutSnapshotChangedIdentifier @"com.lindo.typex/shortcutschanged"
 
-// ShellX AI 面板通道：键盘/工具栏进程只写请求（{format:1, requestID, created,
-// mode: text|image|empty, text?}），SpringBoard 端收到 Darwin 通知后整包读取并
-// 调起 ShellX 的 SSAIHostWindow。与快捷方式目录共用隔离域，避免再开共享面。
-#define TypeXAIChatRequestKey @"ai-chat-request"
-#define kAIChatRequestIdentifier @"com.lindo.typex/aichat"
-
 // Complete SpringBoard-authored snapshot of each app's current static and
 // dynamic UIApplicationShortcutItems. The value is replaced as one generation,
 // so removed apps and actions cannot survive an incremental merge:

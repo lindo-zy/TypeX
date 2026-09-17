@@ -7,7 +7,7 @@ include $(THEOS)/makefiles/common.mk
 
 BUNDLE_NAME = TypeXPrefs
 
-TypeXPrefs_FILES = $(wildcard *.m) $(wildcard *.mm) ../DXPrefsManager.m ../DXShortcutsGenerator.m ../DXHelper.m
+TypeXPrefs_FILES = $(wildcard *.m) $(wildcard *.mm) ../DXPrefsManager.m ../DXShortcutsGenerator.m ../DXHelper.m ../DXAIEngine.m
 TypeXPrefs_INSTALL_PATH = /Library/PreferenceBundles
 TypeXPrefs_FRAMEWORKS = UIKit CoreGraphics SwiftUI MobileCoreServices
 TypeXPrefs_PRIVATE_FRAMEWORKS = Preferences AppSupport

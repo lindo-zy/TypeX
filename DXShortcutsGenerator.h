@@ -11,7 +11,6 @@
 +(BOOL)isAvailableShortcutSelector:(NSString *)selector;
 +(BOOL)isVisibleShortcutSelector:(NSString *)selector;
 +(BOOL)isShellXScreenshotAvailable;
-+(BOOL)isShellXAIChatAvailable;
 +(instancetype)sharedInstance;
 -(instancetype)init;
 -(NSArray *)imageNameArrayForiOS:(NSInteger)iosVersion;

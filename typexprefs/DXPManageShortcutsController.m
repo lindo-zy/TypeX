@@ -699,11 +699,6 @@ static NSString *DXFormatSettingsValue(float value, float step, NSString *suffix
             ![DXShortcutsGenerator isShellXScreenshotAvailable]) {
             continue;
         }
-        // AI 对话按钮只要求 ShellX 已安装（悬浮 AI 面板不经过其总开关守卫）
-        if ([defaultOrderSelector[i] isEqualToString:@"shellxAIChatAction:"] &&
-            ![DXShortcutsGenerator isShellXAIChatAvailable]) {
-            continue;
-        }
         [fullOrderDict addObject: @{
             @"label" : defaultOrderLabel[i],
             @"images12" : defaultOrder12[i],

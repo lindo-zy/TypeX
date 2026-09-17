@@ -75,36 +75,15 @@ static NSInteger const DXLegacyRowLink = 2;
 }
 @end
 
-// Icon row: the live preview sits right after the 图标 label (leading side),
-// while the config field stays right-aligned as the accessory view.
-@interface DXPLinkActionIconCell : UITableViewCell
-@property (nonatomic, strong) UIImageView *previewView;
-@end
-
-@implementation DXPLinkActionIconCell
-- (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
-    if ((self = [super initWithStyle:style reuseIdentifier:reuseIdentifier])) {
-        self.selectionStyle = UITableViewCellSelectionStyleNone;
-        self.previewView = [[UIImageView alloc] init];
-        self.previewView.contentMode = UIViewContentModeScaleAspectFit;
-        [self.contentView addSubview:self.previewView];
-    }
-    return self;
-}
-- (void)layoutSubviews {
-    [super layoutSubviews];
-    CGFloat side = 29.0;
-    CGRect frame = CGRectMake(CGRectGetMaxX(self.textLabel.frame) + 8.0,
-                              (CGRectGetHeight(self.contentView.bounds) - side) / 2.0,
-                              side, side);
-    self.previewView.frame = frame;
-}
-@end
-
 @interface DXPLinkActionEditorController ()
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) UITextField *nameField;
 @property (nonatomic, strong) UITextField *iconField;
+// 图标 row accessory: preview thumbnail (left) + edit field (right) in one
+// container, mirroring KayokoX's icon row. The preview lives in the accessory
+// so its position never depends on how UIKit sizes textLabel's frame.
+@property (nonatomic, strong) UIView *iconAccessoryContainer;
+@property (nonatomic, strong) UIImageView *iconPreviewImageView;
 @property (nonatomic, strong) UITextField *linkField;
 @property (nonatomic, strong) UISwitch *inAppSwitch;
 // The one payload box cell for the box types (url scheme / text); kept as a
@@ -287,21 +266,16 @@ static NSInteger const DXLegacyRowLink = 2;
 }
 
 - (UITableViewCell *)fieldCellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell;
-    if ([self fieldForRow:indexPath.row] == self.iconField) {
-        DXPLinkActionIconCell *iconCell = [self.tableView dequeueReusableCellWithIdentifier:@"DXPLinkActionIconCell" forIndexPath:indexPath];
-        iconCell.previewView.image = [self currentIconPreviewImage];
-        cell = iconCell;
-    } else {
-        cell = [self.tableView dequeueReusableCellWithIdentifier:@"DXPLinkActionFieldCell" forIndexPath:indexPath];
-    }
+    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:@"DXPLinkActionFieldCell" forIndexPath:indexPath];
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
     cell.accessoryType = UITableViewCellAccessoryNone;
     cell.imageView.image = nil;
     cell.detailTextLabel.text = nil;
     cell.textLabel.text = [self labelForRow:indexPath.row];
     cell.textLabel.font = [UIFont systemFontOfSize:16];
-    cell.accessoryView = [self fieldForRow:indexPath.row];
+    cell.accessoryView = [self fieldForRow:indexPath.row] == self.iconField
+        ? [self iconAccessoryView]
+        : [self fieldForRow:indexPath.row];
     return cell;
 }
 
@@ -466,8 +440,23 @@ static NSInteger const DXLegacyRowLink = 2;
 
 #pragma mark - Icon preview
 
-// The icon row renders the config field right-aligned; the preview lives on
-// the label side inside DXPLinkActionIconCell.
+// The 图标 row's accessory is a preview thumbnail followed by the edit field;
+// the thumbnail mirrors what the entry will actually render (SF Symbol name or
+// app bundle identifier) and refreshes on every keystroke.
+- (UIView *)iconAccessoryView {
+    if (!self.iconAccessoryContainer) {
+        UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0.0, 0.0, 267.0, 36.0)];
+        self.iconPreviewImageView = [[UIImageView alloc] initWithFrame:CGRectMake(0.0, 3.5, 29.0, 29.0)];
+        self.iconPreviewImageView.contentMode = UIViewContentModeScaleAspectFit;
+        [container addSubview:self.iconPreviewImageView];
+        self.iconField.frame = CGRectMake(38.0, 0.0, 220.0, 36.0);
+        [container addSubview:self.iconField];
+        self.iconAccessoryContainer = container;
+        [self refreshIconPreview];
+    }
+    return self.iconAccessoryContainer;
+}
+
 - (void)buildIconAccessory {
     [self.iconField addTarget:self action:@selector(iconTextChanged:) forControlEvents:UIControlEventEditingChanged];
 }
@@ -483,13 +472,10 @@ static NSInteger const DXLegacyRowLink = 2;
     return image;
 }
 
-// Mirrors the save fallback: bundle ID → app icon, valid SF Symbol → symbol,
-// anything else (or empty) → the "link" default.
+// Refresh only the one preview view; sweeping visibleCells with the property
+// setter would hit plain field cells and crash on an unrecognized selector.
 - (void)refreshIconPreview {
-    UIImage *image = [self currentIconPreviewImage];
-    for (DXPLinkActionIconCell *cell in self.tableView.visibleCells) {
-        cell.previewView.image = image;
-    }
+    self.iconPreviewImageView.image = [self currentIconPreviewImage];
 }
 
 - (void)viewDidLoad {
@@ -528,7 +514,6 @@ static NSInteger const DXLegacyRowLink = 2;
     self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPLinkActionFieldCell"];
-    [self.tableView registerClass:[DXPLinkActionIconCell class] forCellReuseIdentifier:@"DXPLinkActionIconCell"];
     [self.tableView registerClass:[DXPLinkActionValueCell class] forCellReuseIdentifier:@"DXPLinkActionValueCell"];
     [self.tableView registerClass:[DXPLinkActionTextCell class] forCellReuseIdentifier:@"DXPLinkActionTextCell"];
     self.view = self.tableView;

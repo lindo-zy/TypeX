@@ -79,6 +79,18 @@
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>detail</key>
+			<string>DXPAIChatController</string>
+			<key>label</key>
+			<string>AI问答</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
 			<key>footerText</key>
 			<string>FOOTER_DOCK_MODE</string>
 		</dict>

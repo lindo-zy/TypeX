@@ -2,6 +2,7 @@
 #import "DXShared.h"
 #import "DXCollectionView.h"
 #import "DXHelper.h"
+#import "DXAIPanel.h"
 
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -1139,48 +1140,18 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     [self autoPaginationControl];
 }
 
-// AI 对话按钮：ShellX 面板只存在于 SpringBoard 进程（其 dylib 仅注入 SB），
-// 键盘进程内通过 cfprefsd 通道投递种子内容 + Darwin 通知，由 TypeX 的 SB 端
-// 调起 SSAIHostWindow。种子优先级：输入框现有文本 > 剪贴板文本；剪贴板只有
-// 图片时进入 image 模式（不填文本，SB 端注入图片 chip），两者皆空则仅开面板。
--(void)shellxAIChatAction:(UIButton*)sender{
+// AI 问答按钮：TypeX 自带面板，在当前键盘进程内直接弹出。打开前读取宿主输入
+// 框全文作为种子问题（上限 2 万字符），面板输入框为空且会话未注入过时才预填；
+// 宿主输入会话不受影响。SpringBoard 端没有键盘工具栏，保持空操作。
+-(void)aiChatAction:(UIButton*)sender{
     [self autoPaginationControl];
     [self triggerImpactAndAnimationWithButton:sender];
+    if (isSpringBoard) return;
 
-    // 先刷新键盘输入委托再取内容：全局 delegate 只在 dock 创建/滑动/各动作
-    // 的 beginUpdateDelegate 时更新，键盘创建后切换到文本框（UITextView）等
-    // 其他输入控件时不刷新就会读到旧控件的内容（空），种子随之丢失。
     [self beginUpdateDelegate];
-
-    UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
     NSString *seed = [self currentInputTextForCustomAction];
-    NSString *mode;
-    if (seed.length > 0) {
-        mode = @"text";
-    } else if (pasteboard.string.length > 0) {
-        seed = pasteboard.string;
-        mode = @"text";
-    } else if (pasteboard.hasImages) {
-        mode = @"image";
-    } else {
-        mode = @"empty";
-    }
     if (seed.length > 20000) seed = [seed substringToIndex:20000];
-
-    // 先收尾当前输入会话：面板由 SpringBoard 端创建，宿主键盘若仍处于激活
-    // 状态，其收尾会与 SB 端窗口/触摸状态异步竞争（实测关闭面板后桌面触摸
-    // 被残留窗口吞掉）。读种子在 dismiss 之前完成。
-    kbImpl = [objc_getClass("UIKeyboardImpl") activeInstance];
-    [kbImpl dismissKeyboard];
-
-    NSDictionary *request = @{@"format": @1,
-                              @"requestID": [NSUUID UUID].UUIDString,
-                              @"created": @([NSDate date].timeIntervalSince1970),
-                              @"mode": mode,
-                              @"origin": isSpringBoard ? @"sb" : @"app",
-                              @"text": seed ?: @""};
-    DXSetQuickActionSharedValue(request, TypeXAIChatRequestKey);
-    notify_post([kAIChatRequestIdentifier UTF8String]);
+    [DXAIPanel openFromKeyboardWithSeedText:seed];
     [self autoPaginationControl];
 }
 

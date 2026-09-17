@@ -228,8 +228,8 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 
 "LONG_SHELLX_SCREENSHOT" = "ShellX Screenshot";
 "SHORT_SHELLX_SCREENSHOT" = "Shot";
-"LONG_SHELLX_AI_CHAT" = "AI Chat";
-"SHORT_SHELLX_AI_CHAT" = "AI";
+"LONG_AI_CHAT" = "AI Chat";
+"SHORT_AI_CHAT" = "AI";
 
 /* Custom actions management page (KayokoX-style layout) */
 "CHOOSE_ACTION" = "Choose Action";
@@ -237,3 +237,53 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "MANAGE_HINT_TAP_EDIT" = "When not editing, tap an action to edit it";
 "MANAGE_HINT_EDIT_DELETE" = "While editing, tap an action to delete it";
 "ADD_TYPE_HINT" = "Pick a type below to create a new action";
+
+/* AI Chat */
+"LONG_AI_CHAT" = "AI Chat";
+"SHORT_AI_CHAT" = "AI";
+"AI_CARD_TITLE" = "AI Chat";
+"AI_CARD_PLACEHOLDER" = "Ask anything…";
+"AI_CARD_SEND" = "Send";
+"AI_CARD_STOP" = "Stop";
+"AI_CARD_PHOTOS" = "Photos";
+"AI_CARD_CAMERA" = "Camera";
+"AI_CARD_FILES" = "Files";
+"AI_CARD_IMAGE" = "Image";
+"AI_CARD_NO_KEY_ALERT" = "Configure an API Key in TypeX Settings → AI Chat first";
+"AI_CARD_NO_MODEL_ALERT" = "Configure a model in TypeX Settings → AI Chat first";
+"AI_CARD_REQUEST_FAILED" = "Request failed";
+"AI_CARD_FILE_UNREADABLE" = "Unable to read this file";
+
+/* AI Chat settings */
+"AI_SETTINGS_TITLE" = "AI Chat";
+"AI_ENGINE" = "AI Engine";
+"AI_CURRENT_ENGINE" = "Current Engine";
+"AI_ENGINE_PICKER_FOOTER" = "All engines use the OpenAI-compatible protocol (Gemini via its OpenAI-compatible endpoint).";
+"AI_API_KEY" = "API Key";
+"AI_MODELS_LABEL" = "Models";
+"AI_FETCH_MODELS" = "Fetch Models";
+"AI_FETCHING_MODELS" = "Fetching…";
+"AI_OPEN_KEYS_URL" = "Open API Keys Page";
+"AI_ENDPOINT" = "Endpoint";
+"AI_CUSTOM_NAME" = "Display Name";
+"AI_PERSONA_SECTION" = "AI Persona";
+"AI_PERSONA_ROW" = "Persona";
+"AI_BALL_ROW" = "AI Floating Ball";
+"AI_THEME_ROW" = "AI Window Theme";
+"AI_STREAM_ROW" = "Streaming Output";
+"AI_BALL_ENABLED" = "Show Ball When Minimized";
+"AI_BALL_HALF" = "Auto-dim at Screen Edge";
+"AI_BALL_RESET" = "Reset Ball Position";
+"AI_BALL_FOOTER" = "When the ball switch is off, minimizing the panel just hides it.";
+"AI_THEME_SYSTEM" = "Follow System";
+"AI_THEME_LIGHT" = "Light";
+"AI_THEME_DARK" = "Dark";
+"AI_PERSONA_FOOTER" = "The persona is sent as the system prompt with every request. Leave empty for the built-in default.";
+"AI_HINT_QWEN" = "Qwen defaults to qwen3.8-flash and qwen3-vl-flash. Comma-separate models. Fetch uses Bailian compatible-mode /v1/models.";
+"AI_HINT_DEEPSEEK" = "DeepSeek defaults to deepseek-chat and deepseek-reasoner. Comma-separate models. Fetch uses /v1/models.";
+"AI_HINT_OPENAI" = "OpenAI defaults to gpt-4o-mini and gpt-4o. Comma-separate models. Fetch uses /v1/models.";
+"AI_HINT_SILICONFLOW" = "SiliconFlow model names carry the org prefix (e.g. deepseek-ai/DeepSeek-V3). Fetch uses /v1/models.";
+"AI_HINT_DOUBAO" = "Doubao uses endpoint IDs as model names. Create an endpoint in the Ark console first, or just fetch.";
+"AI_HINT_ZHIPU" = "Zhipu defaults to glm-4-flash and glm-4-plus. Comma-separate models. Fetch uses /api/paas/v4/models.";
+"AI_HINT_GEMINI" = "Gemini uses its OpenAI-compatible endpoint (v1beta/openai). Comma-separate models.";
+"AI_HINT_CUSTOM" = "Custom engines need an OpenAI-compatible endpoint (with the /v1-style prefix). Comma-separate models. Fetch uses {endpoint}/models.";
