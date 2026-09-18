@@ -1130,13 +1130,62 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     [self autoPaginationControl];
 }
 
+// 截图瞬间的键盘可见性判断：与 DXAIPanel 的活体探测同一套几何启发——
+// UIKeyboardImpl 是全屏容器（frame 覆盖输入窗口），必须经视图链换算并校验
+// "落在屏幕下半部"才算真键盘。
+static BOOL DXKeyboardVisibleForScreenshot(void) {
+    UIKeyboardImpl *keyboard = [objc_getClass("UIKeyboardImpl") activeInstance];
+    if (!keyboard || !keyboard.window) return NO;
+    CGRect windowFrame = [keyboard convertRect:keyboard.bounds toView:nil];
+    CGRect screenFrame = [keyboard.window convertRect:windowFrame toWindow:nil];
+    CGFloat screenHeight = CGRectGetHeight(keyboard.window.bounds);
+    if (CGRectIsNull(screenFrame) || CGRectGetHeight(screenFrame) <= 10.0) return NO;
+    if (CGRectGetMinY(screenFrame) <= 0.0 || CGRectGetMinY(screenFrame) >= screenHeight - 10.0) return NO;
+    return YES;
+}
+
+// "截图后恢复键盘"路径：等系统截图完成通知（UIApplicationUserDidTakeScreenshot,
+// ShellX 走系统截图管线时必发）再弹回；通知 5 秒未到也按按钮意图兜底恢复，
+// 不能让键盘因为通知缺失而一直收着。
+static void DXRestoreKeyboardAfterScreenshot(UIKeyboardImpl *keyboard) {
+    if (!keyboard) return;
+    __block BOOL settled = NO;
+    __block id observer = [[NSNotificationCenter defaultCenter]
+        addObserverForName:UIApplicationUserDidTakeScreenshotNotification
+                    object:nil queue:[NSOperationQueue mainQueue]
+               usingBlock:^(NSNotification *note) {
+        if (settled) return;
+        settled = YES;
+        [[NSNotificationCenter defaultCenter] removeObserver:observer];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ [keyboard becomeFirstResponder]; });
+    }];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (settled) return;
+        settled = YES;
+        [[NSNotificationCenter defaultCenter] removeObserver:observer];
+        [keyboard becomeFirstResponder];
+    });
+}
+
 // 截图按钮：ShellX 只注入 SpringBoard/assistivetouchd，键盘进程内其类不在内存，
 // Darwin 通知 com.iosdump.screenshotshell/AssistiveScreenshot 是官方跨进程触发入口
 // （SpringBoard 侧 CFNotificationCenterAddObserver，守卫检查 GlobalEnabled 后走系统截图路径）。
+// 键盘默认随截图收起（截图画面不带键盘）；设置里开启"截图后恢复键盘"时，
+// 截图完成后键盘自动弹回。
 -(void)shellxScreenshotAction:(UIButton*)sender{
     [self autoPaginationControl];
     [self triggerImpactAndAnimationWithButton:sender];
+
+    kbImpl = [objc_getClass("UIKeyboardImpl") activeInstance];
+    BOOL keyboardWasVisible = DXKeyboardVisibleForScreenshot();
+    BOOL restore = preferencesBool(kScreenshotKeyboardRestoreKey, NO) && keyboardWasVisible;
+
+    if (kbImpl) [kbImpl dismissKeyboard];
     notify_post("com.iosdump.screenshotshell/AssistiveScreenshot");
+    if (restore) DXRestoreKeyboardAfterScreenshot(kbImpl);
+
     [self autoPaginationControl];
 }
 

@@ -86,6 +86,10 @@
 // or an entry without the host bundle ID means off: the per-app switches in
 // Settings all default to off.
 #define kPasteImageChipAppsKey @"pasteimagechipapps"
+// Screenshot toolbar action always hides the keyboard first so the capture is
+// clean. When this is on, the keyboard pops back once the screenshot completes
+// (system UserDidTakeScreenshot notification, with a bounded fallback wait).
+#define kScreenshotKeyboardRestoreKey @"screenshotkeyboardrestoreBOOL"
 
 #define kbuttonsImages12 0
 #define kbuttonsImages13 1

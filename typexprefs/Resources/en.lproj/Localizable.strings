@@ -232,16 +232,13 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SHORT_AI_CHAT" = "AI";
 
 /* Custom actions management page (KayokoX-style layout) */
-"CHOOSE_ACTION" = "Choose Action";
 "NO_CUSTOM_ACTIONS" = "No custom actions yet";
 "MANAGE_HINT_TAP_EDIT" = "When not editing, tap an action to edit it";
 "MANAGE_HINT_EDIT_DELETE" = "While editing, tap an action to delete it";
 "ADD_TYPE_HINT" = "Pick a type below to create a new action";
 
 /* AI Chat */
-"LONG_AI_CHAT" = "AI Chat";
-"SHORT_AI_CHAT" = "AI";
-"AI_CARD_TITLE" = "AI Chat";
+"AI_CARD_TITLE" = "AI";
 "AI_CARD_PLACEHOLDER" = "Ask anything…";
 "AI_CARD_SEND" = "Send";
 "AI_CARD_STOP" = "Stop";
@@ -253,6 +250,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "AI_CARD_NO_MODEL_ALERT" = "Configure a model in TypeX Settings → AI Chat first";
 "AI_CARD_REQUEST_FAILED" = "Request failed";
 "AI_CARD_FILE_UNREADABLE" = "Unable to read this file";
+"AI_CARD_REPLY_COPIED" = "Reply copied — paste it in your app";
 
 /* AI Chat settings */
 "AI_SETTINGS_TITLE" = "AI Chat";
@@ -284,11 +282,8 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "AI_THEME_SYSTEM" = "Follow System";
 "AI_THEME_LIGHT" = "Light";
 "AI_THEME_DARK" = "Dark";
-"AI_PERSONA_HEADER" = "Screenshot Assistant, Text Assistant and AI Chat Assistant exist by default and can be edited but not deleted.";
 "AI_PERSONA_FOOTER" = "Tap a row to edit. Swipe left to delete. Use \"+\" to add a persona; new personas appear in the panel persona menu by default, and the persona name is the button title.";
-"AI_PERSONA_RESET" = "Restore Defaults";
 "AI_PERSONA_EDIT_TITLE" = "Edit Persona";
-"AI_PERSONA_DIRECT" = "Send Directly";
 "AI_PERSONA_NAME_HEADER" = "Name";
 "AI_PERSONA_CONTENT_HEADER" = "Persona Content";
 "AI_PERSONA_ROLE_IMAGE" = "Image Q&A default";
@@ -307,3 +302,33 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "PASTE_CHIP_ACTION" = "Paste";
 "PASTE_CHIP_APPS_SHOW_ENABLED" = "Enabled Only";
 "PASTE_CHIP_APPS_SHOW_ALL" = "Show All";
+"PASTE_CHIP_APPS_SEARCH" = "Search apps or bundle IDs";
+
+/* Screenshot */
+"SCREENSHOT_KEYBOARD_RESTORE" = "Restore keyboard after screenshot";
+"SCREENSHOT_KEYBOARD_RESTORE_FOOTER" = "The screenshot action always hides the keyboard before capturing. When enabled, the keyboard pops back once the screenshot completes (waits for the system screenshot notification, 5 s fallback).";
+
+/* Settings (previously missing keys) */
+"TWEAK" = "Tweak";
+"ENABLED" = "Enabled";
+"HAPTIC" = "Haptic Feedback";
+"PASTE_CHIP" = "Paste Chip";
+"PASTE_CHIP_FOOTER" = "Shows a floating paste chip above the keyboard when the clipboard holds new content, and auto-answers the system paste-permission alert.";
+"PASTE_CHIP_APPS" = "Enabled Apps";
+"PASTE_CHIP_APPS_FOOTER" = "Enabled for %ld apps";
+"FOOTER_DOCK_MODE" = "Choose which stock dock buttons (globe/dictation) stay visible: both, one of them, or none.";
+"DICTATION_ONLY" = "Dictation Only";
+"GLOBE_ONLY" = "Globe Only";
+"NONE" = "None";
+"FOOTER_CREDITS" = "TypeX by lindo. Thanks for your support.";
+"SHORTCUTS_TINT_GROUP" = "Button Tint";
+"SHORTCUTS_TINT" = "Button Color";
+"SHORTCUTS_TINT_FOOTER" = "Follow the system tint or pick a custom color for the shortcut buttons.";
+"FOLLOW_SYSTEM" = "Follow System";
+"USE_CUSTOM" = "Custom";
+"DISABLED" = "Off";
+"CUSTOMIZATION" = "Background Colors";
+"CUSTOMIZATION_FOOTER" = "Background tints share one master switch; turning it off disables both the button and the top toolbar background colors.";
+"SHORTCUTS_BACKGROUND_TINT" = "Button Background";
+"TOP_TOOLBAR_BACKGROUND_TINT" = "Top Toolbar Background";
+"TOP_TOOLBAR_PREVIEW" = "Top Toolbar Preview";

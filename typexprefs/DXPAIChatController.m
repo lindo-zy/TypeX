@@ -252,7 +252,8 @@ static NSString *DXAITrim(NSString *text) {
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
     if (indexPath.section == 1) {
         NSString *kind = [self kindForRow:indexPath.row];
-        if ([kind isEqualToString:@"models"]) return 136.0;
+        // 模型列表每行一个，框体至少完整露出 5 行（16pt 字体行高 ~19.5pt）。
+        if ([kind isEqualToString:@"models"]) return 176.0;
         return 44.0;
     }
     return 44.0;
@@ -641,7 +642,7 @@ static NSString *DXAITrim(NSString *text) {
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.row == 3) return 136.0;
+    if (indexPath.row == 3) return 176.0; // 模型列表框：至少完整露出 5 行
     return 44.0;
 }
 
@@ -796,11 +797,7 @@ static NSString *DXAITrim(NSString *text) {
     UIBarButtonItem *addButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
                                                                                target:self
                                                                                action:@selector(addPersonaTapped)];
-    UIBarButtonItem *resetButton = [[UIBarButtonItem alloc] initWithTitle:LOCALIZED(@"AI_PERSONA_RESET")
-                                                                    style:UIBarButtonItemStylePlain
-                                                                   target:self
-                                                                   action:@selector(resetTapped)];
-    self.navigationItem.rightBarButtonItems = @[addButton, resetButton];
+    self.navigationItem.rightBarButtonItem = addButton;
 
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
     self.tableView.delegate = self;
@@ -816,10 +813,6 @@ static NSString *DXAITrim(NSString *text) {
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     return [DXAIEngine personas].count;
-}
-
-- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    return LOCALIZED(@"AI_PERSONA_HEADER");
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
@@ -852,17 +845,8 @@ static NSString *DXAITrim(NSString *text) {
     [self.navigationController pushViewController:[[DXPAIPersonaEditorController alloc] initWithPersonaID:personaID] animated:YES];
 }
 
-// 默认人设（builtin）不可删除，仅自定义人设可左滑删除。
-- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
-    return YES;
-}
-
-- (UITableViewCellEditingStyle)tableView:(UITableView *)tableView editingStyleForRowAtIndexPath:(NSIndexPath *)indexPath {
-    NSDictionary *persona = [DXAIEngine personas][indexPath.row];
-    BOOL builtin = [persona[@"builtin"] isKindOfClass:[NSNumber class]] && [persona[@"builtin"] boolValue];
-    return builtin ? UITableViewCellEditingStyleNone : UITableViewCellEditingStyleDelete;
-}
-
+// 所有人设（含三个默认人设）一律可左滑删除；删空后请求按消息类型回退出厂
+// 人设内容（defaultPersonaForRole 的硬编码兜底），面板人设菜单为空则不弹。
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
     if (editingStyle != UITableViewCellEditingStyleDelete) return;
     NSMutableArray *personas = [[DXAIEngine personas] mutableCopy];
@@ -872,19 +856,12 @@ static NSString *DXAITrim(NSString *text) {
     [tableView reloadData];
 }
 
-- (void)resetTapped {
-    [DXAIEngine restoreDefaultPersonas];
-    [self.tableView reloadData];
-}
-
 - (void)addPersonaTapped {
     NSMutableArray *personas = [[DXAIEngine personas] mutableCopy];
     NSMutableDictionary *persona = [NSMutableDictionary dictionary];
     persona[@"id"] = [NSString stringWithFormat:@"u%.0f", [NSDate date].timeIntervalSince1970 * 1000.0];
     persona[@"name"] = LOCALIZED(@"AI_PERSONA_NEW");
     persona[@"content"] = @"";
-    persona[@"direct"] = @(NO);
-    persona[@"builtin"] = @(NO);
     persona[@"role"] = @"";
     persona[@"enabled"] = @(YES); // 新人设按钮在面板框选菜单中默认打开
     [personas addObject:persona];
@@ -901,7 +878,6 @@ static NSString *DXAITrim(NSString *text) {
 @property (nonatomic, copy) NSString *personaID;
 @property (nonatomic, copy) NSString *storedName;
 @property (nonatomic, copy) NSString *storedContent;
-@property (nonatomic, assign) BOOL directSend;
 @property (nonatomic, strong) UITextField *nameField;
 @property (nonatomic, strong) UITextView *contentTextView;
 @end
@@ -914,7 +890,6 @@ static NSString *DXAITrim(NSString *text) {
         NSDictionary *persona = [DXAIEngine personaForID:personaID];
         self.storedName = [persona[@"name"] isKindOfClass:[NSString class]] ? persona[@"name"] : @"";
         self.storedContent = [persona[@"content"] isKindOfClass:[NSString class]] ? persona[@"content"] : @"";
-        self.directSend = [persona[@"direct"] isKindOfClass:[NSNumber class]] && [persona[@"direct"] boolValue];
     }
     return self;
 }
@@ -939,12 +914,12 @@ static NSString *DXAITrim(NSString *text) {
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 3;
+    return 2;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    if (section == 1) return LOCALIZED(@"AI_PERSONA_NAME_HEADER");
-    if (section == 2) return LOCALIZED(@"AI_PERSONA_CONTENT_HEADER");
+    if (section == 0) return LOCALIZED(@"AI_PERSONA_NAME_HEADER");
+    if (section == 1) return LOCALIZED(@"AI_PERSONA_CONTENT_HEADER");
     return nil;
 }
 
@@ -953,26 +928,12 @@ static NSString *DXAITrim(NSString *text) {
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.section == 1) return 86.0;
-    if (indexPath.section == 2) return 280.0;
-    return 44.0;
+    if (indexPath.section == 1) return 280.0;
+    return 86.0;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     if (indexPath.section == 0) {
-        static NSString *switchIdentifier = @"DXPAIPersonaDirect";
-        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:switchIdentifier];
-        if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:switchIdentifier];
-        cell.selectionStyle = UITableViewCellSelectionStyleNone;
-        cell.textLabel.text = LOCALIZED(@"AI_PERSONA_DIRECT");
-        UISwitch *toggle = [[UISwitch alloc] init];
-        toggle.on = self.directSend;
-        [toggle addTarget:self action:@selector(directToggleChanged:) forControlEvents:UIControlEventValueChanged];
-        cell.accessoryView = toggle;
-        return cell;
-    }
-
-    if (indexPath.section == 1) {
         DXPAIHeaderFieldCell *cell = [[DXPAIHeaderFieldCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
         cell.headerLabel.text = LOCALIZED(@"AI_PERSONA_NAME_HEADER");
         cell.textField.text = self.storedName;
@@ -998,10 +959,6 @@ static NSString *DXAITrim(NSString *text) {
     return cell;
 }
 
-- (void)directToggleChanged:(UISwitch *)toggle {
-    self.directSend = toggle.on;
-}
-
 - (void)saveTapped {
     [self.view endEditing:YES]; // 触发输入行 onCommit，把最新文本收进属性
 
@@ -1023,7 +980,6 @@ static NSString *DXAITrim(NSString *text) {
     NSString *name = DXAITrim(self.storedName) ?: @"";
     persona[@"name"] = name.length > 0 ? name : (self.storedName.length > 0 ? self.storedName : LOCALIZED(@"AI_PERSONA_NEW"));
     persona[@"content"] = self.storedContent ?: @"";
-    persona[@"direct"] = @(self.directSend);
     personas[index] = persona;
     [DXAIEngine setPersonas:personas];
     [self.navigationController popViewControllerAnimated:YES];

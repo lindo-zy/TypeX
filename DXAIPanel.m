@@ -250,9 +250,13 @@ static CGRect DXAIProbeKeyboardFrame(void) {
 
 // 助手气泡：灰色圆角气泡（左对齐，宽度封顶 0.82），内容走 DXAIMarkdown 渲染
 // ——回复与网页版一致：标题/列表/引用/代码块/粗斜体/链接，流式期间每次全量重绘。
+// 长按气泡把回复直接写回宿主 app 输入框并关闭 AI 窗口；textView 不可选择
+// ——系统"长按选择/双击选词"与写回手势抢同一位，关掉 selectable 长按才唯一
+// 归写回（单击/双击不再触发任何动作）。
 @interface DXAIAssistantBubbleCell : UITableViewCell
 @property (nonatomic, strong) UIView *bubble;
 @property (nonatomic, strong) UITextView *textView;
+@property (nonatomic, copy) void (^pressAction)(void);
 @end
 
 @implementation DXAIAssistantBubbleCell
@@ -271,7 +275,7 @@ static CGRect DXAIProbeKeyboardFrame(void) {
 
         self.textView = [[UITextView alloc] init];
         self.textView.editable = NO;
-        self.textView.selectable = YES; // 长按选择复制，markdown 链接可点
+        self.textView.selectable = NO; // 长按归写回手势，系统选择/选词菜单不再出现
         self.textView.scrollEnabled = NO;
         self.textView.backgroundColor = UIColor.clearColor;
         self.textView.textContainerInset = UIEdgeInsetsZero;
@@ -288,26 +292,37 @@ static CGRect DXAIProbeKeyboardFrame(void) {
             [self.textView.topAnchor constraintEqualToAnchor:self.bubble.topAnchor constant:10.0],
             [self.textView.bottomAnchor constraintEqualToAnchor:self.bubble.bottomAnchor constant:-10.0],
         ]];
+
+        UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc]
+            initWithTarget:self action:@selector(bubbleLongPressed:)];
+        longPress.minimumPressDuration = 0.4; // 略快于系统默认，写回手感跟手
+        longPress.cancelsTouchesInView = NO;
+        [self.bubble addGestureRecognizer:longPress];
     }
     return self;
 }
 
+- (void)bubbleLongPressed:(UILongPressGestureRecognizer *)gr {
+    // Began 即触发：面板随即关闭，不必等手指抬起
+    if (gr.state == UIGestureRecognizerStateBegan && self.pressAction) self.pressAction();
+}
+
 - (void)configureWithMessage:(DXAIMessage *)message {
     NSString *text = message.text;
-    if (message.streaming && text.length == 0) text = @"…";
     if (message.isError) {
         // 本地提示（未配置 Key/请求失败等）：纯文本，不进 markdown 解析。
         self.textView.attributedText = [[NSAttributedString alloc]
             initWithString:[@"⚠️ " stringByAppendingString:text ?: @""]
                 attributes:@{NSFontAttributeName: [UIFont systemFontOfSize:16.0],
                              NSForegroundColorAttributeName: [UIColor secondaryLabelColor]}];
-        return;
+    } else {
+        if (message.streaming && text.length == 0) text = @"…";
+        self.textView.attributedText = [DXAIMarkdown attributedStringWithMarkdown:text ?: @""
+                                                                             font:[UIFont systemFontOfSize:16.0]
+                                                                        textColor:[UIColor labelColor]
+                                                                      accentColor:DXAIAccent()
+                                                                   codeBackground:[UIColor tertiarySystemFillColor]];
     }
-    self.textView.attributedText = [DXAIMarkdown attributedStringWithMarkdown:text ?: @""
-                                                                         font:[UIFont systemFontOfSize:16.0]
-                                                                    textColor:[UIColor labelColor]
-                                                                  accentColor:DXAIAccent()
-                                                               codeBackground:[UIColor tertiarySystemFillColor]];
 }
 
 @end
@@ -340,15 +355,23 @@ static CGRect DXAIProbeKeyboardFrame(void) {
 @property (nonatomic, copy) NSString *pendingFileText;
 @property (nonatomic, copy) NSString *pendingFileName;
 @property (nonatomic, copy) NSString *seedText;
-@property (nonatomic, assign) BOOL sessionSeeded;
 @property (nonatomic, assign) BOOL streaming;
 @property (nonatomic, assign) BOOL flushScheduled;
 @property (nonatomic, strong) DXAIChatRequest *currentRequest;
 @property (nonatomic, weak) UIWindow *hostKeyWindow; // 进程内承载时的宿主 key 窗口（SB 承载恒 nil）
+@property (nonatomic, weak) UIResponder *hostInputResponder; // 打开面板前宿主输入框，关闭时无缝归还焦点
 @property (nonatomic, copy) NSString *activePersonaID;  // 会话内用户手动选择的人设
-@property (nonatomic, copy) NSString *oneShotPersonaID; // 直接发送型人设的下一次提问
+@property (nonatomic, assign) BOOL pinnedAfterKeyboardHide; // 键盘收起且有输出：卡片钉在原位不随键盘下坠
+// 抢焦点过渡期标志：面板输入框拿到焦点前，旧键盘会话必须先 resign，系统随
+// 之发出一次"键盘收起"通知——这是自导的过渡，不是用户收起；过渡期内既不
+// 执行空判关闭，也不随 hide 方向的 frame 变化重定位（否则卡片先坠到悬空位、
+// 键盘重弹后又跳回，肉眼可见地抖一下）。两个来源：SB 入口打开即聚焦；进程
+// 内入口由用户点输入框接管 key 触发（textViewShouldBeginEditing 置位）。
+// 焦点落进输入框（textViewDidBeginEditing）即解除；聚焦没落成时由 0.80s
+// 兜底解除。
+@property (nonatomic, assign) BOOL openingFocusTransition;
 
-- (void)applySeedIfFreshSession;
+- (void)applySeedText;
 - (void)refreshModelButton;
 - (void)refreshChip;
 - (void)updateAttachedImage:(UIImage *)image;
@@ -356,7 +379,41 @@ static CGRect DXAIProbeKeyboardFrame(void) {
 - (void)repositionAnimated:(BOOL)animated;
 - (void)applyTheme;
 - (void)cancelRunningRequest;
+- (void)focusInputField;              // 光标落进面板输入框（SB 承载打开即聚焦）
+- (void)hideIfEmptyOnKeyboardHide;    // 键盘收起且会话无输出时随键盘一起关闭
+- (void)assistantBubbleTappedForMessage:(DXAIMessage *)message;
 + (DXAIChatPanelController *)liveController; // 当前正显示的面板（进程级键盘通知用）
+@end
+
+// 面板输入框：系统"粘贴"菜单扩展出图片路径——剪贴板只有图片时不走超类插入
+// 文本，改为挂到附件 chip（与相册/文件同一管线）；图文并存仍以文本粘贴为优先，
+// 保持常规粘贴行为不变。
+@interface DXAIInputTextView : UITextView
+@property (nonatomic, weak) DXAIChatPanelController *panelController;
+@end
+
+@implementation DXAIInputTextView
+
+- (BOOL)canPerformAction:(SEL)action withSender:(id)sender {
+    if (action == @selector(paste:)) {
+        UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
+        return pasteboard.hasStrings || pasteboard.hasImages;
+    }
+    return [super canPerformAction:action withSender:sender];
+}
+
+- (void)paste:(id)sender {
+    UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
+    if (pasteboard.hasImages && !pasteboard.hasStrings) {
+        UIImage *image = pasteboard.image;
+        if (image) {
+            [self.panelController updateAttachedImage:image];
+            return;
+        }
+    }
+    [super paste:sender];
+}
+
 @end
 
 @implementation DXAIChatPanelController
@@ -451,7 +508,8 @@ static CGRect DXAIProbeKeyboardFrame(void) {
     self.fieldContainer.layer.cornerRadius = 20.0;
     [self.inputBar addSubview:self.fieldContainer];
 
-    self.inputField = [[UITextView alloc] init];
+    self.inputField = [[DXAIInputTextView alloc] init];
+    ((DXAIInputTextView *)self.inputField).panelController = self;
     self.inputField.backgroundColor = UIColor.clearColor;
     self.inputField.font = [UIFont systemFontOfSize:16.0];
     self.inputField.textColor = [UIColor labelColor];
@@ -488,7 +546,7 @@ static CGRect DXAIProbeKeyboardFrame(void) {
     // 键盘 frame 的跟踪与卡片跟随由进程级观察者负责（DXAIInstallKeyboardFrameTracking，
     // +load 时注册一次），面板会话反复开关不再叠加观察者。
 
-    [self applySeedIfFreshSession];
+    [self applySeedText];
     [self refreshModelButton];
     [self refreshChip];
     [self updatePlaceholder];
@@ -509,10 +567,13 @@ static CGRect DXAIProbeKeyboardFrame(void) {
     self.headerDivider.frame = CGRectMake(0, 55.5, width, 0.5);
 
     CGFloat inputBarHeight = [self inputBarHeightForWidth:width];
-    BOOL chipVisible = self.attachedImage != nil || self.pendingFileText.length > 0;
+    BOOL imageVisible = self.attachedImage != nil;
+    BOOL fileVisible = self.pendingFileText.length > 0;
+    BOOL chipVisible = imageVisible || fileVisible;
     CGFloat sidePad = 14.0, gap = 8.0, plusSize = 46.0, sendWidth = 74.0;
     CGFloat fieldWidth = width - sidePad * 2 - plusSize - gap * 2 - sendWidth;
-    CGFloat chipBlockHeight = chipVisible ? 66.0 : 0.0;
+    // 图片采用大圆角预览区；文本文件仍使用紧凑横条并显示文件名。
+    CGFloat chipBlockHeight = imageVisible ? 124.0 : (fileVisible ? 66.0 : 0.0);
     CGFloat fieldRowHeight = inputBarHeight - chipBlockHeight - 8.0;
 
     self.inputBar.frame = CGRectMake(0, height - inputBarHeight, width, inputBarHeight);
@@ -520,10 +581,21 @@ static CGRect DXAIProbeKeyboardFrame(void) {
     self.table.contentInset = UIEdgeInsetsMake(0, 0, 6, 0);
 
     CGFloat centerY = chipBlockHeight + fieldRowHeight / 2.0;
-    if (chipVisible) self.chipContainer.frame = CGRectMake(sidePad, 4.0, width - sidePad * 2, 56.0);
-    self.chipThumb.frame = CGRectMake(4, 4, 48, 48);
-    self.chipNameLabel.frame = CGRectMake(60, 0, width - sidePad * 2 - 60 - 34, 56);
-    self.chipRemoveButton.frame = CGRectMake(width - sidePad * 2 - 30, 17, 22, 22);
+    if (chipVisible) {
+        CGFloat chipWidth = width - sidePad * 2;
+        if (imageVisible) {
+            // 图二样式：预览缩略图靠左上，关闭按钮叠在缩略图右上角。
+            self.chipContainer.frame = CGRectMake(sidePad, 4.0, chipWidth, 112.0);
+            self.chipThumb.frame = CGRectMake(12.0, 12.0, 76.0, 76.0);
+            self.chipNameLabel.frame = CGRectZero;
+            self.chipRemoveButton.frame = CGRectMake(56.0, 12.0, 32.0, 32.0);
+        } else {
+            self.chipContainer.frame = CGRectMake(sidePad, 4.0, chipWidth, 56.0);
+            self.chipThumb.frame = CGRectMake(4.0, 4.0, 48.0, 48.0);
+            self.chipNameLabel.frame = CGRectMake(60.0, 0.0, chipWidth - 94.0, 56.0);
+            self.chipRemoveButton.frame = CGRectMake(chipWidth - 30.0, 17.0, 22.0, 22.0);
+        }
+    }
     self.fieldContainer.frame = CGRectMake(sidePad, chipBlockHeight, fieldWidth, fieldRowHeight);
     self.inputField.frame = CGRectMake(12, 8, fieldWidth - 24, fieldRowHeight - 16);
     self.placeholderLabel.frame = CGRectMake(20, 8, fieldWidth - 40, fieldRowHeight - 16);
@@ -531,14 +603,16 @@ static CGRect DXAIProbeKeyboardFrame(void) {
     self.sendButton.frame = CGRectMake(sidePad + fieldWidth + gap + plusSize + gap, centerY - 23.0, sendWidth, 46.0);
 }
 
-// 输入栏总高度（附件 chip + 自适应输入框 + 底边距），布局与卡片高度计算共用。
+// 输入栏总高度（图片预览/文件横条 + 自适应输入框 + 底边距），布局与卡片高度计算共用。
 - (CGFloat)inputBarHeightForWidth:(CGFloat)width {
-    BOOL chipVisible = self.attachedImage != nil || self.pendingFileText.length > 0;
+    BOOL hasImage = self.attachedImage != nil;
+    BOOL hasFile = self.pendingFileText.length > 0;
     CGFloat sidePad = 14.0, gap = 8.0, plusSize = 46.0, sendWidth = 74.0;
     CGFloat fieldWidth = width - sidePad * 2 - plusSize - gap * 2 - sendWidth;
     CGFloat textHeight = [self.inputField sizeThatFits:CGSizeMake(fieldWidth - 24.0, CGFLOAT_MAX)].height;
     textHeight = MIN(MAX(textHeight, 30.0), 110.0);
-    return (chipVisible ? 66.0 : 0.0) + textHeight + 16.0 + 8.0;
+    CGFloat attachmentHeight = hasImage ? 124.0 : (hasFile ? 66.0 : 0.0);
+    return attachmentHeight + textHeight + 16.0 + 8.0;
 }
 
 - (void)layoutHeaderWithWidth:(CGFloat)width {
@@ -559,6 +633,7 @@ static CGRect DXAIProbeKeyboardFrame(void) {
 - (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
     [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
     [coordinator animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+        self.pinnedAfterKeyboardHide = NO; // 转屏几何全变，钉扎解除按新尺寸落位
         [self repositionAnimated:NO];
     } completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
         // 新宽度下表格 contentSize 需要重排一次才准，转场结束后再校一遍高度。
@@ -566,9 +641,12 @@ static CGRect DXAIProbeKeyboardFrame(void) {
     }];
 }
 
-// 面板锚定：紧凑悬浮卡片（四周留边、四角圆角），高度随内容自适应——
-// 头部 + 会话流（有消息时）+ 输入栏，封顶 0.62 屏高。键盘可见时贴在键盘
-// 上方；键盘收起时卡片中心悬在屏幕 3/4 处，越界时向安全区内收。
+// 面板锚定：紧凑悬浮卡片（四周留边、四角圆角），ShellX 式的常驻会话窗——
+// 不再完全贴内容：有最低高度（0.45 屏），会话区始终是一整块可滚动视口；
+// 内容变高时跟着长，上限为键盘上方全部空间（无键盘时 0.8 屏）。键盘可见时
+// 贴在键盘上方；键盘收起时分两种：会话无输出→随键盘一起关闭（hideIfEmpty），
+// 有输出（执行中或已有消息）→钉在键盘上方原位不动，不跟着键盘下坠。
+// 转屏时解除钉扎按新几何重新落位。
 - (void)repositionAnimated:(BOOL)animated {
     [self dismissPopover]; // 弹层挂在窗口层、锚定旧卡片位置，卡片一动就收起
     UIWindow *window = self.view.window;
@@ -579,6 +657,13 @@ static CGRect DXAIProbeKeyboardFrame(void) {
     if (CGRectIsNull(keyboardFrame)) keyboardFrame = CGRectZero;
 
     BOOL keyboardVisible = keyboardFrame.origin.y > 0 && keyboardFrame.origin.y < CGRectGetHeight(screen) - 10.0;
+    BOOL hasOutput = self.messages.count > 0 || self.streaming;
+    if (keyboardVisible) {
+        self.pinnedAfterKeyboardHide = NO; // 键盘回来了：恢复贴键盘上方
+    } else if (self.pinnedAfterKeyboardHide && hasOutput && !CGRectIsEmpty(self.view.frame)) {
+        [self.view setNeedsLayout]; // 卡片框不动，内部输入栏仍随内容重排
+        return; // 键盘收起且有输出：保持当前位置（流式内容在卡片内滚动）
+    }
     CGFloat keyboardTop = keyboardVisible ? keyboardFrame.origin.y : CGRectGetHeight(screen);
     CGFloat topInset = window.safeAreaInsets.top + 6.0;
 
@@ -592,8 +677,14 @@ static CGRect DXAIProbeKeyboardFrame(void) {
         [self.table layoutIfNeeded]; // 先让表格按当前宽度算出新 contentSize
         contentHeight += self.table.contentSize.height + 6.0;
     }
-    CGFloat maxHeight = MIN(CGRectGetHeight(screen) * 0.62, keyboardTop - topInset);
-    CGFloat cardHeight = MAX(MIN(contentHeight, maxHeight), 110.0);
+    CGFloat maxHeight = keyboardVisible ? (keyboardTop - topInset)
+                                        : CGRectGetHeight(screen) * 0.80;
+    // 初始（无输出）高度取原 0.45 屏的一半：空窗口只露 header+输入栏即可，
+    // 不必占半屏；有对话输出后卡片随 contentHeight 动态拉伸（上限仍是键盘
+    // 上方全部空间 / 无键盘 0.8 屏）。
+    CGFloat minHeight = MIN(CGRectGetHeight(screen) * 0.225, maxHeight);
+    CGFloat cardHeight = MIN(MAX(contentHeight, minHeight), maxHeight);
+    cardHeight = MAX(cardHeight, 110.0);
 
     CGRect cardFrame;
     if (keyboardVisible) {
@@ -626,12 +717,20 @@ static CGRect DXAIProbeKeyboardFrame(void) {
 
 #pragma mark - 种子 / 状态刷新
 
-- (void)applySeedIfFreshSession {
-    if (self.seedText.length > 0 && !self.sessionSeeded && self.messages.count == 0 && self.inputField.text.length == 0) {
-        self.sessionSeeded = YES;
-        self.inputField.text = self.seedText;
-    }
+- (void)applySeedText {
+    // ensurePanelController 只把控制器挂到 window，入口第一次调用本方法时
+    // viewDidLoad 还没发生、inputField 尚未创建。此时必须保留 seedText，等
+    // viewDidLoad 创建完输入框后再次调用并消费；否则首次打开 AI 面板会丢掉
+    // 宿主输入框全文。已加载的面板仍在入口处立即更新。
+    if (!self.isViewLoaded || !self.inputField) return;
+
+    NSString *seed = self.seedText;
     self.seedText = nil;
+    if (seed.length == 0) return;
+    // 不限全新会话：用户随时可能回宿主改完文字再点 AI 按钮，非空即带入；
+    // 输入框已是同值则不动（重复点击 AI 按钮不白白触发刷新）。
+    if ([self.inputField.text isEqualToString:seed]) return;
+    self.inputField.text = seed;
 }
 
 - (void)refreshModelButton {
@@ -664,13 +763,29 @@ static CGRect DXAIProbeKeyboardFrame(void) {
     BOOL hasFile = self.pendingFileText.length > 0;
     self.chipContainer.hidden = !(hasImage || hasFile);
     if (hasImage) {
+        self.chipContainer.layer.cornerRadius = 22.0;
         self.chipThumb.image = self.attachedImage;
         self.chipThumb.contentMode = UIViewContentModeScaleAspectFill;
-        self.chipNameLabel.text = DXAILocalized(@"AI_CARD_IMAGE");
+        self.chipThumb.layer.cornerRadius = 14.0;
+        self.chipNameLabel.hidden = YES;
+        self.chipNameLabel.text = nil;
+        self.chipRemoveButton.backgroundColor = [UIColor colorWithWhite:0.18 alpha:0.78];
+        self.chipRemoveButton.layer.cornerRadius = 16.0;
+        self.chipRemoveButton.tintColor = UIColor.whiteColor;
+        [self.chipRemoveButton setImage:DXAISymbol(@"xmark", 15.0, UIImageSymbolWeightBold)
+                               forState:UIControlStateNormal];
     } else if (hasFile) {
+        self.chipContainer.layer.cornerRadius = 12.0;
         self.chipThumb.image = DXAISymbol(@"doc.text", 22, UIImageSymbolWeightMedium);
         self.chipThumb.contentMode = UIViewContentModeCenter;
+        self.chipThumb.layer.cornerRadius = 8.0;
+        self.chipNameLabel.hidden = NO;
         self.chipNameLabel.text = self.pendingFileName ?: DXAILocalized(@"AI_CARD_FILES");
+        self.chipRemoveButton.backgroundColor = UIColor.clearColor;
+        self.chipRemoveButton.layer.cornerRadius = 0.0;
+        self.chipRemoveButton.tintColor = [UIColor secondaryLabelColor];
+        [self.chipRemoveButton setImage:DXAISymbol(@"xmark.circle.fill", 20.0, UIImageSymbolWeightRegular)
+                               forState:UIControlStateNormal];
     }
     [self.view setNeedsLayout];
     [self repositionAnimated:NO]; // chip 显隐改变输入栏高度，卡片跟随
@@ -703,20 +818,55 @@ static CGRect DXAIProbeKeyboardFrame(void) {
     [self inputFieldTextChanged];
 }
 
+// 用户点输入框＝面板窗口接管 key（UIKit 随 becomeFirstResponder 自动提 key），
+// 宿主输入会话同样要先 resign 一次、触发"自导的"键盘 hide——与 SB 入口的
+// 打开聚焦同款。shouldBeginEditing 在焦点机制动手前被调用，正好在这里置
+// 过渡标志防空面板被误关；聚焦落定由 textViewDidBeginEditing 解除，0.8s
+// 兜底防极端落空后永久抑制（时限同 DXAIScheduleInputFocus）。
+- (BOOL)textViewShouldBeginEditing:(UITextView *)textView {
+    if (textView != self.inputField) return YES;
+    self.openingFocusTransition = YES;
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf || strongSelf.inputField.isFirstResponder) return;
+        strongSelf.openingFocusTransition = NO;
+    });
+    return YES;
+}
+
+// 焦点落进面板输入框＝抢焦点过渡结束：此后发生的键盘收起都是真实的
+// 用户收起，空判关闭与重定位恢复常态。
+- (void)textViewDidBeginEditing:(UITextView *)textView {
+    if (textView != self.inputField) return;
+    self.openingFocusTransition = NO;
+}
+
 - (void)inputFieldTextChanged {
     [self updatePlaceholder];
     [self updateSendState];
     [self repositionAnimated:NO]; // 多行输入撑高输入栏时卡片跟随
 }
 
-// 恢复宿主输入：面板窗口让出 key，再让键盘实现重新激活其输入 delegate
-// （UIKeyboardImpl 自实现 becomeFirstResponder，tweak 生态通用做法）。
-// 仅进程内承载（hostKeyWindow 已设）时走这里；SB 承载下没有宿主要归还。
+// 恢复宿主输入：直接让打开面板前保存的宿主输入框接替第一响应者。不要先让
+// AI 输入框 resign——那会明确启动一次键盘收起动画，随后宿主重新激活又弹起，
+// 微信里就表现为关闭面板时键盘下坠再回弹。两次切换放在同一事件周期，UIKit
+// 只更新输入目标而保持键盘在屏幕上。保存的响应者失效时再走旧的键盘兜底。
 - (void)restoreHostFocus {
     if (!self.inputField.isFirstResponder) return;
-    [self.inputField resignFirstResponder];
+    self.openingFocusTransition = YES; // 抑制跨窗口切换期间的 keyboard-hide 联动
+
     UIWindow *hostWindow = self.hostKeyWindow;
     if (hostWindow && hostWindow != self.view.window) [hostWindow makeKeyWindow];
+
+    UIResponder *hostResponder = self.hostInputResponder;
+    if (hostResponder && hostResponder != self.inputField && [hostResponder becomeFirstResponder]) {
+        return;
+    }
+
+    // 宿主重建了输入视图等极端场景：退回现有 UIKeyboardImpl 恢复路径。
+    [self.inputField resignFirstResponder];
     UIKeyboardImpl *keyboard = [objc_getClass("UIKeyboardImpl") activeInstance];
     [keyboard becomeFirstResponder];
 }
@@ -731,7 +881,111 @@ static CGRect DXAIProbeKeyboardFrame(void) {
     } else {
         [self.view.window endEditing:YES]; // SB 承载：确定性收起 SB 键盘
     }
+    // 当前 target-action 返回后再拆 rootViewController，避免在按钮事件栈内
+    // 释放控制器；焦点切换已在本轮同步完成，不会重新引入键盘收起动画。
     dispatch_async(dispatch_get_main_queue(), ^{
+        [DXAIPanel closeAndDestroyPanel];
+    });
+}
+
+#pragma mark - 聚焦 / 键盘联动
+
+// 打开即聚焦：面板窗口接管 key，光标落进输入框（键盘随之弹出/继续留在面板）。
+// 打开瞬间窗口可能刚挂屏（SB plain-init 路径），becomeFirstResponder 偶发落空，
+// 由入口处的延迟重试兜底。
+- (void)focusInputField {
+    UIWindow *window = self.view.window;
+    if (!window || window.hidden) return;
+    if (!window.isKeyWindow) [window makeKeyWindow];
+    if (!self.inputField.isFirstResponder) [self.inputField becomeFirstResponder];
+    DXPlaceCaretAtEnd(self.inputField);
+}
+
+// 键盘收起联动：会话还没有任何输出（一条消息都没有、也非流式中）时，面板
+// 跟着键盘一起消失——空窗口孤零零悬在屏上是纯噪音。有输出（执行中或已有
+// 消息）时置钉扎，卡片保持在键盘上方原位，不随键盘下坠重定位。
+- (void)hideIfEmptyOnKeyboardHide {
+    if (self.openingFocusTransition) return; // 抢焦点自导的键盘 hide，非用户收起
+    if (self.messages.count > 0 || self.streaming) {
+        self.pinnedAfterKeyboardHide = YES;
+        return;
+    }
+    [DXAIPanel closeAndDestroyPanel];
+}
+
+// 长按助手气泡：把回复直接写回宿主 app 的输入框并关闭 AI 窗口——生成结果
+// 落位即任务完成，用户不需要再搬运文本。进程内承载（宿主 app/SB 系统键盘）
+// 走"复活原输入会话 + UIKeyInput insertText 阶梯"；SB 承载（第三方键盘扩展
+// 来源，宿主 app 已退后台）无法直写，退化为复制到剪贴板并延迟关闭。
+// 错误提示与正在流式的消息不响应。
+- (void)assistantBubbleTappedForMessage:(DXAIMessage *)message {
+    if (message.isUser || message.isError || message.streaming) return;
+    NSString *text = message.text ?: @"";
+    if (text.length == 0) return;
+    [self dismissPopover];
+
+    if (self.hostKeyWindow) {
+        [self deliverReplyToHostInput:text];
+    } else {
+        [self deliverReplyViaClipboard:text];
+    }
+}
+
+// 写回宿主输入：面板让出焦点 → 宿主 key 窗口复位 → UIKeyboardImpl 复活原
+// 输入会话（restoreHostFocus 同款链路），稍等会话重建后把回复插到光标处，
+// 再销毁面板。插入走 DXCollectionView 验证过的阶梯——delegate 优先
+// （UIKeyboardImpl 直插在 iOS 17 上会崩宿主 app），clearTransientState 收尾。
+- (void)deliverReplyToHostInput:(NSString *)text {
+    if (self.inputField.isFirstResponder) [self.inputField resignFirstResponder];
+    UIWindow *hostWindow = self.hostKeyWindow;
+    if (hostWindow && hostWindow != self.view.window) [hostWindow makeKeyWindow];
+    UIKeyboardImpl *keyboard = [objc_getClass("UIKeyboardImpl") activeInstance];
+    if (!keyboard) {
+        [self deliverReplyViaClipboard:text];
+        return;
+    }
+    [keyboard becomeFirstResponder];
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        // 间隔期键盘实例可能被宿主重建，插入前重取 activeInstance
+        UIKeyboardImpl *liveKeyboard = [objc_getClass("UIKeyboardImpl") activeInstance] ?: keyboard;
+        UIResponder <UITextInput> *input = (UIResponder <UITextInput> *)DXKeyboardInputDelegate(liveKeyboard);
+        BOOL delivered = NO;
+        if (input && [input respondsToSelector:@selector(insertText:)]) {
+            @try {
+                [input insertText:text];
+                delivered = YES;
+            } @catch (__unused NSException *exception) {
+                // 落到 keyboard-impl 兜底
+            }
+        }
+        if (!delivered) {
+            @try {
+                [liveKeyboard insertText:text];
+                [liveKeyboard clearTransientState];
+                [liveKeyboard clearAnimations];
+                [liveKeyboard setCaretBlinks:YES];
+            } @catch (__unused NSException *exception) {
+                [[UIPasteboard generalPasteboard] setString:text]; // 末级兜底：至少进剪贴板
+            }
+        }
+        [DXAIPanel closeAndDestroyPanel];
+    });
+}
+
+// SB 承载退化路径：宿主 app 在后台、输入框不可达。复制回复进剪贴板，toast
+// 提示后稍作停留再关闭（toast 挂在面板上，立即关用户看不到提示）。
+- (void)deliverReplyViaClipboard:(NSString *)text {
+    [[UIPasteboard generalPasteboard] setString:text];
+    [self showToast:DXAILocalized(@"AI_CARD_REPLY_COPIED")];
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.4 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (strongSelf && strongSelf.viewIfLoaded.window) {
+            [strongSelf.view.window endEditing:YES];
+        }
         [DXAIPanel closeAndDestroyPanel];
     });
 }
@@ -808,11 +1062,9 @@ static CGRect DXAIProbeKeyboardFrame(void) {
 
 - (void)startRequestForAssistantMessage:(DXAIMessage *)assistant {
     NSMutableArray *payload = [NSMutableArray array];
-    // 人设三级解析：直接发送型一次性 → 会话内手动选择 → 按消息类型默认
-    // （带图走截图分析助手，纯文本走文字助手）。
-    NSString *personaID = self.oneShotPersonaID ?: self.activePersonaID;
-    self.oneShotPersonaID = nil;
-    NSDictionary *persona = [DXAIEngine personaForID:personaID];
+    // 人设两级解析：会话内手动选择 → 按消息类型默认（带图走截图分析助手，
+    // 纯文本走文字助手）。
+    NSDictionary *persona = [DXAIEngine personaForID:self.activePersonaID];
     if (!persona) {
         BOOL hasImage = NO;
         for (DXAIMessage *message in self.messages) {
@@ -925,6 +1177,14 @@ static CGRect DXAIProbeKeyboardFrame(void) {
     }
     DXAIAssistantBubbleCell *cell = [tableView dequeueReusableCellWithIdentifier:@"assistant" forIndexPath:indexPath];
     [cell configureWithMessage:message];
+    __weak typeof(self) weakSelf = self;
+    void (^deliver)(void) = ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        [strongSelf assistantBubbleTappedForMessage:message];
+    };
+    // 长按气泡写回宿主输入框（SB 承载退化为复制+toast）并关闭面板；流式/错误
+    // 消息由 assistantBubbleTappedForMessage 内部把关
+    cell.pressAction = deliver;
     return cell;
 }
 
@@ -969,9 +1229,15 @@ static CGRect DXAIProbeKeyboardFrame(void) {
     }
     NSString *selected = [DXAIEngine selectedModelForEngine:engine];
 
-    CGFloat rowHeight = 44.0;
+    CGFloat rowHeight = 36.0;
     CGFloat menuWidth = MIN(280.0, CGRectGetWidth(self.view.bounds) - 40.0);
-    CGFloat menuHeight = MIN(models.count * rowHeight + 8.0, 280.0);
+    // 长模型列表（GPT/claude 全家桶动辄十几行）：上限 460、屏高 2/3 封顶，
+    // 并夹在卡片内部（面板初始是紧凑小条，菜单超出卡片下缘会悬到键盘上）；
+    // 极矮卡片下保证至少露出 3 行，其余靠 scroll 滚动。
+    CGFloat screenCap = CGRectGetHeight(self.view.window.bounds) * 2.0 / 3.0;
+    if (screenCap < 280.0) screenCap = 280.0;
+    CGFloat available = CGRectGetHeight(self.view.bounds) - 62.0 - 10.0;
+    CGFloat menuHeight = MIN(MIN(models.count * rowHeight + 6.0, MIN(460.0, screenCap)), MAX(available, rowHeight * 3.0));
     UIView *menu = [[UIView alloc] initWithFrame:CGRectMake(16.0, 62.0, menuWidth, menuHeight)];
     menu.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
     menu.layer.cornerRadius = 14.0;
@@ -981,12 +1247,12 @@ static CGRect DXAIProbeKeyboardFrame(void) {
     menu.layer.shadowOffset = CGSizeMake(0, 4);
 
     UIScrollView *scroll = [[UIScrollView alloc] initWithFrame:menu.bounds];
-    scroll.contentSize = CGSizeMake(menuWidth, models.count * rowHeight + 8.0);
+    scroll.contentSize = CGSizeMake(menuWidth, models.count * rowHeight + 6.0);
     [menu addSubview:scroll];
 
     for (NSUInteger index = 0; index < models.count; index++) {
         NSString *model = models[index];
-        DXAIMenuRow *row = [[DXAIMenuRow alloc] initWithFrame:CGRectMake(0, 4.0 + index * rowHeight, menuWidth, rowHeight)];
+        DXAIMenuRow *row = [[DXAIMenuRow alloc] initWithFrame:CGRectMake(0, 3.0 + index * rowHeight, menuWidth, rowHeight)];
         BOOL isSelected = [model isEqualToString:selected];
         row.label.text = model;
         row.label.font = [UIFont systemFontOfSize:15.0 weight:isSelected ? UIFontWeightSemibold : UIFontWeightRegular];
@@ -1034,10 +1300,19 @@ static CGRect DXAIProbeKeyboardFrame(void) {
     NSString *activeID = self.activePersonaID ?: [DXAIEngine defaultPersonaForRole:@"chat"][@"id"];
     if (![activeID isKindOfClass:[NSString class]]) activeID = @"";
 
-    CGFloat rowHeight = 44.0;
-    CGFloat menuWidth = 200.0;
-    CGFloat menuHeight = MIN(personas.count * rowHeight + 8.0, 280.0);
-    UIView *menu = [[UIView alloc] initWithFrame:CGRectMake(16.0, 62.0, menuWidth, menuHeight)];
+    CGFloat rowHeight = 36.0;
+    CGFloat menuWidth = 180.0;
+    // 框体收紧并夹在卡片内部：面板初始是紧凑小条，菜单一旦超出卡片下缘
+    // 就会悬到键盘/工具栏上。行高缩小，放不下的行靠 menu 里的 scroll 滚动；
+    // 极矮卡片下也保证至少露出 3 行。
+    CGFloat available = CGRectGetHeight(self.view.bounds) - 62.0 - 10.0;
+    CGFloat menuHeight = MIN(MIN(personas.count * rowHeight + 6.0, 260.0), MAX(available, rowHeight * 3.0));
+    // 右对齐挂在人设按钮下方（菜单右缘 = 按钮右缘），不遮左上角标题/模型区；
+    // 越界时收进卡片 16pt 边距内。
+    CGRect anchor = [self.view convertRect:self.personaButton.frame fromView:self.headerView];
+    CGFloat menuX = CGRectGetMaxX(anchor) - menuWidth;
+    menuX = MIN(MAX(menuX, 16.0), CGRectGetWidth(self.view.bounds) - 16.0 - menuWidth);
+    UIView *menu = [[UIView alloc] initWithFrame:CGRectMake(menuX, 62.0, menuWidth, menuHeight)];
     menu.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
     menu.layer.cornerRadius = 14.0;
     menu.layer.shadowColor = [UIColor blackColor].CGColor;
@@ -1046,12 +1321,12 @@ static CGRect DXAIProbeKeyboardFrame(void) {
     menu.layer.shadowOffset = CGSizeMake(0, 4);
 
     UIScrollView *scroll = [[UIScrollView alloc] initWithFrame:menu.bounds];
-    scroll.contentSize = CGSizeMake(menuWidth, personas.count * rowHeight + 8.0);
+    scroll.contentSize = CGSizeMake(menuWidth, personas.count * rowHeight + 6.0);
     [menu addSubview:scroll];
 
     for (NSUInteger index = 0; index < personas.count; index++) {
         NSDictionary *persona = personas[index];
-        DXAIMenuRow *row = [[DXAIMenuRow alloc] initWithFrame:CGRectMake(0, 4.0 + index * rowHeight, menuWidth, rowHeight)];
+        DXAIMenuRow *row = [[DXAIMenuRow alloc] initWithFrame:CGRectMake(0, 3.0 + index * rowHeight, menuWidth, rowHeight)];
         NSString *name = [persona[@"name"] isKindOfClass:[NSString class]] ? persona[@"name"] : @"";
         BOOL isActive = [persona[@"id"] isKindOfClass:[NSString class]] && [persona[@"id"] isEqualToString:activeID];
         row.label.text = name;
@@ -1070,18 +1345,6 @@ static CGRect DXAIProbeKeyboardFrame(void) {
     if (sender.tag >= personas.count) return;
     NSDictionary *persona = personas[sender.tag];
     NSString *personaID = [persona[@"id"] isKindOfClass:[NSString class]] ? persona[@"id"] : nil;
-
-    // 直接发送型人设且输入已有内容：一次性人设立刻发送；否则仅切换会话人设。
-    NSString *question = [self.inputField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    BOOL hasContent = question.length > 0 || self.attachedImage != nil || self.pendingFileText.length > 0;
-    BOOL directSend = NO;
-    id directValue = persona[@"direct"];
-    if ([directValue isKindOfClass:[NSNumber class]]) directSend = [directValue boolValue];
-    if (directSend && hasContent) {
-        self.oneShotPersonaID = personaID;
-        [self sendTapped];
-        return;
-    }
     self.activePersonaID = personaID;
 }
 
@@ -1092,6 +1355,14 @@ static CGRect DXAIProbeKeyboardFrame(void) {
     }
 
     NSMutableArray<NSDictionary *> *items = [NSMutableArray array];
+    // 剪贴板入口：有图挂附件 chip、纯文本插到光标处——比输入框长按菜单更
+    // 直接的一条粘贴路径（检测 API 不触发 iOS16+ 授权弹窗）。
+    UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
+    if (pasteboard.hasImages || pasteboard.hasStrings) {
+        [items addObject:@{@"title": DXAILocalized(@"PASTE_CHIP_ACTION"),
+                           @"symbol": @"doc.on.clipboard",
+                           @"action": [NSValue valueWithPointer:@selector(pasteClipboardRowTapped)]}];
+    }
     [items addObject:@{@"title": DXAILocalized(@"AI_CARD_PHOTOS"),
                        @"symbol": @"photo.on.rectangle",
                        @"action": [NSValue valueWithPointer:@selector(photosRowTapped)]}];
@@ -1137,6 +1408,30 @@ static CGRect DXAIProbeKeyboardFrame(void) {
 - (void)filesRowTapped {
     [self dismissPopover];
     [self pickFiles];
+}
+
+// 「+」菜单的粘贴行：剪贴板有图直接挂附件 chip（与相册/文件同一管线，读板
+// 可能触发 iOS16+ 授权弹窗，自动放行闸门覆盖面板），无图纯文本插到光标处。
+- (void)pasteClipboardRowTapped {
+    [self dismissPopover];
+    UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
+    if (pasteboard.hasImages) {
+        UIImage *image = pasteboard.image;
+        if (image) {
+            [self updateAttachedImage:image];
+            return;
+        }
+    }
+    NSString *string = pasteboard.string;
+    if (string.length == 0) return;
+    if (string.length > 20000) string = [string substringToIndex:20000];
+    UITextRange *selected = self.inputField.selectedTextRange;
+    if (selected) {
+        [self.inputField replaceRange:selected withText:string];
+    } else {
+        self.inputField.text = [(self.inputField.text ?: @"") stringByAppendingString:string];
+    }
+    [self inputFieldTextChanged];
 }
 
 #pragma mark - 附件选择
@@ -1311,6 +1606,21 @@ static void DXAIInstallKeyboardFrameTracking(void) {
             DXAIChatPanelController *controller = [DXAIChatPanelController liveController];
             if (!controller || !controller.viewIfLoaded.window) return;
 
+            // 抢焦点过渡期（SB 开面板即聚焦 / 进程内点输入框接管）：旧会话
+            // resign 后键盘为面板重绑，期间的 frame 变化不驱动重定位——卡片
+            // 保持在既有位置，焦点落定后的重弹/兜底重定位自然收口。
+            if (controller.openingFocusTransition) return;
+
+            // 本次 frame 变化是"键盘收起"且会话有输出：钉在键盘上方原位，
+            // 不做随键盘下坠的动画重定位（有输出空判关闭走 WillHide 观察者）。
+            CGRect endFrame = CGRectIsNull(g_dxKeyboardFrame) ? CGRectZero : g_dxKeyboardFrame;
+            CGFloat screenHeight = CGRectGetHeight(controller.view.window.bounds);
+            BOOL keyboardHiding = screenHeight > 0.0 && CGRectGetMinY(endFrame) >= screenHeight - 10.0;
+            if (keyboardHiding && (controller.messages.count > 0 || controller.streaming)) {
+                controller.pinnedAfterKeyboardHide = YES;
+                return;
+            }
+
             NSTimeInterval duration = 0.25;
             NSNumber *durationNumber = note.userInfo[UIKeyboardAnimationDurationUserInfoKey];
             if ([durationNumber isKindOfClass:[NSNumber class]]) duration = durationNumber.doubleValue;
@@ -1331,13 +1641,22 @@ static void DXAIInstallKeyboardFrameTracking(void) {
                                                           object:nil
                                                            queue:main
                                                       usingBlock:handler];
+        // 键盘收起联动：空会话的面板随键盘一起关闭（有输出则只重定位保留）。
+        [[NSNotificationCenter defaultCenter] addObserverForName:UIKeyboardWillHideNotification
+                                                          object:nil
+                                                           queue:main
+                                                      usingBlock:^(NSNotification *note) {
+            DXAIChatPanelController *controller = [DXAIChatPanelController liveController];
+            if (!controller || !controller.viewIfLoaded.window) return;
+            [controller hideIfEmptyOnKeyboardHide];
+        }];
     });
 }
 
 // 打开瞬间的兜底：窗口刚挂屏时个别场景键盘通知还没补发完，延迟再校两次
 // 位置；frame 已正确时重定位是幂等的，肉眼无感。
 static void DXAISchedulePanelReposition(DXAIChatPanelController *controller) {
-    __weak DXAIChatPanelController *weakSelf = controller;
+    __weak typeof(controller) weakSelf = controller;
     for (NSNumber *delay in @[@0.05, @0.30]) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
@@ -1346,6 +1665,29 @@ static void DXAISchedulePanelReposition(DXAIChatPanelController *controller) {
             [strongSelf repositionAnimated:NO];
         });
     }
+}
+
+// 聚焦兜底：打开瞬间窗口可能尚未完成挂屏/key 切换，becomeFirstResponder 偶发
+// 落空；0.15/0.40s 各重试一次，输入框已持有焦点则静默跳过（不与用户抢焦点）。
+static void DXAIScheduleInputFocus(DXAIChatPanelController *controller) {
+    __weak typeof(controller) weakSelf = controller;
+    [controller focusInputField];
+    for (NSNumber *delay in @[@0.15, @0.40]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf || !strongSelf.viewIfLoaded.window) return;
+            if (!strongSelf.inputField.isFirstResponder) [strongSelf focusInputField];
+        });
+    }
+    // 聚焦始终没成功（beginEditing 没机会解除过渡标志）的兜底：0.80s 晚于最后
+    // 一次重试，此后真实的键盘收起要恢复"空面板随之关闭"的常态。
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.80 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        strongSelf.openingFocusTransition = NO;
+    });
 }
 
 #pragma mark - 入口
@@ -1399,13 +1741,31 @@ static void DXAISchedulePanelReposition(DXAIChatPanelController *controller) {
 }
 
 // 进程内承载入口（第一版）：点 AI 按钮立即弹出，锚定当前键盘上方。
+// 不抢焦点：面板窗口只显示、不接管 key，宿主输入会话原样保留，键盘全程
+// 不收不弹。旧方案"打开即聚焦"必须先 makeKeyWindow resign 宿主会话（一次
+// 完整的键盘收起动画），再为面板输入框弹回，聚焦落空时还要走 0.15/0.40s
+// 重试——观感即"键盘先收起、再弹出、面板最后才落位"。现在光标由用户点
+// 输入框时接管（textViewShouldBeginEditing 置过渡标志），键盘只在那一刻
+// 换绑输入会话。
 + (void)openFromKeyboardWithSeedText:(NSString *)seedText {
     DXAIChatPanelController *controller = [self ensurePanelController];
     if (!controller) return;
 
-    controller.hostKeyWindow = DXKeyWindow();
+    UIWindow *keyWindow = DXKeyWindow();
+    if (keyWindow && keyWindow != g_aiPanelWindow) {
+        controller.hostKeyWindow = keyWindow; // 面板已持 key（重开）时不覆盖宿主记录
+        // 此时宿主输入框仍是键盘 delegate；必须在用户点进 AI 输入框前保存，
+        // 之后 activeInstance 的 delegate 会切成面板自己的 UITextView。
+        UIKeyboardImpl *keyboard = [objc_getClass("UIKeyboardImpl") activeInstance];
+        UIResponder *hostResponder = DXKeyboardInputDelegate(keyboard);
+        if (hostResponder && hostResponder != controller.inputField) {
+            controller.hostInputResponder = hostResponder;
+        }
+    }
     controller.seedText = seedText;
-    [controller applySeedIfFreshSession];
+    [controller applySeedText];
+    [controller inputFieldTextChanged]; // 种子程序性写入不触发 textViewDidChange，状态手动刷新
+
     [controller applyTheme];
     [controller refreshModelButton];
 
@@ -1420,11 +1780,12 @@ static void DXAISchedulePanelReposition(DXAIChatPanelController *controller) {
     DXAIChatPanelController *controller = [self ensurePanelController];
     if (!controller) return;
 
-    // 种子只在全新会话时预填（输入框为空且没聊过）；已打开的面板不因重复
-    // 请求被打断。剪贴板图片仅在用户还没选附件时注入（不覆盖已选附件）。
+    // 宿主输入全文非空即带入面板输入框（不限全新会话）；剪贴板图片仅在用户
+    // 还没选附件时注入（不覆盖已选附件）。
     controller.hostKeyWindow = nil;
     controller.seedText = seedText;
-    [controller applySeedIfFreshSession];
+    [controller applySeedText];
+    [controller inputFieldTextChanged]; // 种子程序性写入不触发 textViewDidChange，状态手动刷新
     if (clipboardImage) {
         UIImage *image = [UIPasteboard generalPasteboard].image;
         if (image && !controller.attachedImage) [controller updateAttachedImage:image];
@@ -1433,9 +1794,13 @@ static void DXAISchedulePanelReposition(DXAIChatPanelController *controller) {
     [controller refreshModelButton];
 
     g_aiPanelWindow.hidden = NO;
+    // 与进程内入口同款：聚焦过渡抑制（SB 路径打开时通常无键盘在弹，置位是
+    // 防个别场景键盘先于面板出现的抖动）。
+    controller.openingFocusTransition = YES;
     [g_aiPanelWindow makeKeyAndVisible];
     [controller repositionAnimated:NO];
     DXAISchedulePanelReposition(controller);
+    DXAIScheduleInputFocus(controller);
 }
 
 + (void)closeAndDestroyPanel {
@@ -1444,6 +1809,15 @@ static void DXAISchedulePanelReposition(DXAIChatPanelController *controller) {
         g_aiPanelWindow.rootViewController = nil; // 会话销毁，控制器随之释放
         g_aiPanelWindow = nil;
     }
+}
+
++ (BOOL)isPanelInputActive {
+    DXAIChatPanelController *controller = [DXAIChatPanelController liveController];
+    if (!controller) return NO;
+    if (controller.inputField.isFirstResponder) return YES;
+    // 面板窗口仍持有 key 也算活跃：粘贴授权弹窗呈现瞬间 first responder 可能
+    // 被 alert 抢走，而这次读板正是面板（输入框/+ 菜单）发起的。
+    return controller.view.window.isKeyWindow;
 }
 
 @end

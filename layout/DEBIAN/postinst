@@ -11,4 +11,18 @@ mkdir -p "$TYPEX_SHARED_DIR" || true
 # directory itself (not only shared.plist) must remain writable.
 chmod 0777 "$TYPEX_SHARED_DIR"
 
+# Seed the shared snapshot from the cfprefsd domain's on-disk plist whenever it
+# is missing (fresh install, or shared state deleted before this version).
+# Sandboxed app hosts read ONLY this snapshot: without a seed their toolbars
+# stay hidden until SpringBoard happens to re-run heal. A bare-dictionary copy
+# is the accepted legacy format; the next unsandboxed write replaces it with
+# the enveloped format. Never overwrite an existing snapshot -- it may carry
+# sandboxed-merge writes (dock toggle) that the domain does not have yet.
+DOMAIN_PLIST="/var/mobile/Library/Preferences/com.lindo.typex.plist"
+SHARED_PLIST="$TYPEX_SHARED_DIR/shared.plist"
+if [ ! -s "$SHARED_PLIST" ] && [ -s "$DOMAIN_PLIST" ]; then
+    cp "$DOMAIN_PLIST" "$SHARED_PLIST" || true
+    chmod 0644 "$SHARED_PLIST" || true
+fi
+
 exit 0

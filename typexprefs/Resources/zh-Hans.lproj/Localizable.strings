@@ -231,16 +231,13 @@
 "SHORT_AI_CHAT" = "AI";
 
 /* Custom actions management page (KayokoX-style layout) */
-"CHOOSE_ACTION" = "选择动作";
 "NO_CUSTOM_ACTIONS" = "暂无自定义动作";
 "MANAGE_HINT_TAP_EDIT" = "非编辑状态下，点按编辑动作";
 "MANAGE_HINT_EDIT_DELETE" = "编辑状态下，点按删除动作";
 "ADD_TYPE_HINT" = "选择一种类型即可创建新动作";
 
 /* AI 问答 */
-"LONG_AI_CHAT" = "AI问答";
-"SHORT_AI_CHAT" = "AI";
-"AI_CARD_TITLE" = "文字问答";
+"AI_CARD_TITLE" = "AI";
 "AI_CARD_PLACEHOLDER" = "问点什么…";
 "AI_CARD_SEND" = "发送";
 "AI_CARD_STOP" = "停止";
@@ -252,6 +249,7 @@
 "AI_CARD_NO_MODEL_ALERT" = "请先在 TypeX 设置 → AI问答 中配置模型";
 "AI_CARD_REQUEST_FAILED" = "请求失败";
 "AI_CARD_FILE_UNREADABLE" = "无法读取该文件内容";
+"AI_CARD_REPLY_COPIED" = "回复已复制，回到应用后粘贴";
 
 /* AI 问答设置 */
 "AI_SETTINGS_TITLE" = "AI问答";
@@ -283,11 +281,8 @@
 "AI_THEME_SYSTEM" = "跟随系统";
 "AI_THEME_LIGHT" = "浅色";
 "AI_THEME_DARK" = "深色";
-"AI_PERSONA_HEADER" = "截图分析助手、文字助手与 AI问答助手为默认存在，不可删除仅可修改配置";
 "AI_PERSONA_FOOTER" = "点击可改内容。左滑删除。右上角「+」添加新人设。添加后新人设按钮在框选菜单中默认为打开，人设名称则是按钮名称。";
-"AI_PERSONA_RESET" = "恢复默认配置";
 "AI_PERSONA_EDIT_TITLE" = "编辑人设";
-"AI_PERSONA_DIRECT" = "是否直接发送";
 "AI_PERSONA_NAME_HEADER" = "名称";
 "AI_PERSONA_CONTENT_HEADER" = "人设内容";
 "AI_PERSONA_ROLE_IMAGE" = "图片问答默认";
@@ -306,3 +301,33 @@
 "PASTE_CHIP_ACTION" = "粘贴";
 "PASTE_CHIP_APPS_SHOW_ENABLED" = "只看已开启";
 "PASTE_CHIP_APPS_SHOW_ALL" = "显示全部";
+"PASTE_CHIP_APPS_SEARCH" = "搜索应用名称或 Bundle ID";
+
+/* 截图 */
+"SCREENSHOT_KEYBOARD_RESTORE" = "截图后恢复键盘";
+"SCREENSHOT_KEYBOARD_RESTORE_FOOTER" = "截图动作默认先收起键盘再截图；开启后，截图完成时键盘自动弹回（等系统截图完成通知，最长 5 秒兜底）。";
+
+/* 设置页通用（补齐缺失键） */
+"TWEAK" = "插件";
+"ENABLED" = "启用";
+"DISABLED" = "关闭";
+"HAPTIC" = "触感反馈";
+"PASTE_CHIP" = "粘贴悬浮窗";
+"PASTE_CHIP_FOOTER" = "剪贴板有新内容时在键盘上方弹出悬浮粘贴窗，并自动放行系统「允许粘贴」弹窗。";
+"PASTE_CHIP_APPS" = "生效应用";
+"PASTE_CHIP_APPS_FOOTER" = "已为 %ld 个应用开启粘贴悬浮窗";
+"FOOTER_DOCK_MODE" = "选择 Dock 上保留哪些系统按钮：默认同时保留地球与听写，也可只保留其中一个，或全部隐藏。";
+"DICTATION_ONLY" = "仅听写";
+"GLOBE_ONLY" = "仅地球";
+"NONE" = "无";
+"FOOTER_CREDITS" = "TypeX 由 lindo 开发，感谢使用与支持";
+"SHORTCUTS_TINT_GROUP" = "快捷按钮颜色";
+"SHORTCUTS_TINT" = "按钮颜色";
+"SHORTCUTS_TINT_FOOTER" = "跟随系统使用当前 App 主题色，使用自定义可自行挑选颜色。";
+"FOLLOW_SYSTEM" = "跟随系统";
+"USE_CUSTOM" = "使用自定义";
+"CUSTOMIZATION" = "背景颜色";
+"CUSTOMIZATION_FOOTER" = "按钮背景与顶部工具栏背景共用同一个总开关，关闭后两处都不再着色。";
+"SHORTCUTS_BACKGROUND_TINT" = "按钮背景颜色";
+"TOP_TOOLBAR_BACKGROUND_TINT" = "顶部工具栏背景颜色";
+"TOP_TOOLBAR_PREVIEW" = "顶部工具栏预览";

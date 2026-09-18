@@ -364,8 +364,9 @@
 
 #pragma mark - 人设库
 
-// 人设元素：{id, name, content, direct, builtin, role, enabled}。三个默认人设
-// 的 role 分别为 image（图片问答）/ text（文字问答）/ chat（AI问答）。
+// 人设元素：{id, name, content, role, enabled}。三个默认人设的 role 分别为
+// image（图片问答）/ text（文字问答）/ chat（AI问答），全部可删可改；删空后
+// 请求经 defaultPersonaForRole 回退到 defaultPersonas 的出厂内容。
 + (NSDictionary *)personaDictWithID:(NSString *)personaID
                                name:(NSString *)name
                                role:(NSString *)role
@@ -373,8 +374,6 @@
     return @{@"id": personaID,
              @"name": name,
              @"content": content ?: @"",
-             @"direct": @(NO),
-             @"builtin": @(YES),
              @"role": role ?: @"",
              @"enabled": @(YES)};
 }
@@ -438,16 +437,6 @@
         if ([persona[@"role"] isEqualToString:role]) return persona;
     }
     return nil;
-}
-
-+ (void)restoreDefaultPersonas {
-    // 三个默认人设重置回出厂内容；自定义人设原样保留。
-    NSMutableArray<NSDictionary *> *result = [[self defaultPersonas] mutableCopy];
-    for (NSDictionary *persona in [self personas]) {
-        if (![persona isKindOfClass:[NSDictionary class]]) continue;
-        if (![persona[@"builtin"] isKindOfClass:[NSNumber class]] || ![persona[@"builtin"] boolValue]) [result addObject:persona];
-    }
-    [self setPersonas:result];
 }
 
 #pragma mark - 配置读取
@@ -529,11 +518,21 @@
 #pragma mark - 请求
 
 + (NSURLSession *)ephemeralSession {
+    return [self ephemeralSessionWithDelegate:nil];
+}
+
+// delegate 必须在 session 创建时传入——[NSURLSession sessionWithConfiguration:]
+// 单参形式的 delegate 恒为 nil，事后无法补挂。聊天路径把流式 sink 传进来，
+// didReceiveData/didCompleteWithError 才有归宿；session 会强持有 delegate
+// 直到 invalidate，sink 的生命周期由会话保证。
++ (NSURLSession *)ephemeralSessionWithDelegate:(id)delegate {
     NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration ephemeralSessionConfiguration];
     configuration.timeoutIntervalForRequest = 90.0;
     configuration.timeoutIntervalForResource = 300.0;
     configuration.URLCache = nil;
-    return [NSURLSession sessionWithConfiguration:configuration];
+    return [NSURLSession sessionWithConfiguration:configuration
+                                         delegate:delegate
+                                    delegateQueue:nil];
 }
 
 + (DXAIChatRequest *)sendChatWithMessages:(NSArray<NSDictionary *> *)messages
@@ -578,7 +577,7 @@
         // 对话泄漏一条会话。
         [weakSink.session finishTasksAndInvalidate];
     };
-    sink.session = [self ephemeralSession];
+    sink.session = [self ephemeralSessionWithDelegate:sink];
     NSURLSessionDataTask *task = [sink.session dataTaskWithRequest:request];
     sink.task = task;
     [task resume];
@@ -711,7 +710,10 @@ static BOOL DXAIModelsEntrySupportsChat(id entry) {
           [self apiKeyForEngine:engine].length > 0 ? @"configured" : @"EMPTY");
 
     NSURLSession *session = [self ephemeralSession];
-    [session dataTaskWithRequest:request
+    // NSURLSession 任务创建后是挂起态，必须显式 resume 才会发出——此前返回值
+    // 被丢弃且从不 resume，请求根本没离开设备，completion 永不回调（抓取按钮
+    // 永远停在"抓取中…"且无任何报错），这正是全部引擎都抓不到模型的根因。
+    NSURLSessionDataTask *task = [session dataTaskWithRequest:request
                completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         NSString *body = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
         NSInteger status = [(NSHTTPURLResponse *)response statusCode];
@@ -765,6 +767,7 @@ static BOOL DXAIModelsEntrySupportsChat(id entry) {
         // NSURLSession 强持有 completionHandler 直至 invalidate，用完即断。
         [session finishTasksAndInvalidate];
     }];
+    [task resume];
 }
 
 @end

@@ -11,6 +11,7 @@ static NSString *const DXAppCellIdentifier = @"DXPPasteChipAppCell";
     // bundleID -> @YES; absence means off.
     NSMutableDictionary<NSString *, NSNumber *> *_enabled;
     BOOL _showEnabledOnly;
+    NSString *_searchText;
 }
 
 #pragma mark - Lifecycle
@@ -30,6 +31,16 @@ static NSString *const DXAppCellIdentifier = @"DXPPasteChipAppCell";
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
     self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+
+    // 表头搜索栏（列表顶部即达）：按应用名称或 Bundle ID 过滤，与"只看已开启"
+    // 叠加生效。几百个应用里找回某个开关不用再滚动翻找。
+    UISearchBar *searchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(0.0, 0.0, 0.0, 44.0)];
+    searchBar.delegate = self;
+    searchBar.placeholder = LOCALIZED(@"PASTE_CHIP_APPS_SEARCH");
+    searchBar.autocorrectionType = UITextAutocorrectionTypeNo;
+    searchBar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    self.tableView.tableHeaderView = searchBar;
+
     [self.view addSubview:self.tableView];
 
     [self updateFilterButton];
@@ -62,6 +73,17 @@ static NSString *const DXAppCellIdentifier = @"DXPPasteChipAppCell";
     [self.tableView reloadData];
 }
 
+#pragma mark - Search
+
+- (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {
+    _searchText = searchText;
+    [self.tableView reloadData];
+}
+
+- (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar {
+    [searchBar resignFirstResponder];
+}
+
 #pragma mark - Storage
 
 - (NSMutableDictionary<NSString *, NSNumber *> *)loadEnabledMap {
@@ -85,11 +107,22 @@ static NSString *const DXAppCellIdentifier = @"DXPPasteChipAppCell";
 #pragma mark - Table
 
 - (NSArray<DXPAppInfo *> *)visibleApps {
-    if (!_showEnabledOnly) return _apps;
-    return [_apps filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(DXPAppInfo *app, NSDictionary *bindings) {
-        (void)bindings;
-        return _enabled[app.bundleID] != nil;
-    }]];
+    NSArray<DXPAppInfo *> *apps = _apps;
+    if (_showEnabledOnly) {
+        apps = [apps filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(DXPAppInfo *app, NSDictionary *bindings) {
+            (void)bindings;
+            return _enabled[app.bundleID] != nil;
+        }]];
+    }
+    if (_searchText.length > 0) {
+        NSString *query = _searchText;
+        apps = [apps filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(DXPAppInfo *app, NSDictionary *bindings) {
+            (void)bindings;
+            return [app.name localizedCaseInsensitiveContainsString:query] ||
+                   [app.bundleID localizedCaseInsensitiveContainsString:query];
+        }]];
+    }
+    return apps;
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {

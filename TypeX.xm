@@ -153,6 +153,24 @@ static BOOL DXToolbarHasShortcuts(DXCollectionView *toolbar) {
            [toolbar.shortcuts[kbuttonsImages12] count] > 0;
 }
 
+// An app can be injected before SpringBoard has finished seeding the shared
+// snapshot.  DXPrefsManager intentionally keeps that first read unavailable
+// instead of showing default buttons, but a later snapshot must be adopted by
+// the already-running app.  Re-read only while unavailable so the normal
+// toolbar/layout path stays cheap and a cold-launch race can recover without
+// requiring the user to kill the app.
+static BOOL DXReloadPreferencesIfUnavailable(void) {
+    DXPrefsManager *manager = [DXPrefsManager sharedInstance];
+    if (manager.preferencesAvailable) return NO;
+
+    [manager reload];
+    if (!manager.preferencesAvailable) return NO;
+
+    prefs = [manager.prefs mutableCopy];
+    toggledOn = preferencesBool(kToggledOnkey, YES);
+    return YES;
+}
+
 static BOOL DXShouldDisplayTopAccessory(DXTopAccessoryContainer *container) {
     BOOL enabled = preferencesBool(kEnabledkey, YES);
     return enabled && toggledOn && !isLandscape && !isDictating &&
@@ -183,6 +201,7 @@ static void DXInstallTopAccessoryForResponder(UIResponder *responder, BOOL reloa
     if (!responder || (!isApplication && !isSpringBoard) ||
         DXResponderHasManagedInputBar(responder) || !DXResponderSupportsInputAccessoryView(responder)) return;
 
+    BOOL preferencesRecovered = DXReloadPreferencesIfUnavailable();
     BOOL enabled = preferencesBool(kEnabledkey, YES);
     DXTopAccessoryContainer *container = objc_getAssociatedObject(responder, &kDXTopAccessoryContainerKey);
     UIView *currentAccessory = DXInputAccessoryView(responder);
@@ -202,7 +221,7 @@ static void DXInstallTopAccessoryForResponder(UIResponder *responder, BOOL reloa
     }
     if (!container) return;
 
-    if (reloadConfiguration && !createdContainer) {
+    if ((reloadConfiguration || preferencesRecovered) && !createdContainer) {
         [container.toolbar reloadShortcutConfiguration];
         [container.toolbar.collectionViewLayout invalidateLayout];
         [container.toolbar reloadData];
@@ -256,7 +275,16 @@ static UIResponder *DXTopToolbarResponder(UIKeyboardImpl *keyboard) {
 
 static void DXRefreshActiveTopToolbarWithConfiguration(BOOL reloadConfiguration) {
     UIKeyboardImpl *keyboard = [objc_getClass("UIKeyboardImpl") activeInstance];
-    DXInstallTopAccessoryForResponder(DXTopToolbarResponder(keyboard), reloadConfiguration);
+    UIResponder *responder = DXTopToolbarResponder(keyboard);
+    static dispatch_once_t onceDiagToken;
+    dispatch_once(&onceDiagToken, ^{
+        // 一次性体检：进程内第一次键盘刷新时把顶部工具栏全部门控值打到 syslog。
+        NSLog(@"[TypeX] diag: top refresh keyboard=%@ responder=%@ enabled=%d toggledOn=%d landscape=%d dictating=%d prefsAvail=%d",
+              keyboard, NSStringFromClass([responder class]),
+              preferencesBool(kEnabledkey, YES), toggledOn, isLandscape, isDictating,
+              [DXPrefsManager sharedInstance].preferencesAvailable);
+    });
+    DXInstallTopAccessoryForResponder(responder, reloadConfiguration);
 }
 
 static void DXRefreshActiveTopToolbar(void) {
@@ -400,6 +428,8 @@ static BOOL DXIsPastePermissionAlert(UIAlertController *alert) {
     }
     return NO;
 }
+
+static void reloadPrefs(void);
 
 %group TypeX
 
@@ -550,8 +580,11 @@ static BOOL DXIsPastePermissionAlert(UIAlertController *alert) {
         });
         
     }
-    self.typex.hidden = !preferencesBool(kEnabledkey, YES) || !toggledOn ||
+        self.typex.hidden = !preferencesBool(kEnabledkey, YES) || !toggledOn ||
                         !DXToolbarHasShortcuts(self.typex);
+        NSLog(@"[TypeX] diag: dock init typex=%@ enabled=%d toggledOn=%d shortcuts=%d",
+              self.typex, preferencesBool(kEnabledkey, YES), toggledOn,
+              DXToolbarHasShortcuts(self.typex));
     
     
     return dockV = dockView;
@@ -707,6 +740,11 @@ static BOOL DXIsPastePermissionAlert(UIAlertController *alert) {
 
 - (void)layoutSubviews{
     %orig;
+    if (self.typex && DXReloadPreferencesIfUnavailable()) {
+        [self.typex reloadShortcutConfiguration];
+        [self.typex.collectionViewLayout invalidateLayout];
+        [self.typex reloadData];
+    }
     if (preferencesBool(kEnabledkey,YES)){
         if (toggledOn){
             //NSTimeInterval timeInterval = fabs([lastReloadDate timeIntervalSinceNow]);
@@ -997,13 +1035,15 @@ static BOOL DXIsPastePermissionAlert(UIAlertController *alert) {
 
 // Clipboard image chip companion: auto-answer the paste-permission alert so
 // programmatic paste: and the thumbnail read never interrupt the user. Gated by
-// the same switch as the chip; the handler runs before dismissal so the
-// pending pasteboard read unblocks immediately.
+// the same switch as the chip (or by the AI panel holding the keyboard, so
+// pasting a copied image into the panel input is equally uninterrupted); the
+// handler runs before dismissal so the pending pasteboard read unblocks
+// immediately.
 %hook UIAlertController
 
 - (void)viewWillAppear:(BOOL)animated {
     %orig;
-    if (![DXPasteChipController isAllowedInCurrentApp]) return;
+    if (![DXPasteChipController isAllowedInCurrentApp] && ![DXAIPanel isPanelInputActive]) return;
     if (!DXIsPastePermissionAlert(self)) return;
 
     UIAlertAction *allowAction = nil;
@@ -1030,6 +1070,10 @@ static BOOL DXIsPastePermissionAlert(UIAlertController *alert) {
 
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
+    // 冷启动兜底：ctor 时域读取可能撞上 cfprefsd 未就绪/首解锁前保护而读空，
+    // heal 不会播种，所有 App 的工具栏会一直等到本进程下次 heal。桌面首次出现
+    // 是早于任何 App 可用的必然事件；prefs 可用时 reload 依旧早退、零成本。
+    if (![DXPrefsManager sharedInstance].preferencesAvailable) reloadPrefs();
     g_aiDesktopVisible = YES;
     DXPresentAIPanelWhenDesktop();
 }
@@ -1043,6 +1087,22 @@ static BOOL DXIsPastePermissionAlert(UIAlertController *alert) {
 
 %end
 
+
+// 诊断用：把 shortcuts 存储值压缩成 "arr[启用数/禁用数]" 形态的字符串，异常类型
+// 直接点名（工具栏全环境消失时先看这里是不是 BAD/空）。
+static NSString *DXDiagShortcutShape(id value) {
+    if (!value) return @"nil";
+    if (![value isKindOfClass:[NSArray class]]) {
+        return [NSString stringWithFormat:@"BAD:%@", NSStringFromClass([value class])];
+    }
+    NSArray *array = (NSArray *)value;
+    NSMutableString *shape = [NSMutableString stringWithFormat:@"arr[%lu]", (unsigned long)array.count];
+    for (id section in array) {
+        NSUInteger count = [section isKindOfClass:[NSArray class]] ? [(NSArray *)section count] : (NSUInteger)-1;
+        [shape appendFormat:@"/%lu", (unsigned long)count];
+    }
+    return shape;
+}
 
 static void reloadPrefs(void) {
     DXPrefsManager *manager = [DXPrefsManager sharedInstance];
@@ -1094,6 +1154,11 @@ static void reloadPrefs(void) {
         [dockView.typex reloadData];
     }
     DXRefreshActiveTopToolbar();
+    NSLog(@"[TypeX] diag: prefs avail=%d count=%lu enabled=%d toggledOn=%d bottom=%@ top=%@",
+          manager.preferencesAvailable, (unsigned long)prefs.count,
+          preferencesBool(kEnabledkey, YES), toggledOn,
+          DXDiagShortcutShape(prefs[DXScopedPreferenceKey(kShortcutskey, @"bottom")]),
+          DXDiagShortcutShape(prefs[DXScopedPreferenceKey(kShortcutskey, @"top")]));
     /*
      if (dockView){
      [UIView performWithoutAnimation:^{
@@ -1170,8 +1235,18 @@ static void shortcutRefreshRequestCallback(CFNotificationCenterRef center,
                 isSpringBoard = [processName isEqualToString:@"SpringBoard"];
                 isApplication = [executablePath rangeOfString:@"/Application"].location != NSNotFound;
 				isApplication = isApplication ?: ([executablePath rangeOfString:@".appex/"].location != NSNotFound ?: isApplication);
+				// RootHide/iOS updates can place an app executable outside the
+				// traditional /var/containers/Bundle/Application path.  Use the
+				// actual main bundle suffix as a second source of truth so app
+				// responders still receive the input accessory in those hosts.
+				if (!isSpringBoard && !isApplication) {
+					NSString *bundleExtension = NSBundle.mainBundle.bundleURL.pathExtension.lowercaseString;
+					isApplication = [bundleExtension isEqualToString:@"app"] ||
+					                [bundleExtension isEqualToString:@"appex"];
+				}
                 //isApplication = [processName isEqualToString:@"MarkupPhotoExtension"] ?: isApplication;
                 isSafari = [processName isEqualToString:@"MobileSafari"];
+                NSLog(@"[TypeX] diag: ctor proc=%@ sb=%d app=%d", executablePath, isSpringBoard, isApplication);
 				
                 if (isSpringBoard || isApplication){
                     tweakBundle = [NSBundle bundleWithPath:bundlePath];
@@ -1180,6 +1255,7 @@ static void shortcutRefreshRequestCallback(CFNotificationCenterRef center,
                     reloadPrefs();
                     shouldPerformBatchUpdate = YES;
                     %init(TypeX);
+                    NSLog(@"[TypeX] diag: hooks installed");
                     topToolbarLifecycleObserver = [[DXTopToolbarLifecycleObserver alloc] init];
                     [[NSNotificationCenter defaultCenter] addObserver:topToolbarLifecycleObserver
                                                              selector:@selector(keyboardDidShow:)

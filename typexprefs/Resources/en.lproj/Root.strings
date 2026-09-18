@@ -41,3 +41,7 @@
 "PASTE_CHIP_FOOTER" = "Only in enabled apps: when a NEW image or text lands on the clipboard, a chip floats at the screen's right edge, level with the text caret above the keyboard, for 3 seconds (image thumbnail or text preview); tap it to paste. While enabled, the system paste-permission prompt is answered automatically. All apps are off by default.";
 "PASTE_CHIP_APPS" = "Enabled Apps";
 "PASTE_CHIP_APPS_FOOTER" = "%ld app(s) enabled. The thumbnail only appears in apps switched on here.";
+
+// Screenshot
+"SCREENSHOT_KEYBOARD_RESTORE" = "Restore Keyboard After Screenshot";
+"SCREENSHOT_KEYBOARD_RESTORE_FOOTER" = "The screenshot action hides the keyboard before capturing. When enabled, the keyboard pops back once the screenshot completes (waits for the system screenshot notification, 5 s fallback).";

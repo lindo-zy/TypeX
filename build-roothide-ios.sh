@@ -33,7 +33,19 @@ if [[ ! "$PACKAGE_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
     exit 1
 fi
 
-NEXT_VERSION="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$((10#${BASH_REMATCH[3]} + 1))"
+# PATCH counts 0-10; past 10 it carries into MINOR (3.0.10 -> 3.1.0), MINOR likewise into MAJOR.
+NEXT_MAJOR="${BASH_REMATCH[1]}"
+NEXT_MINOR="${BASH_REMATCH[2]}"
+NEXT_PATCH="$((10#${BASH_REMATCH[3]} + 1))"
+if (( NEXT_PATCH > 10 )); then
+    NEXT_PATCH=0
+    NEXT_MINOR="$((10#${BASH_REMATCH[2]} + 1))"
+fi
+if (( NEXT_MINOR > 10 )); then
+    NEXT_MINOR=0
+    NEXT_MAJOR="$((10#${BASH_REMATCH[1]} + 1))"
+fi
+NEXT_VERSION="${NEXT_MAJOR}.${NEXT_MINOR}.${NEXT_PATCH}"
 
 build_one() {
     local label="$1"

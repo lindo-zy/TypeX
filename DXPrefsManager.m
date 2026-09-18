@@ -100,6 +100,16 @@ static NSString *DXSharedPrefsPath(void) {
 }
 
 - (NSDictionary *)readSharedPrefs {
+    // 一次性诊断：沙盒进程偏好不可用时，先确认快照文件的路径与可读性。
+    static dispatch_once_t onceDiagToken;
+    dispatch_once(&onceDiagToken, ^{
+        NSString *path = DXSharedPrefsPath();
+        NSFileManager *fm = [NSFileManager defaultManager];
+        NSDictionary *attrs = [fm attributesOfItemAtPath:path error:nil];
+        NSLog(@"[TypeX] diag: snapshot path=%@ exists=%d readable=%d size=%lu sandbox=%d",
+              path, [fm fileExistsAtPath:path], [fm isReadableFileAtPath:path],
+              (unsigned long)attrs.fileSize, [DXPrefsManager isRunningInSandbox]);
+    });
     NSDictionary *snapshot = [NSDictionary dictionaryWithContentsOfFile:DXSharedPrefsPath()];
     if (![snapshot isKindOfClass:[NSDictionary class]]) return nil;
 
@@ -155,6 +165,19 @@ static NSString *DXSharedPrefsPath(void) {
 }
 
 #pragma mark - Read
+
+// The legacy plist is SpringBoard's cold-boot fallback when cfprefsd has not
+// materialized the domain yet (ctor runs before first unlock after a reboot).
+// A protection class locked until first unlock would make that fallback -- and
+// the heal seeding that depends on it -- read empty exactly when it is needed;
+// match the shared snapshot's None class.
+static void DXWritePrefsPlist(NSDictionary *dictionary) {
+    if (![dictionary isKindOfClass:[NSDictionary class]]) return;
+    if (![dictionary writeToFile:kPrefsPath atomically:YES]) return;
+    [[NSFileManager defaultManager] setAttributes:@{NSFileProtectionKey: NSFileProtectionNone}
+                                      ofItemAtPath:kPrefsPath
+                                             error:nil];
+}
 
 // No IPC: CPDistributedMessagingCenter between an app sandbox and SpringBoard
 // needs RocketBootstrap, which this package deliberately does not depend on.
@@ -233,7 +256,7 @@ static NSString *DXSharedPrefsPath(void) {
         CFPreferencesAppSynchronize(appID);
 
         // Keep the on-disk representation available to legacy preference cells.
-        [dictionary writeToFile:kPrefsPath atomically:YES];
+        DXWritePrefsPlist(dictionary);
     }
 
     self.prefs = [snapshot copy];
@@ -303,7 +326,7 @@ static NSString *DXSharedPrefsPath(void) {
 
     NSMutableDictionary *dictionary = [[self readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
     [dictionary removeObjectForKey:key];
-    [dictionary writeToFile:kPrefsPath atomically:YES];
+    DXWritePrefsPlist(dictionary);
     self.prefs = [dictionary copy];
     self.preferencesAvailable = YES;
     [self writeSharedPrefs:dictionary];

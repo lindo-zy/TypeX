@@ -13,7 +13,7 @@
 #define DXAIPrefStream           @"aiStreamBOOL"
 #define DXAIPrefTheme            @"aiTheme"
 // 自定义引擎列表（array of dict：id/name/endpoint/key/models/selected）与人设
-// 库（array of dict：id/name/content/direct/builtin/role/enabled）。
+// 库（array of dict：id/name/content/role/enabled）。
 #define DXAIPrefCustomEngines    @"aiCustomEngines"
 #define DXAIPrefPersonas         @"aiPersonas"
 
@@ -61,7 +61,6 @@
 + (void)setPersonas:(NSArray<NSDictionary *> *)personas;
 + (NSDictionary *)personaForID:(NSString *)personaID;
 + (NSDictionary *)defaultPersonaForRole:(NSString *)role; // image / text / chat
-+ (void)restoreDefaultPersonas;
 
 // 面板行为偏好。
 + (BOOL)streamEnabled;

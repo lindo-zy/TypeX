@@ -1,11 +1,18 @@
 #!/bin/bash
 
-if [[ x$JB_ROOT_PATH != x"" ]]; then
-    JBROOT="/var/jb"
-else
-    JBROOT=""
-fi
+# dpkg also invokes postrm with "upgrade" during package upgrades; wiping the
+# shared directory there destroys the sandboxed hosts' only preferences source
+# on every install and forces the toolbar to wait for SpringBoard to re-seed
+# it (the "must visit SpringBoard once after install" regression). Only a real
+# removal or purge may delete shared state.
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    if [[ x$JB_ROOT_PATH != x"" ]]; then
+        JBROOT="/var/jb"
+    else
+        JBROOT=""
+    fi
 
-rm -rf "$JBROOT/Library/TypeX" || true
+    rm -rf "$JBROOT/Library/TypeX" || true
+fi
 
 exit 0
