@@ -469,6 +469,11 @@
         endpoint = [endpoint substringToIndex:endpoint.length - @"/chat/completions".length];
         while ([endpoint hasSuffix:@"/"]) endpoint = [endpoint substringToIndex:endpoint.length - 1];
     }
+    // 同理兼容直接粘模型列表 URL（…/models 结尾），否则会拼出 /models/models。
+    if ([endpoint.lowercaseString hasSuffix:@"/models"]) {
+        endpoint = [endpoint substringToIndex:endpoint.length - @"/models".length];
+        while ([endpoint hasSuffix:@"/"]) endpoint = [endpoint substringToIndex:endpoint.length - 1];
+    }
     return endpoint;
 }
 
@@ -601,9 +606,10 @@ typedef NS_ENUM(NSInteger, DXAIModelsVendor) {
 static DXAIModelsVendor DXAIModelsVendorForEndpoint(NSString *endpoint) {
     NSURL *url = [NSURL URLWithString:endpoint];
     NSString *host = url.host.lowercaseString ?: @"";
-    NSString *path = (url.path ?: @"").lowercaseString;
-    // Gemini 原生（…/v1beta）；其 OpenAI 兼容路径（…/v1beta/openai）走 Bearer。
-    if ([host containsString:@"generativelanguage.googleapis.com"] && ![path hasSuffix:@"/openai"]) {
+    // generativelanguage.googleapis.com 一律走原生模型列表：实测其 OpenAI 兼容层
+    // 的 /openai/models 在鉴权异常时只回 404/400，原生 v1beta/models +
+    // x-goog-api-key 才是稳定的列表源（聊天仍走兼容端点，互不影响）。
+    if ([host containsString:@"generativelanguage.googleapis.com"]) {
         return DXAIModelsVendorGeminiNative;
     }
     if ([host containsString:@"anthropic"]) return DXAIModelsVendorAnthropic;
@@ -685,6 +691,11 @@ static BOOL DXAIModelsEntrySupportsChat(id entry) {
         return;
     }
     DXAIModelsVendor vendor = DXAIModelsVendorForEndpoint(endpoint);
+    // 预设/用户输入可能是 Gemini 兼容路径（…/v1beta/openai）；模型列表走原生
+    // 端点，剥掉兼容后缀再拼 /models。
+    if (vendor == DXAIModelsVendorGeminiNative && [endpoint.lowercaseString hasSuffix:@"/openai"]) {
+        endpoint = [endpoint substringToIndex:endpoint.length - @"/openai".length];
+    }
     NSURL *modelsURL = [NSURL URLWithString:[endpoint stringByAppendingString:DXAIModelsPathForVendor(vendor, endpoint)]];
     if (!modelsURL) {
         completion(@[], [NSError errorWithDomain:@"DXAIChat" code:-10
@@ -695,14 +706,21 @@ static BOOL DXAIModelsEntrySupportsChat(id entry) {
     request.HTTPMethod = @"GET";
     request.timeoutInterval = 30.0;
     DXAIApplyModelsAuthHeaders(request, vendor, [self apiKeyForEngine:engine]);
+    NSLog(@"[TypeX] ai: models fetch GET %@ (vendor %ld, key %@)",
+          modelsURL.absoluteString, (long)vendor,
+          [self apiKeyForEngine:engine].length > 0 ? @"configured" : @"EMPTY");
 
     NSURLSession *session = [self ephemeralSession];
     [session dataTaskWithRequest:request
                completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         NSString *body = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
         NSInteger status = [(NSHTTPURLResponse *)response statusCode];
+        NSString *bodyHead = body.length > 0 ? [body substringToIndex:MIN(200, body.length)] : @"";
         if (error || status < 200 || status >= 300) {
-            NSString *message = [NSString stringWithFormat:@"HTTP %ld%@", (long)status, body.length > 0 ? [NSString stringWithFormat:@" %@", [body substringToIndex:MIN(200, body.length)]] : @""];
+            NSString *message = [NSString stringWithFormat:@"HTTP %ld%@",
+                                 (long)status,
+                                 bodyHead.length > 0 ? [NSString stringWithFormat:@" %@", bodyHead] : @""];
+            NSLog(@"[TypeX] ai: models fetch failed: %@ (%@)", message, error.localizedDescription ?: @"");
             dispatch_async(dispatch_get_main_queue(), ^{
                 completion(@[], error ?: [NSError errorWithDomain:@"DXAIChat" code:status userInfo:@{NSLocalizedDescriptionKey: message}]);
             });
@@ -727,11 +745,24 @@ static BOOL DXAIModelsEntrySupportsChat(id entry) {
             [seen addObject:name];
             [models addObject:name];
         }
+        if (models.count == 0) {
+            // HTTP 200 但解析不出任何模型：大概率端点/响应形态不符。绝不静默
+            // 返回空列表——那正是“抓取成功却一个模型都没有”的体验。
+            NSLog(@"[TypeX] ai: models fetch got HTTP %ld with unparseable/empty body from %@: %@",
+                  (long)status, modelsURL.absoluteString, bodyHead);
+            NSString *message = [NSString stringWithFormat:@"响应无法解析为模型列表（HTTP %ld）\n%@\n%@",
+                                 (long)status, modelsURL.absoluteString, bodyHead];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(@[], [NSError errorWithDomain:@"DXAIChat" code:status userInfo:@{NSLocalizedDescriptionKey: message}]);
+            });
+            [session finishTasksAndInvalidate];
+            return;
+        }
+        NSLog(@"[TypeX] ai: models fetch OK: %lu models from %@", (unsigned long)models.count, modelsURL.absoluteString);
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(models, nil);
         });
-        // NSURLSession 强持有 completionHandler 直至 invalidate，用完即断，
-        // 否则每次抓取泄漏一条会话。
+        // NSURLSession 强持有 completionHandler 直至 invalidate，用完即断。
         [session finishTasksAndInvalidate];
     }];
 }

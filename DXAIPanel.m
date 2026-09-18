@@ -318,7 +318,6 @@ static CGRect DXAIProbeKeyboardFrame(void) {
 @property (nonatomic, strong) UIView *headerView;
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UIButton *modelButton;
-@property (nonatomic, strong) UIButton *keyboardButton;
 @property (nonatomic, strong) UIButton *personaButton;
 @property (nonatomic, strong) UIButton *closeButton;
 @property (nonatomic, strong) UIView *headerDivider;
@@ -396,10 +395,8 @@ static CGRect DXAIProbeKeyboardFrame(void) {
     [self.modelButton addTarget:self action:@selector(modelTapped) forControlEvents:UIControlEventTouchUpInside];
     [self.headerView addSubview:self.modelButton];
 
-    self.keyboardButton = [DXAIChatPanelController circleButtonWithSymbol:@"keyboard" action:@selector(keyboardToggleTapped) target:self];
     self.personaButton = [DXAIChatPanelController circleButtonWithSymbol:@"person.circle" action:@selector(personaTapped) target:self];
     self.closeButton = [DXAIChatPanelController circleButtonWithSymbol:@"xmark" action:@selector(closeTapped) target:self];
-    [self.headerView addSubview:self.keyboardButton];
     [self.headerView addSubview:self.personaButton];
     [self.headerView addSubview:self.closeButton];
 
@@ -546,7 +543,7 @@ static CGRect DXAIProbeKeyboardFrame(void) {
 
 - (void)layoutHeaderWithWidth:(CGFloat)width {
     CGFloat buttonSize = 34.0, gap = 10.0, rightEdge = width - 14.0;
-    for (UIButton *button in @[self.closeButton, self.personaButton, self.keyboardButton]) {
+    for (UIButton *button in @[self.closeButton, self.personaButton]) {
         button.frame = CGRectMake(rightEdge - buttonSize, 11.0, buttonSize, buttonSize);
         rightEdge -= (buttonSize + gap);
     }
@@ -710,16 +707,6 @@ static CGRect DXAIProbeKeyboardFrame(void) {
     [self updatePlaceholder];
     [self updateSendState];
     [self repositionAnimated:NO]; // 多行输入撑高输入栏时卡片跟随
-}
-
-- (void)keyboardToggleTapped {
-    // 键盘图标：切换面板输入的键盘。收起后面板随键盘 frame 落到屏幕底部。
-    if (self.inputField.isFirstResponder) {
-        [self.inputField resignFirstResponder];
-    } else {
-        [self.view.window makeKeyWindow];
-        [self.inputField becomeFirstResponder];
-    }
 }
 
 // 恢复宿主输入：面板窗口让出 key，再让键盘实现重新激活其输入 delegate
