@@ -229,6 +229,8 @@
 "SHORT_SHELLX_SCREENSHOT" = "截图";
 "LONG_AI_CHAT" = "AI问答";
 "SHORT_AI_CHAT" = "AI";
+"LONG_OPEN_APP" = "打开应用";
+"SHORT_OPEN_APP" = "打开应用";
 
 /* Custom actions management page (KayokoX-style layout) */
 "NO_CUSTOM_ACTIONS" = "暂无自定义动作";
@@ -304,8 +306,8 @@
 "PASTE_CHIP_APPS_SEARCH" = "搜索应用名称或 Bundle ID";
 
 /* 截图 */
-"SCREENSHOT_KEYBOARD_RESTORE" = "截图后恢复键盘";
-"SCREENSHOT_KEYBOARD_RESTORE_FOOTER" = "截图动作默认先收起键盘再截图；开启后，截图完成时键盘自动弹回（等系统截图完成通知，最长 5 秒兜底）。";
+"SHELLX_SCREENSHOT_HIDE_KEYBOARD" = "截图时隐藏键盘";
+"SHELLX_SCREENSHOT_HIDE_KEYBOARD_FOOTER" = "默认关闭。开启后，使用 ShellX 截图动作时会先隐藏键盘再截图；截图后不会自动恢复键盘。";
 
 /* 设置页通用（补齐缺失键） */
 "TWEAK" = "插件";

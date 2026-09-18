@@ -230,6 +230,8 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SHORT_SHELLX_SCREENSHOT" = "Shot";
 "LONG_AI_CHAT" = "AI Chat";
 "SHORT_AI_CHAT" = "AI";
+"LONG_OPEN_APP" = "Open App";
+"SHORT_OPEN_APP" = "Open";
 
 /* Custom actions management page (KayokoX-style layout) */
 "NO_CUSTOM_ACTIONS" = "No custom actions yet";
@@ -305,8 +307,8 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "PASTE_CHIP_APPS_SEARCH" = "Search apps or bundle IDs";
 
 /* Screenshot */
-"SCREENSHOT_KEYBOARD_RESTORE" = "Restore keyboard after screenshot";
-"SCREENSHOT_KEYBOARD_RESTORE_FOOTER" = "The screenshot action always hides the keyboard before capturing. When enabled, the keyboard pops back once the screenshot completes (waits for the system screenshot notification, 5 s fallback).";
+"SHELLX_SCREENSHOT_HIDE_KEYBOARD" = "Hide keyboard during screenshot";
+"SHELLX_SCREENSHOT_HIDE_KEYBOARD_FOOTER" = "Off by default. When enabled, the ShellX screenshot action hides the keyboard before capturing. The keyboard is not restored afterward.";
 
 /* Settings (previously missing keys) */
 "TWEAK" = "Tweak";

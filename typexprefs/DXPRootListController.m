@@ -2,6 +2,7 @@
 #import <spawn.h>
 #import "../common.h"
 #import "../DXHelper.h"
+#import "../DXShortcutsGenerator.h"
 
 static UISearchController *searchController;
 static NSBundle *tweakBundle;
@@ -11,7 +12,21 @@ static NSBundle *tweakBundle;
 
 - (NSArray *)specifiers {
     if (!_specifiers) {
-        _specifiers = [self loadSpecifiersFromPlistName:@"Root" target:self];
+        NSMutableArray *loadedSpecifiers = [[self loadSpecifiersFromPlistName:@"Root" target:self] mutableCopy];
+        if ([DXShortcutsGenerator isShellXScreenshotAvailable]) {
+            _specifiers = loadedSpecifiers;
+        } else {
+            NSMutableArray *filteredSpecifiers = [NSMutableArray arrayWithCapacity:loadedSpecifiers.count];
+            for (PSSpecifier *specifier in loadedSpecifiers) {
+                NSString *identifier = [specifier propertyForKey:@"id"];
+                NSString *preferenceKey = [specifier propertyForKey:@"key"];
+                BOOL isShellXScreenshotSetting =
+                    [identifier isEqualToString:@"shellxScreenshotKeyboardGroup"] ||
+                    [preferenceKey isEqualToString:kShellXScreenshotHideKeyboardKey];
+                if (!isShellXScreenshotSetting) [filteredSpecifiers addObject:specifier];
+            }
+            _specifiers = filteredSpecifiers;
+        }
         
         self.dynamicSpecifiers = (!self.dynamicSpecifiers) ? [[NSMutableDictionary alloc] init] : self.dynamicSpecifiers;
     }

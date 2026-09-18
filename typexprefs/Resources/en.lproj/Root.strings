@@ -43,5 +43,5 @@
 "PASTE_CHIP_APPS_FOOTER" = "%ld app(s) enabled. The thumbnail only appears in apps switched on here.";
 
 // Screenshot
-"SCREENSHOT_KEYBOARD_RESTORE" = "Restore Keyboard After Screenshot";
-"SCREENSHOT_KEYBOARD_RESTORE_FOOTER" = "The screenshot action hides the keyboard before capturing. When enabled, the keyboard pops back once the screenshot completes (waits for the system screenshot notification, 5 s fallback).";
+"SHELLX_SCREENSHOT_HIDE_KEYBOARD" = "Hide Keyboard During Screenshot";
+"SHELLX_SCREENSHOT_HIDE_KEYBOARD_FOOTER" = "Off by default. When enabled, the ShellX screenshot action hides the keyboard before capturing. The keyboard is not restored afterward.";
