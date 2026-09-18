@@ -1,26 +1,35 @@
 #import <Preferences/PSListController.h>
 #import <Preferences/PSSpecifier.h>
 
-// AI 问答设置主页（Root.plist 入口）：AI 引擎选择、引擎配置（API Key / 模型 /
-// 抓取 / 获取网址）、AI 人设（人设编辑 / 悬浮球 / 窗口主题 / 流式输出）。
-// 布局参照 ShellX 的 AI 问答设置页。
+// AI 问答设置主页（Root.plist 入口）：AI 引擎入口、当前引擎配置（API Key /
+// 模型 / 抓取 / 获取网址）、AI 人设 / 窗口主题 / 流式输出。
 @interface DXPAIChatController : PSViewController <UITableViewDelegate, UITableViewDataSource>
 @property (strong, nonatomic) UITableView *tableView;
 @end
 
-// 引擎选择：单选列表，选中写 aiEngine 并返回。
+// AI 引擎页：内置引擎单选（勾选即切换）+ 自定义引擎列表（点行编辑、左滑删除），
+// 右上角「添加」进自定义引擎编辑器。
 @interface DXPAIEnginePickerController : PSViewController <UITableViewDelegate, UITableViewDataSource>
 @property (strong, nonatomic) UITableView *tableView;
 @end
 
-// 人设编辑：整页系统提示词文本编辑，消失时落盘。
-@interface DXPAIPersonaController : PSViewController <UITextViewDelegate>
-@property (strong, nonatomic) UITextView *textView;
+// 自定义引擎编辑器：接口地址 / 显示名称 / API Key / 模型 / 模型抓取，右上角保存。
+// engineID 传 nil 表示新增。
+@interface DXPAICustomEngineEditorController : PSViewController <UITableViewDelegate, UITableViewDataSource>
+@property (strong, nonatomic) UITableView *tableView;
+- (instancetype)initWithEngineID:(NSString *)engineID;
 @end
 
-// 悬浮球设置：最小化出球开关 / 贴边半隐藏开关 / 重置位置。
-@interface DXPAIBallController : PSViewController <UITableViewDelegate, UITableViewDataSource>
+// 人设页：三个默认人设（不可删除仅可修改）+ 自定义人设（左滑删除），
+// 右上角「恢复默认配置」与「+」。
+@interface DXPAIPersonaController : PSViewController <UITableViewDelegate, UITableViewDataSource>
 @property (strong, nonatomic) UITableView *tableView;
+@end
+
+// 编辑人设：是否直接发送开关 / 名称 / 人设内容，右上角保存。
+@interface DXPAIPersonaEditorController : PSViewController <UITableViewDelegate, UITableViewDataSource>
+@property (strong, nonatomic) UITableView *tableView;
+- (instancetype)initWithPersonaID:(NSString *)personaID;
 @end
 
 // 窗口主题：跟随系统 / 浅色 / 深色。

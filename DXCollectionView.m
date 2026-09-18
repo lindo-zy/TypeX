@@ -1140,18 +1140,55 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     [self autoPaginationControl];
 }
 
-// AI 问答按钮：TypeX 自带面板，在当前键盘进程内直接弹出。打开前读取宿主输入
-// 框全文作为种子问题（上限 2 万字符），面板输入框为空且会话未注入过时才预填；
-// 宿主输入会话不受影响。SpringBoard 端没有键盘工具栏，保持空操作。
+// AI 问答按钮，按承载能力分派（第一版 + ShellX 时代两套验证过的路径）：
+// 系统键盘——TypeX 跑在宿主 app / SpringBoard 进程内（工具栏就长在 UIKeyboardImpl
+// 上），面板第一版同款进程内承载，点按钮立即弹出，不依赖跨进程通道；
+// 第三方键盘扩展——扩展进程的窗口逃不出键盘宿主区域，只能走 cfprefsd+Darwin
+// 通道交 SpringBoard 弹出（种子：输入框全文 > 剪贴板文本 > 剪贴板图片；app
+// 来源等回桌面再显示）。SB 端解析与桌面门控在 TypeX.xm。
 -(void)aiChatAction:(UIButton*)sender{
     [self autoPaginationControl];
     [self triggerImpactAndAnimationWithButton:sender];
-    if (isSpringBoard) return;
+
+    BOOL inProcess = [objc_getClass("UIKeyboardImpl") activeInstance] != nil;
 
     [self beginUpdateDelegate];
     NSString *seed = [self currentInputTextForCustomAction];
     if (seed.length > 20000) seed = [seed substringToIndex:20000];
-    [DXAIPanel openFromKeyboardWithSeedText:seed];
+
+    if (inProcess) {
+        [DXAIPanel openFromKeyboardWithSeedText:seed];
+        [self autoPaginationControl];
+        return;
+    }
+
+    UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
+    NSString *mode;
+    if (seed.length > 0) {
+        mode = @"text";
+    } else if (pasteboard.string.length > 0) {
+        seed = pasteboard.string;
+        mode = @"text";
+    } else if (pasteboard.hasImages) {
+        mode = @"image";
+    } else {
+        mode = @"empty";
+    }
+
+    // 先收尾当前输入会话再投递（第一版顺序）：SB 端创建窗口后，宿主键盘若仍
+    // 处于激活状态会与 SB 端窗口/触摸状态异步竞争。扩展进程内没有
+    // UIKeyboardImpl，此调用为无害空操作。
+    kbImpl = [objc_getClass("UIKeyboardImpl") activeInstance];
+    [kbImpl dismissKeyboard];
+
+    NSDictionary *request = @{@"format": @2,
+                              @"requestID": [NSUUID UUID].UUIDString,
+                              @"created": @([NSDate date].timeIntervalSince1970),
+                              @"mode": mode,
+                              @"origin": isSpringBoard ? @"sb" : @"app",
+                              @"text": seed ?: @""};
+    DXSetQuickActionSharedValue(request, TypeXAIChatRequestKey);
+    notify_post(kAIChatRequestIdentifier.UTF8String);
     [self autoPaginationControl];
 }
 

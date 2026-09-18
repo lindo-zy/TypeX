@@ -79,6 +79,13 @@
 #define kButtonWidthScalekey @"shortcutwidthscale"
 #define kSubActionPanelScaleKey @"subactionpanelscale"
 #define kSpongebobEntropyKey @"spongebobEntropy"
+// Clipboard image quick paste: floating thumbnail above the keyboard +
+// auto-answering of the iOS 16+ paste-permission alert, one switch for both.
+#define kPasteImageChipKey @"pasteimagechipBOOL"
+// BundleID -> @YES map of apps where the paste chip may appear. A missing key
+// or an entry without the host bundle ID means off: the per-app switches in
+// Settings all default to off.
+#define kPasteImageChipAppsKey @"pasteimagechipapps"
 
 #define kbuttonsImages12 0
 #define kbuttonsImages13 1
@@ -127,6 +134,14 @@
 #define TypeXQuickActionSnapshotKey @"snapshot-v3"
 #define kShortcutRefreshRequestIdentifier @"com.lindo.typex/shortcutrefresh"
 #define kShortcutSnapshotChangedIdentifier @"com.lindo.typex/shortcutschanged"
+
+// TypeX 自带 AI 面板通道：工具栏进程只写请求（{format:2, requestID, created,
+// mode: text|image|empty, origin: sb|app, text?}），SpringBoard 端收到 Darwin
+// 通知后整包读取并在 SB 进程内创建 DXAIPanel 悬浮窗。面板不能在键盘进程承载：
+// 窗口会被限制在键盘宿主区域内（第三方键盘扩展里完全无法悬浮）。与快捷方式
+// 目录共用隔离域，避免再开共享面。
+#define TypeXAIChatRequestKey @"ai-chat-request"
+#define kAIChatRequestIdentifier @"com.lindo.typex/aichat"
 
 // Complete SpringBoard-authored snapshot of each app's current static and
 // dynamic UIApplicationShortcutItems. The value is replaced as one generation,

@@ -118,8 +118,16 @@ static NSBundle *tweakBundle;
     editor.completion = ^(NSDictionary *savedEntry) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf) return;
+        // The management page shows one placeholder row while the list is
+        // empty, so the first added action replaces that row 1:1 — inserting
+        // there contradicts the data source and crashes the update.
+        BOOL listWasEmpty = strongSelf.linkActions.count == 0;
         [strongSelf.linkActions addObject:[savedEntry mutableCopy]];
         [strongSelf persistLinkActions];
+        if (listWasEmpty) {
+            [strongSelf.tableView reloadData];
+            return;
+        }
         NSIndexPath *newPath = [NSIndexPath indexPathForRow:strongSelf.linkActions.count - 1
                                                   inSection:strongSelf.customActionsSection];
         [strongSelf.tableView insertRowsAtIndexPaths:@[newPath] withRowAnimation:UITableViewRowAnimationAutomatic];

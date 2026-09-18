@@ -3,6 +3,8 @@
 #import "DXShared.h"
 #import "DXHelper.h"
 #import "DXQuickActionProvider.h"
+#import "DXPasteChip.h"
+#import "DXAIPanel.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <SpringBoardServices/SpringBoardServices.h>
@@ -296,12 +298,109 @@ static void DXRefreshActiveTopToolbar(void) {
 
 static DXTopToolbarLifecycleObserver *topToolbarLifecycleObserver;
 
+// TypeX 自带 AI 面板的 SpringBoard 端承载。键盘进程内建窗口会被限制在键盘宿主
+// 区域内（第三方键盘扩展里完全无法悬浮），所以工具栏只写 ai-chat-request 通道，
+// 面板统一在 SB 创建。origin=sb（桌面键盘工具栏）立即弹出；app 来源等回到桌面
+// 再显示（超 5 分钟丢弃）。桌面可见性由 %hook SBHomeScreenViewController 维护，
+// 不用 SBMainWorkspace/applicationState 探测——app 前台时 applicationState 恒
+// Active，探测必然失效（3.0.84 的教训）。
+static NSString *g_aiPendingSeedText;
+static BOOL g_aiPendingClipboardImage;
+static double g_aiPendingCreatedAt;
+static BOOL g_aiDesktopVisible;
+
+static void DXPresentAIPanelFromPending(void) {
+    NSString *seed = g_aiPendingSeedText;
+    BOOL clipboardImage = g_aiPendingClipboardImage;
+    g_aiPendingSeedText = nil;
+    g_aiPendingClipboardImage = NO;
+    [DXAIPanel presentInSpringBoardWithSeedText:seed clipboardImage:clipboardImage];
+}
+
+static void DXPresentAIPanelWhenDesktop(void) {
+    if (!g_aiPendingSeedText && !g_aiPendingClipboardImage) return;
+    if (!g_aiDesktopVisible) return;
+    if ([NSDate date].timeIntervalSince1970 - g_aiPendingCreatedAt > 300.0) {
+        g_aiPendingSeedText = nil;
+        g_aiPendingClipboardImage = NO;
+        return;
+    }
+    DXPresentAIPanelFromPending();
+}
+
+static void DXOpenAIPanelWithRequest(NSDictionary *request) {
+    NSString *requestID = [request[@"requestID"] isKindOfClass:[NSString class]] ? request[@"requestID"] : nil;
+    if (requestID.length == 0) return;
+
+    static NSString *lastAIRequestID;
+    @synchronized(TypeXAIChatRequestKey) {
+        if ([lastAIRequestID isEqualToString:requestID]) return;
+        lastAIRequestID = [requestID copy];
+    }
+
+    // 请求带落盘时间戳，超过 30 秒视为陈旧投递（迟到通知的场景）。
+    double created = [request[@"created"] isKindOfClass:[NSNumber class]] ? [request[@"created"] doubleValue] : 0;
+    if (created <= 0 || fabs([NSDate date].timeIntervalSince1970 - created) > 30.0) return;
+
+    NSString *mode = [request[@"mode"] isKindOfClass:[NSString class]] ? request[@"mode"] : nil;
+    g_aiPendingSeedText = ([mode isEqualToString:@"text"] && [request[@"text"] isKindOfClass:[NSString class]])
+        ? request[@"text"] : nil;
+    if (g_aiPendingSeedText.length == 0) g_aiPendingSeedText = nil;
+    g_aiPendingClipboardImage = [mode isEqualToString:@"image"];
+    g_aiPendingCreatedAt = created;
+
+    if ([request[@"origin"] isKindOfClass:[NSString class]] &&
+        [request[@"origin"] isEqualToString:@"sb"]) {
+        DXPresentAIPanelFromPending();
+    } else {
+        DXPresentAIPanelWhenDesktop();
+    }
+}
+
+static void aiChatRequestCallback(CFNotificationCenterRef center,
+                                  void *observer,
+                                  CFStringRef name,
+                                  const void *object,
+                                  CFDictionaryRef userInfo) {
+    NSDictionary *request = DXQuickActionSharedValue(TypeXAIChatRequestKey);
+    if (![request isKindOfClass:[NSDictionary class]]) return;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        DXOpenAIPanelWithRequest(request);
+    });
+}
+
 // Button chrome (height/radius/spacing/border/width scale) is read per
 // configuration inside DXCollectionView; there are no shared globals for it.
 
 CGFloat heightOffset = heightOffsetDefault;
 
 #pragma mark hook
+
+// The iOS 16+ paste-permission alert ("允许「X」粘贴来自「Y」的内容？") is a plain
+// in-process UIAlertController. Detection is deliberately narrow -- a two-action
+// alert whose allow button carries the exact system string and whose title
+// mentions pasting -- so no unrelated alert is ever dismissed. If a future iOS
+// ships a different alert shape, the check fails closed and the prompt simply
+// shows as usual.
+static BOOL DXIsPastePermissionAlert(UIAlertController *alert) {
+    if (alert.preferredStyle != UIAlertControllerStyleAlert) return NO;
+    if (alert.actions.count != 2) return NO;
+
+    NSString *title = alert.title ?: @"";
+    BOOL titleMentionsPaste = [title containsString:@"粘贴"] ||
+                              [title localizedCaseInsensitiveContainsString:@"paste"];
+    if (!titleMentionsPaste) return NO;
+
+    for (UIAlertAction *action in alert.actions) {
+        NSString *actionTitle = action.title;
+        if ([actionTitle isEqualToString:@"允许粘贴"] ||
+            [actionTitle isEqualToString:@"Allow Paste"]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
 %group TypeX
 
 %hook UIKeyboardImpl
@@ -896,6 +995,52 @@ CGFloat heightOffset = heightOffsetDefault;
 
 %end
 
+// Clipboard image chip companion: auto-answer the paste-permission alert so
+// programmatic paste: and the thumbnail read never interrupt the user. Gated by
+// the same switch as the chip; the handler runs before dismissal so the
+// pending pasteboard read unblocks immediately.
+%hook UIAlertController
+
+- (void)viewWillAppear:(BOOL)animated {
+    %orig;
+    if (![DXPasteChipController isAllowedInCurrentApp]) return;
+    if (!DXIsPastePermissionAlert(self)) return;
+
+    UIAlertAction *allowAction = nil;
+    for (UIAlertAction *action in self.actions) {
+        if ([action.title isEqualToString:@"允许粘贴"] ||
+            [action.title isEqualToString:@"Allow Paste"]) {
+            allowAction = action;
+            break;
+        }
+    }
+    if (!allowAction) return;
+    id handlerObject = [allowAction valueForKey:@"handler"];
+    if (!handlerObject) return;
+    void (^allowHandler)(UIAlertAction *) = handlerObject;
+
+    allowHandler(allowAction);
+    [self dismissViewControllerAnimated:NO completion:nil];
+}
+
+%end
+
+// 桌面可见性信号：app 来源的延迟 AI 请求在桌面真正出现时才创建面板。
+%hook SBHomeScreenViewController
+
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    g_aiDesktopVisible = YES;
+    DXPresentAIPanelWhenDesktop();
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    %orig;
+    g_aiDesktopVisible = NO;
+}
+
+%end
+
 %end
 
 
@@ -1044,9 +1189,22 @@ static void shortcutRefreshRequestCallback(CFNotificationCenterRef center,
                                                              selector:@selector(keyboardWillHide:)
                                                                  name:UIKeyboardWillHideNotification
                                                                object:nil];
+                    [[NSNotificationCenter defaultCenter] addObserver:[DXPasteChipController sharedController]
+                                                             selector:@selector(keyboardDidShow:)
+                                                                 name:UIKeyboardDidShowNotification
+                                                               object:nil];
+                    [[NSNotificationCenter defaultCenter] addObserver:[DXPasteChipController sharedController]
+                                                             selector:@selector(keyboardFrameWillChange:)
+                                                                 name:UIKeyboardWillChangeFrameNotification
+                                                               object:nil];
+                    [[NSNotificationCenter defaultCenter] addObserver:[DXPasteChipController sharedController]
+                                                             selector:@selector(keyboardWillHide:)
+                                                                 name:UIKeyboardWillHideNotification
+                                                               object:nil];
                     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, reloadPrefsNotificationCallback, (CFStringRef)kPrefsChangedIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                     if (isSpringBoard) {
                         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, shortcutRefreshRequestCallback, (CFStringRef)kShortcutRefreshRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+                        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, aiChatRequestCallback, (CFStringRef)kAIChatRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                     }
                 }
             }
