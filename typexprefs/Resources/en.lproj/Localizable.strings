@@ -234,8 +234,6 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SHORT_SHELLX_SCREENSHOT" = "Shot";
 "LONG_AI_CHAT" = "AI Chat";
 "SHORT_AI_CHAT" = "AI";
-"LONG_OPEN_APP" = "Open App";
-"SHORT_OPEN_APP" = "Open";
 
 /* Custom actions management page (KayokoX-style layout) */
 "NO_CUSTOM_ACTIONS" = "No custom actions yet";

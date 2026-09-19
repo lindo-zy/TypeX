@@ -233,8 +233,6 @@
 "SHORT_SHELLX_SCREENSHOT" = "截图";
 "LONG_AI_CHAT" = "AI问答";
 "SHORT_AI_CHAT" = "AI";
-"LONG_OPEN_APP" = "打开应用";
-"SHORT_OPEN_APP" = "打开应用";
 
 /* Custom actions management page (KayokoX-style layout) */
 "NO_CUSTOM_ACTIONS" = "暂无自定义动作";

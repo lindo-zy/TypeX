@@ -1092,20 +1092,16 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     
 }
 
--(void)deleteAllAction:(UIButton*)sender{
-    [self autoPaginationControl];
-    self.hapticType = 2;
-    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
-
-    // Clear in place: select the whole document directly instead of running
-    // the select-all action, and delete it within the same run-loop tick so
-    // no selection highlight or handles ever appear.
+// Whole-document clear shared by the delete-all button and the AI seed
+// hand-off: select the entire document directly instead of running the
+// select-all action, and delete it within the same run-loop tick so no
+// selection highlight or handles ever appear. No-op on an empty input.
+-(void)clearHostInputText{
     if ([delegate respondsToSelector:@selector(selectedTextRange)]) {
         UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
         UITextRange *wholeRange = [tempDelegate textRangeFromPosition:[tempDelegate beginningOfDocument]
                                                            toPosition:[tempDelegate endOfDocument]];
         if (wholeRange == nil || [[tempDelegate textInRange:wholeRange] length] == 0) {
-            [self autoPaginationControl];
             return;
         }
         tempDelegate.selectedTextRange = wholeRange;
@@ -1119,6 +1115,13 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     [kbImpl clearTransientState];
     [kbImpl clearAnimations];
     [kbImpl setCaretBlinks:YES];
+}
+
+-(void)deleteAllAction:(UIButton*)sender{
+    [self autoPaginationControl];
+    self.hapticType = 2;
+    [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
+    [self clearHostInputText];
     [self autoPaginationControl];
 }
 
@@ -1184,21 +1187,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     return success;
 }
 
--(void)openAppAction:(UIButton*)sender{
-    [self autoPaginationControl];
-    [self triggerImpactAndAnimationWithButton:sender];
-
-    NSURL *url = [NSURL URLWithString:@"mobilenotes://"];
-    BOOL handedOff = [self isPullOverXInstalled] &&
-        [self publishPullOverOpenRequestForBundleIdentifier:@"com.apple.mobilenotes"];
-    if (!handedOff) {
-        [self openCustomActionURL:url completion:^(BOOL success) {
-            if (!success) NSLog(@"[TypeX] openAppAction: mobilenotes:// open failed");
-        }];
-    }
-    [self autoPaginationControl];
-}
-
 // Same probe idiom as isShellXScreenshotAvailable: dylib file existence under
 // the tweak loader directory, resolved through the jbroot prefix.
 -(BOOL)isPullOverXInstalled{
@@ -1224,6 +1212,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
     if (inProcess) {
         [DXAIPanel openFromKeyboardWithSeedText:seed];
+        // 移动语义：输入框全文带入面板后即清空宿主输入框（面板必开，
+        // clearHostInputText 空输入时为无害空操作）
+        if (seed.length > 0) [self clearHostInputText];
         [self autoPaginationControl];
         return;
     }
@@ -2017,11 +2008,18 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     if (!scheduled) openThroughLegacy();
 }
 
-// Ordering rationale (see isSensitiveSystemURLScheme:): sensitive Apple schemes
-// skip UIApplication entirely. Everything else still tries UIApplication first
-// so in-process scheme handlers provided by other injected tweaks keep working,
-// then falls back to SpringBoard, then FrontBoard. The watchdog covers host apps
-// that never invoke the completionHandler at all.
+// Dispatch every ordinary URL scheme exactly once through UIApplication.
+// PullOver-X intercepts this call for whitelisted targets, changes the request
+// to ActivateSuspended and may intentionally absorb the completion handler.
+// A missing completion is therefore not a failure signal and must never cause
+// a watchdog or SpringBoard retry: that retry was the second request which
+// opened the same app full-screen behind/on top of PullOver's card.
+//
+// openURL:options:completionHandler: returns void. Reading an invented BOOL
+// return from objc_msgSend is undefined and previously caused an immediate
+// second open whenever the garbage return register happened to be zero.
+// Sensitive Apple schemes still choose the SpringBoard route before any
+// UIApplication request is sent, so each invocation has one dispatch owner.
 -(void)openCustomActionURL:(NSURL *)url completion:(DXCustomActionOpenCompletion)completion {
     if ([self isSensitiveSystemURLScheme:url.scheme]) {
         [self openURLThroughSpringBoard:url completion:completion];
@@ -2031,38 +2029,34 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     UIApplication *application = [UIApplication sharedApplication];
     SEL openSelector = @selector(openURL:options:completionHandler:);
     if (!application || ![application respondsToSelector:openSelector]) {
+        // No UIApplication request has been sent, so selecting the SpringBoard
+        // route here cannot duplicate an already accepted open.
         [self openURLThroughSpringBoard:url completion:completion];
         return;
     }
 
-    __block BOOL resolved = NO;
-    void (^fallBackToSpringBoard)(void) = ^{
-        if (resolved) return;
-        resolved = YES;
-        [self openURLThroughSpringBoard:url completion:completion];
-    };
+    __block BOOL completionDelivered = NO;
+    NSString *scheme = url.scheme.lowercaseString ?: @"";
+    NSString *hostIdentifier = NSBundle.mainBundle.bundleIdentifier ?: @"unknown";
+    NSLog(@"[TypeX] URL scheme single-shot dispatch: scheme=%@ host=%@ pullover=%d",
+          scheme, hostIdentifier, [self isPullOverXInstalled]);
 
     @try {
-        BOOL scheduled = ((BOOL (*)(id, SEL, id, id, id))objc_msgSend)(application, openSelector, url, @{}, ^(BOOL success) {
+        ((void (*)(id, SEL, id, id, id))objc_msgSend)(application, openSelector, url, @{}, ^(BOOL success) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (resolved) return;
-                resolved = YES;
-                if (success) {
-                    [self finishCustomActionOpen:completion success:YES];
-                } else {
-                    [self openURLThroughSpringBoard:url completion:completion];
-                }
+                if (completionDelivered) return;
+                completionDelivered = YES;
+                NSLog(@"[TypeX] URL scheme single-shot completion: scheme=%@ success=%d",
+                      scheme, success);
+                [self finishCustomActionOpen:completion success:success];
             });
         });
-        if (!scheduled) {
-            fallBackToSpringBoard();
-            return;
-        }
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            fallBackToSpringBoard();
-        });
-    } @catch (__unused NSException *exception) {
-        fallBackToSpringBoard();
+    } @catch (NSException *exception) {
+        // The message was attempted, so fail closed instead of risking a
+        // duplicate system open after a hook performed work and then threw.
+        NSLog(@"[TypeX] URL scheme single-shot exception: scheme=%@ exception=%@",
+              scheme, exception.name);
+        [self finishCustomActionOpen:completion success:NO];
     }
 }
 
@@ -2273,9 +2267,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 // Runs one user-defined custom action. The entry's "type" picks the
 // execution path; legacy entries without a type keep the old auto-detecting
-// link behavior. URL-scheme opens execute natively in this process through
-// the openCustomActionURL ladder (UIApplication → SpringBoard services →
-// FrontBoard) — no SpringBoard request channel involved.
+// link behavior. Ordinary URL-scheme opens are single-shot UIApplication
+// requests so PullOver-X can claim them without a later retry opening the app
+// full-screen. Sensitive system schemes select the SpringBoard route up front.
 -(BOOL)dispatchLinkActionSelector:(NSString *)selectorName
                            sender:(UIButton *)sender {
     NSDictionary *entry = preferencesLinkActionForSelector(selectorName);
