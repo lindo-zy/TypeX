@@ -1157,22 +1157,41 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     [self autoPaginationControl];
 }
 
-// PullOver-X experiment: PullOver X (com.mlgm.pulloverx) takes whitelisted
-// URL-scheme opens into its floating card by hooking SpringBoard's open
-// handlers (SBMainWorkspace), so a plain mobilenotes:// jump is all it takes.
-// While the tweak is installed we fire exactly one jump and never escalate:
-// the takeover swallows the open request, which the shared ladder would read
-// as a failure and answer with a SpringBoard-side open — Notes then comes up
-// full screen behind the card (device-confirmed double open).  Without the
-// tweak the normal ladder keeps its rescue paths and just opens Notes.
+// Match SquidGesturePro's PullOver integration: publish the target Bundle ID to
+// TypeX's SpringBoard injection, which calls PullOverWindow.controller's
+// pinAppWithBundleId: directly. The 64-bit Darwin state is visible across App
+// sandboxes; CFPreferences is not suitable here because cfprefsd redirects the
+// same logical domain into the current host App's private container.
+-(BOOL)publishPullOverOpenRequestForBundleIdentifier:(NSString *)bundleIdentifier {
+    uint64_t state = DXPullOverOpenStateForBundleIdentifier(bundleIdentifier);
+    int token = NOTIFY_TOKEN_INVALID;
+    uint32_t registerStatus = notify_register_check(kPullOverOpenRequestIdentifier.UTF8String,
+                                                    &token);
+    uint32_t stateStatus = registerStatus == NOTIFY_STATUS_OK
+        ? notify_set_state(token, state) : registerStatus;
+    uint32_t postStatus = stateStatus == NOTIFY_STATUS_OK
+        ? notify_post(kPullOverOpenRequestIdentifier.UTF8String) : stateStatus;
+    if (token != NOTIFY_TOKEN_INVALID) notify_cancel(token);
+
+    BOOL success = state != 0 && registerStatus == NOTIFY_STATUS_OK &&
+        stateStatus == NOTIFY_STATUS_OK && postStatus == NOTIFY_STATUS_OK;
+    if (!success) {
+        NSLog(@"[TypeX] PullOver-X publish failed for %@ (register=%u state=%u post=%u)",
+              bundleIdentifier, registerStatus, stateStatus, postStatus);
+    } else {
+        NSLog(@"[TypeX] published PullOver-X request for %@", bundleIdentifier);
+    }
+    return success;
+}
+
 -(void)openAppAction:(UIButton*)sender{
     [self autoPaginationControl];
     [self triggerImpactAndAnimationWithButton:sender];
 
     NSURL *url = [NSURL URLWithString:@"mobilenotes://"];
-    if ([self isPullOverXInstalled]) {
-        [self openSchemeJumpWithoutFallback:url];
-    } else {
+    BOOL handedOff = [self isPullOverXInstalled] &&
+        [self publishPullOverOpenRequestForBundleIdentifier:@"com.apple.mobilenotes"];
+    if (!handedOff) {
         [self openCustomActionURL:url completion:^(BOOL success) {
             if (!success) NSLog(@"[TypeX] openAppAction: mobilenotes:// open failed");
         }];
@@ -1185,34 +1204,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 -(BOOL)isPullOverXInstalled{
     NSString *dylibPath = DX_ROOT_PATH_NS(@"/Library/MobileSubstrate/DynamicLibraries/PullOverX.dylib");
     return dylibPath.length > 0 && [[NSFileManager defaultManager] fileExistsAtPath:dylibPath];
-}
-
-// One UIApplication openURL and nothing else.  The completion is logged, never
-// acted on — PullOver X's takeover legitimately ends without a success
-// callback.  If the jump cannot even be scheduled the first open never
-// happened, so falling back to the shared ladder cannot double-open.
--(void)openSchemeJumpWithoutFallback:(NSURL *)url{
-    UIApplication *application = [UIApplication sharedApplication];
-    SEL openSelector = @selector(openURL:options:completionHandler:);
-    if (!application || ![application respondsToSelector:openSelector]) {
-        NSLog(@"[TypeX] openAppAction: UIApplication openURL unavailable");
-        return;
-    }
-
-    void (^rescueThroughLadder)(void) = ^{
-        [self openCustomActionURL:url completion:^(BOOL success) {
-            NSLog(@"[TypeX] openAppAction: ladder rescue success=%d", success);
-        }];
-    };
-
-    @try {
-        BOOL scheduled = ((BOOL (*)(id, SEL, id, id, id))objc_msgSend)(application, openSelector, url, @{}, ^(BOOL success) {
-            NSLog(@"[TypeX] openAppAction: pullover jump success=%d", success);
-        });
-        if (!scheduled) rescueThroughLadder();
-    } @catch (__unused NSException *exception) {
-        rescueThroughLadder();
-    }
 }
 
 // AI 问答按钮，按承载能力分派（第一版 + ShellX 时代两套验证过的路径）：
@@ -2297,6 +2288,25 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
     NSString *link = [entry[@"link"] isKindOfClass:[NSString class]] ? entry[@"link"] : @"";
     link = [link stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+
+    if ([type isEqualToString:kCustomActionTypeOpenApp]) {
+        if (!DXIsValidBundleIdentifier(link)) {
+            [self showCustomActionLinkError];
+            [self autoPaginationControl];
+            return YES;
+        }
+
+        BOOL usePullOver = [entry[kCustomActionUsePullOverKey] boolValue];
+        BOOL handedOff = usePullOver && [self isPullOverXInstalled] &&
+            [self publishPullOverOpenRequestForBundleIdentifier:link];
+        if (!handedOff) {
+            [self openApplicationWithBundleIdentifier:link completion:^(BOOL success) {
+                if (!success) [self showCustomActionLinkError];
+            }];
+        }
+        [self autoPaginationControl];
+        return YES;
+    }
 
     if ([type isEqualToString:kCustomActionTypeText]) {
         [self performTextCustomAction:link];

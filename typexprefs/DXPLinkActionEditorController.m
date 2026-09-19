@@ -1,4 +1,6 @@
 #import "DXPLinkActionEditorController.h"
+#import "DXPAppInfo.h"
+#import "DXPOpenAppPickerController.h"
 #import "../DXHelper.h"
 #import "../common.h"
 
@@ -9,6 +11,7 @@ static NSBundle *tweakBundle;
 // - urlscheme: section 1 = full-width 文本框 (multi-line payload box)
 // - text:      section 1 = full-width 文本框 (multi-line payload box)
 // - url:       3 = URL 设置 (field), 4 = APP内打开 switch
+// - openapp:   3 = installed-app picker, 4 = PullOver-X switch when installed
 // The box types use two sections: section 0 holds the shared rows, section 1
 // the payload box with the type label as its header and hint as its footer.
 // Entries without a type keep the legacy layout (动作链接) so existing
@@ -86,6 +89,8 @@ static NSInteger const DXLegacyRowLink = 2;
 @property (nonatomic, strong) UIImageView *iconPreviewImageView;
 @property (nonatomic, strong) UITextField *linkField;
 @property (nonatomic, strong) UISwitch *inAppSwitch;
+@property (nonatomic, strong) UISwitch *pullOverSwitch;
+@property (nonatomic, copy) NSString *selectedAppName;
 // The one payload box cell for the box types (url scheme / text); kept as a
 // property so its text survives cell reuse while scrolling.
 @property (nonatomic, strong) DXPLinkActionTextCell *payloadBoxCell;
@@ -109,12 +114,14 @@ static NSInteger const DXLegacyRowLink = 2;
     if ([type isEqualToString:kCustomActionTypeURLScheme]) return LOCALIZED(@"ACTION_TYPE_URL_SCHEME");
     if ([type isEqualToString:kCustomActionTypeText]) return LOCALIZED(@"ACTION_TYPE_TEXT");
     if ([type isEqualToString:kCustomActionTypeURL]) return LOCALIZED(@"ACTION_TYPE_URL");
+    if ([type isEqualToString:kCustomActionTypeOpenApp]) return LOCALIZED(@"ACTION_TYPE_OPEN_APP");
     return type;
 }
 
 + (NSString *)defaultIconForType:(NSString *)type {
     if ([type isEqualToString:kCustomActionTypeText]) return @"doc.text";
     if ([type isEqualToString:kCustomActionTypeURL]) return @"globe";
+    if ([type isEqualToString:kCustomActionTypeOpenApp]) return @"app";
     return @"link";
 }
 
@@ -132,6 +139,7 @@ static NSInteger const DXLegacyRowLink = 2;
         kCustomActionTypeURLScheme,
         kCustomActionTypeText,
         kCustomActionTypeURL,
+        kCustomActionTypeOpenApp,
     ];
     for (NSString *type in types) {
         [alert addAction:[UIAlertAction actionWithTitle:[self displayNameForType:type]
@@ -152,9 +160,19 @@ static NSInteger const DXLegacyRowLink = 2;
     return _displayedType.length == 0;
 }
 
+- (BOOL)isOpenAppEntry {
+    return [_displayedType isEqualToString:kCustomActionTypeOpenApp];
+}
+
+- (BOOL)isPullOverXInstalled {
+    NSString *path = DX_ROOT_PATH_NS(@"/Library/MobileSubstrate/DynamicLibraries/PullOverX.dylib");
+    return path.length > 0 && [[NSFileManager defaultManager] fileExistsAtPath:path];
+}
+
 - (NSInteger)rowCount {
     if (self.isLegacyEntry) return 3;
-    BOOL hasSwitch = [_displayedType isEqualToString:kCustomActionTypeURL];
+    BOOL hasSwitch = [_displayedType isEqualToString:kCustomActionTypeURL] ||
+        (self.isOpenAppEntry && self.isPullOverXInstalled);
     return DXActionRowPayload + 1 + (hasSwitch ? 1 : 0);
 }
 
@@ -163,6 +181,7 @@ static NSInteger const DXLegacyRowLink = 2;
     if ([_displayedType isEqualToString:kCustomActionTypeURLScheme]) return LOCALIZED(@"TYPE_FOOTER_URL_SCHEME");
     if ([_displayedType isEqualToString:kCustomActionTypeText]) return LOCALIZED(@"TYPE_FOOTER_TEXT");
     if ([_displayedType isEqualToString:kCustomActionTypeURL]) return LOCALIZED(@"TYPE_FOOTER_URL");
+    if (self.isOpenAppEntry) return LOCALIZED(@"TYPE_FOOTER_OPEN_APP");
     return nil;
 }
 
@@ -175,7 +194,7 @@ static NSInteger const DXLegacyRowLink = 2;
     }
     if (row == DXActionRowName) return self.nameField;
     if (row == DXActionRowIcon) return self.iconField;
-    if (row == DXActionRowPayload) return self.linkField;
+    if (row == DXActionRowPayload && !self.isOpenAppEntry) return self.linkField;
     return nil;
 }
 
@@ -192,8 +211,11 @@ static NSInteger const DXLegacyRowLink = 2;
         if ([_displayedType isEqualToString:kCustomActionTypeURLScheme]) return LOCALIZED(@"URL_SCHEME_SETTINGS");
         if ([_displayedType isEqualToString:kCustomActionTypeText]) return LOCALIZED(@"TEXT_SETTINGS");
         if ([_displayedType isEqualToString:kCustomActionTypeURL]) return LOCALIZED(@"URL_SETTINGS");
+        if (self.isOpenAppEntry) return LOCALIZED(@"SELECT_APP");
     }
-    if (row == DXActionRowInApp) return LOCALIZED(@"OPEN_IN_APP");
+    if (row == DXActionRowInApp) {
+        return self.isOpenAppEntry ? LOCALIZED(@"OPEN_WITH_PULLOVER") : LOCALIZED(@"OPEN_IN_APP");
+    }
     return @"";
 }
 
@@ -315,6 +337,18 @@ static NSInteger const DXLegacyRowLink = 2;
         cell.accessoryType = UITableViewCellAccessoryNone;
         return cell;
     }
+    if (row == DXActionRowPayload && self.isOpenAppEntry) {
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPLinkActionValueCell" forIndexPath:indexPath];
+        NSString *bundleIdentifier = [self trimmedValue:self.linkField.text];
+        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+        cell.textLabel.text = [self labelForRow:row];
+        cell.textLabel.font = [UIFont systemFontOfSize:16];
+        cell.detailTextLabel.text = self.selectedAppName.length ? self.selectedAppName : LOCALIZED(@"UNSELECTED");
+        cell.imageView.image = bundleIdentifier.length ? [DXPAppInfo iconForBundleID:bundleIdentifier] : nil;
+        cell.accessoryView = nil;
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        return cell;
+    }
     if (row == DXActionRowInApp && !self.isLegacyEntry) {
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPLinkActionFieldCell" forIndexPath:indexPath];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
@@ -323,7 +357,7 @@ static NSInteger const DXLegacyRowLink = 2;
         cell.imageView.image = nil;
         cell.detailTextLabel.text = nil;
         cell.accessoryType = UITableViewCellAccessoryNone;
-        cell.accessoryView = self.inAppSwitch;
+        cell.accessoryView = self.isOpenAppEntry ? self.pullOverSwitch : self.inAppSwitch;
         return cell;
     }
     return [self fieldCellForRowAtIndexPath:indexPath];
@@ -336,11 +370,45 @@ static NSInteger const DXLegacyRowLink = 2;
 
     // The payload box row handles its own taps (the text view takes focus).
     if ([self usesLargePayloadBox] && indexPath.section == 1) return;
+    if (self.isOpenAppEntry && indexPath.row == DXActionRowPayload) {
+        DXPOpenAppPickerController *picker = [[DXPOpenAppPickerController alloc] init];
+        picker.selectedBundleIdentifier = [self trimmedValue:self.linkField.text];
+        __weak typeof(self) weakSelf = self;
+        picker.completion = ^(DXPAppInfo *app) {
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf || app.bundleID.length == 0) return;
+
+            NSString *currentName = [strongSelf trimmedValue:strongSelf.nameField.text];
+            BOOL replaceDefaultName = currentName.length == 0 ||
+                [currentName isEqualToString:LOCALIZED(@"DEFAULT_BUTTON_NAME")] ||
+                [currentName isEqualToString:LOCALIZED(@"OPEN_APP")];
+            strongSelf.linkField.text = app.bundleID;
+            strongSelf.selectedAppName = app.name.length ? app.name : app.bundleID;
+            strongSelf.iconField.text = app.bundleID;
+            if (replaceDefaultName) strongSelf.nameField.text = strongSelf.selectedAppName;
+            [strongSelf refreshIconPreview];
+            [strongSelf.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:DXActionRowPayload inSection:0]]
+                                         withRowAnimation:UITableViewRowAnimationNone];
+        };
+        [picker setRootController:[self rootController]];
+        [picker setParentController:[self parentController]];
+        [self pushController:picker];
+    }
 }
 
 - (void)inAppSwitchChanged:(UISwitch *)sender {
     // The value is committed on Save together with the rest of the entry.
     (void)sender;
+}
+
+- (void)showSelectAppRequiredAlert {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:LOCALIZED(@"SELECT_APP")
+                                                                   message:LOCALIZED(@"SELECT_APP_REQUIRED")
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK")
+                                              style:UIAlertActionStyleDefault
+                                            handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 #pragma mark - Text view
@@ -391,11 +459,15 @@ static NSInteger const DXLegacyRowLink = 2;
     NSString *name = [self trimmedValue:self.nameField.text];
     NSString *icon = [self trimmedValue:self.iconField.text];
     NSString *link = [self payloadCurrentValue];
+    if (self.isOpenAppEntry && !DXIsValidBundleIdentifier(link)) {
+        [self showSelectAppRequiredAlert];
+        return;
+    }
     if (name.length == 0) name = LOCALIZED(@"DEFAULT_BUTTON_NAME");
     // SF Symbol names and app bundle identifiers are both accepted; anything
     // else resets to the "link" default. A bundle-ID icon is loaded once
     // here so its PNG lands in the shared snapshot for sandboxed toolbar hosts.
-    NSString *defaultIcon = @"link";
+    NSString *defaultIcon = [DXPLinkActionEditorController defaultIconForType:_displayedType];
     if (icon.length > 0) {
         NSString *bundleID = [DXHelper appIconBundleIDForShortcutItem:@{@"icon": icon}];
         if (bundleID) {
@@ -414,12 +486,18 @@ static NSInteger const DXLegacyRowLink = 2;
     if (self.isLegacyEntry) {
         [updated removeObjectForKey:kCustomActionTypeKey];
         [updated removeObjectForKey:kCustomActionInAppKey];
+        [updated removeObjectForKey:kCustomActionUsePullOverKey];
     } else {
         updated[kCustomActionTypeKey] = _displayedType;
         if ([_displayedType isEqualToString:kCustomActionTypeURL]) {
             updated[kCustomActionInAppKey] = @(self.inAppSwitch.on);
         } else {
             [updated removeObjectForKey:kCustomActionInAppKey];
+        }
+        if (self.isOpenAppEntry) {
+            updated[kCustomActionUsePullOverKey] = @(self.isPullOverXInstalled && self.pullOverSwitch.on);
+        } else {
+            [updated removeObjectForKey:kCustomActionUsePullOverKey];
         }
     }
     if (self.completion) self.completion(updated);
@@ -491,7 +569,8 @@ static NSInteger const DXLegacyRowLink = 2;
     _displayedType = ([storedType isKindOfClass:[NSString class]] &&
                       ([storedType isEqualToString:kCustomActionTypeURLScheme] ||
                        [storedType isEqualToString:kCustomActionTypeText] ||
-                       [storedType isEqualToString:kCustomActionTypeURL])) ? storedType : @"";
+                       [storedType isEqualToString:kCustomActionTypeURL] ||
+                       [storedType isEqualToString:kCustomActionTypeOpenApp])) ? storedType : @"";
 
     NSString *defaultName = ([self trimmedValue:self.entry[@"name"]].length && [self.entry[@"name"] isKindOfClass:[NSString class]])
         ? self.entry[@"name"] : LOCALIZED(@"DEFAULT_BUTTON_NAME");
@@ -507,6 +586,22 @@ static NSInteger const DXLegacyRowLink = 2;
     // APP内打开 is the default: an absent flag still means in-app.
     self.inAppSwitch.on = (storedInApp == nil) || [storedInApp boolValue];
     [self.inAppSwitch addTarget:self action:@selector(inAppSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+
+    self.pullOverSwitch = [[UISwitch alloc] init];
+    self.pullOverSwitch.on = [self.entry[kCustomActionUsePullOverKey] boolValue];
+    [self.pullOverSwitch addTarget:self action:@selector(inAppSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+
+    if (self.isOpenAppEntry) {
+        NSString *selectedBundleIdentifier = [self trimmedValue:self.linkField.text];
+        for (DXPAppInfo *app in [DXPAppInfo installedApps]) {
+            if (![app.bundleID isEqualToString:selectedBundleIdentifier]) continue;
+            self.selectedAppName = app.name.length ? app.name : app.bundleID;
+            break;
+        }
+        if (self.selectedAppName.length == 0 && selectedBundleIdentifier.length > 0) {
+            self.selectedAppName = selectedBundleIdentifier;
+        }
+    }
 
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
     self.tableView.delegate = self;

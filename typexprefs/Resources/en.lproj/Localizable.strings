@@ -156,17 +156,21 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "ACTION_TYPE_URL_SCHEME" = "URL Scheme";
 "ACTION_TYPE_TEXT" = "Text";
 "ACTION_TYPE_URL" = "URL";
+"ACTION_TYPE_OPEN_APP" = "Open App";
 "URL_SCHEME_SETTINGS" = "URL Scheme";
 "TEXT_SETTINGS" = "Text";
 "URL_SETTINGS" = "URL";
 "OPEN_IN_APP" = "Open in App";
+"OPEN_WITH_PULLOVER" = "Open with PullOver-X";
 "TYPE_FOOTER_URL_SCHEME" = "Opens the URL scheme when tapped. Use @@@ to pass the current input field's text as a parameter.";
 "TYPE_FOOTER_TEXT" = "Sends the configured text to the current input field. Supported templates, freely combinable:\n{{clipboard}}: clipboard text (left untouched while the clipboard holds an image)\n{{selection}}: the field's current text — the output replaces the whole field content\n{{date1}}: today's date, e.g. 2026/09/15\n{{date2}}: today's date, e.g. 2026-09-15\n{{now1}}: date + time, e.g. 2026/09/15-22:16:33\n{{now2}}: date + time, e.g. 2026-09-15-22:16:33\n{{time}}: current time, e.g. 22:16:33\nExample: “Hi:{{clipboard}}” with “alice” on the clipboard outputs “Hi:alice”; “Hi:{{selection}}” with 123 in the field turns the field into “Hi:123”";
 "TYPE_FOOTER_URL" = "Opens the web URL, either inside this app or outside. Use @@@ to pass the current input field's text as a parameter.";
+"TYPE_FOOTER_OPEN_APP" = "Opens the selected app normally by default. When PullOver-X is installed, you can let it take over; if PullOver-X is not active, TypeX falls back to opening the app normally.";
 
 //=====================APP / SHORTCUT PICKERS=====================
 "OPEN_APP" = "Open App";
 "SELECT_APP" = "Select App";
+"SELECT_APP_REQUIRED" = "Please select an installed app before saving.";
 "SELECT_SHORTCUT" = "Select Shortcut";
 "SEARCH_PLACEHOLDER" = "Search";
 "SELECTED" = "Selected";

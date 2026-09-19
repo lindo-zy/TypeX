@@ -103,14 +103,16 @@ static NSBundle *tweakBundle;
 #pragma mark - Action editor
 
 - (void)startAddFlowForType:(NSString *)type {
+    BOOL opensApplication = [type isEqualToString:kCustomActionTypeOpenApp];
     NSMutableDictionary *entry = [@{
         @"selector": [kLinkActionSelectorPrefix stringByAppendingString:NSUUID.UUID.UUIDString],
-        @"name": LOCALIZED(@"DEFAULT_BUTTON_NAME"),
-        @"icon": @"link",
+        @"name": opensApplication ? LOCALIZED(@"OPEN_APP") : LOCALIZED(@"DEFAULT_BUTTON_NAME"),
+        @"icon": opensApplication ? @"app" : @"link",
         @"link": @"",
         kCustomActionTypeKey: type,
     } mutableCopy];
     if ([type isEqualToString:kCustomActionTypeURL]) entry[kCustomActionInAppKey] = @YES;
+    if (opensApplication) entry[kCustomActionUsePullOverKey] = @NO;
 
     DXPLinkActionEditorController *editor = [[DXPLinkActionEditorController alloc] init];
     editor.entry = entry;

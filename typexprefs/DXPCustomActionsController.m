@@ -106,7 +106,7 @@ static NSInteger const DXSectionAddType = 1;
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == DXSectionSelected) return MAX(1, (NSInteger)self.linkActions.count);
-    return 3;
+    return 4;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -161,7 +161,12 @@ static NSInteger const DXSectionAddType = 1;
 
 - (NSString *)typeAtIndex:(NSInteger)row {
     static NSArray<NSString *> *types;
-    if (!types) types = @[kCustomActionTypeURLScheme, kCustomActionTypeText, kCustomActionTypeURL];
+    if (!types) types = @[
+        kCustomActionTypeURLScheme,
+        kCustomActionTypeText,
+        kCustomActionTypeURL,
+        kCustomActionTypeOpenApp,
+    ];
     return types[row];
 }
 

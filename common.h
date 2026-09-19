@@ -53,9 +53,11 @@
 // "url" additionally stores the APP内打开 choice under "inapp" (default YES).
 #define kCustomActionTypeKey @"type"
 #define kCustomActionInAppKey @"inapp"
+#define kCustomActionUsePullOverKey @"pullover"
 #define kCustomActionTypeURLScheme @"urlscheme"
 #define kCustomActionTypeText @"text"
 #define kCustomActionTypeURL @"url"
+#define kCustomActionTypeOpenApp @"openapp"
 // Per-entry field on a shortcut dictionary: set to @YES when the button's tap
 // should run its sub-action chain (long-press behavior) instead of the tap
 // action configured for it.
@@ -147,6 +149,14 @@
 #define TypeXAIChatRequestKey @"ai-chat-request"
 #define kAIChatRequestIdentifier @"com.lindo.typex/aichat"
 
+// TypeX-owned bridge for opening an application through PullOver-X. Darwin
+// notification state is global across processes, unlike CFPreferences written
+// by a sandboxed host (which is redirected into that App's own container).
+// The sender publishes a stable 64-bit Bundle-ID fingerprint; SpringBoard
+// resolves it against its installed-app registry before invoking PullOver's
+// existing PullOverWindow -> controller -> pinAppWithBundleId: entry point.
+#define kPullOverOpenRequestIdentifier @"com.lindo.typex/pulloveropen"
+
 // Complete SpringBoard-authored snapshot of each app's current static and
 // dynamic UIApplicationShortcutItems. The value is replaced as one generation,
 // so removed apps and actions cannot survive an incremental merge:
@@ -180,6 +190,21 @@ static inline BOOL DXIsValidBundleIdentifier(NSString *value) {
                                                                                 options:0
                                                                                   error:nil];
     return [expression firstMatchInString:value options:0 range:NSMakeRange(0, value.length)] != nil;
+}
+
+static inline uint64_t DXPullOverOpenStateForBundleIdentifier(NSString *bundleIdentifier) {
+    if (!DXIsValidBundleIdentifier(bundleIdentifier)) return 0;
+    const unsigned char *bytes = (const unsigned char *)bundleIdentifier.UTF8String;
+    if (!bytes) return 0;
+
+    // FNV-1a keeps the transport dependency-free. SpringBoard accepts a state
+    // only when it resolves to exactly one currently installed Bundle ID.
+    uint64_t state = UINT64_C(14695981039346656037);
+    for (const unsigned char *cursor = bytes; *cursor != '\0'; cursor++) {
+        state ^= (uint64_t)*cursor;
+        state *= UINT64_C(1099511628211);
+    }
+    return state;
 }
 
 // Shared URL-shape test for the openurl channel action (and the scheme

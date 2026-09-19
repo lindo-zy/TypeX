@@ -157,17 +157,21 @@
 "ACTION_TYPE_URL_SCHEME" = "URL Scheme";
 "ACTION_TYPE_TEXT" = "文本";
 "ACTION_TYPE_URL" = "URL";
+"ACTION_TYPE_OPEN_APP" = "打开应用";
 "URL_SCHEME_SETTINGS" = "URL Scheme 设置";
 "TEXT_SETTINGS" = "文本设置";
 "URL_SETTINGS" = "URL 设置";
 "OPEN_IN_APP" = "APP内打开";
+"OPEN_WITH_PULLOVER" = "由 PullOver-X 打开";
 "TYPE_FOOTER_URL_SCHEME" = "点击后执行 URL Scheme 打开跳转，沿用系统跳转方式；使用 @@@ 可传入当前输入框的内容作为入参。";
 "TYPE_FOOTER_TEXT" = "点击后将配置的文本发送到当前输入框，支持以下模板，可自由组合：\n{{clipboard}}：替换为剪贴板文本（剪贴板为图片时不替换）\n{{selection}}：替换为输入框当前内容，输出将整体替换输入框内容\n{{date1}}：当前日期，如 2026/09/15\n{{date2}}：当前日期，如 2026-09-15\n{{now1}}：当前日期+时间，如 2026/09/15-22:16:33\n{{now2}}：当前日期+时间，如 2026-09-15-22:16:33\n{{time}}：当前时间，如 22:16:33\n示例：设置为“你好:{{clipboard}}”，剪贴板为 alice 时输出“你好:alice”；设置为“你好:{{selection}}”，输入框内容为 123 时输入框变为“你好:123”";
 "TYPE_FOOTER_URL" = "点击后打开该网址，可选择在 APP 内或 APP 外打开；url 支持入参替换，使用 @@@ 传入当前输入框的内容。";
+"TYPE_FOOTER_OPEN_APP" = "默认正常跳转打开所选应用。安装 PullOver-X 后可交由其接管；PullOver-X 未激活时，TypeX 会回退为正常打开。";
 
 //=====================APP / SHORTCUT PICKERS=====================
 "OPEN_APP" = "打开应用";
 "SELECT_APP" = "选择应用";
+"SELECT_APP_REQUIRED" = "请先选择一个已安装的应用再保存。";
 "SELECT_SHORTCUT" = "选择快捷方式";
 "SEARCH_PLACEHOLDER" = "搜索";
 "SELECTED" = "已选择";

@@ -7,6 +7,7 @@
 #import "DXAIPanel.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import <notify.h>
 #import <SpringBoardServices/SpringBoardServices.h>
 
 
@@ -37,6 +38,7 @@ static const CGFloat kDXTopToolbarHeight = 41.5;
 static char kDXTopAccessoryContainerKey;
 static NSUInteger topToolbarPresentationGeneration;
 static __weak UIResponder *topToolbarCurrentResponder;
+static int gPullOverOpenStateToken = NOTIFY_TOKEN_INVALID;
 
 @interface DXTopAccessoryContainer : UIView
 @property(nonatomic, strong) DXCollectionView *toolbar;
@@ -394,6 +396,208 @@ static void aiChatRequestCallback(CFNotificationCenterRef center,
     if (![request isKindOfClass:[NSDictionary class]]) return;
     dispatch_async(dispatch_get_main_queue(), ^{
         DXOpenAIPanelWithRequest(request);
+    });
+}
+
+// Resolve the Darwin state inside SpringBoard instead of trusting a payload
+// supplied by a sandboxed process. A collision fails closed.
+static NSString *DXPullOverBundleIdentifierForState(uint64_t state) {
+    if (state == 0) return nil;
+
+    Class controllerClass = NSClassFromString(@"SBApplicationController");
+    SEL sharedSelector = NSSelectorFromString(@"sharedInstance");
+    if (!controllerClass || ![controllerClass respondsToSelector:sharedSelector]) return nil;
+
+    @try {
+        id controller = ((id (*)(id, SEL))objc_msgSend)(controllerClass, sharedSelector);
+        SEL allApplicationsSelector = NSSelectorFromString(@"allApplications");
+        if (!controller || ![controller respondsToSelector:allApplicationsSelector]) return nil;
+
+        id applications = ((id (*)(id, SEL))objc_msgSend)(controller, allApplicationsSelector);
+        if ([applications isKindOfClass:[NSSet class]]) applications = [applications allObjects];
+        if (![applications isKindOfClass:[NSArray class]]) return nil;
+
+        NSString *match = nil;
+        for (id application in (NSArray *)applications) {
+            NSString *bundleIdentifier = nil;
+            for (NSString *propertyName in @[@"bundleIdentifier", @"applicationIdentifier"]) {
+                SEL selector = NSSelectorFromString(propertyName);
+                if (![application respondsToSelector:selector]) continue;
+                id value = ((id (*)(id, SEL))objc_msgSend)(application, selector);
+                if ([value isKindOfClass:[NSString class]]) {
+                    bundleIdentifier = value;
+                    break;
+                }
+            }
+            if (!DXIsValidBundleIdentifier(bundleIdentifier) ||
+                DXPullOverOpenStateForBundleIdentifier(bundleIdentifier) != state) continue;
+            if (match && ![match isEqualToString:bundleIdentifier]) {
+                NSLog(@"[TypeX] PullOver-X bridge: Bundle-ID state collision");
+                return nil;
+            }
+            match = bundleIdentifier;
+        }
+        return match;
+    } @catch (NSException *exception) {
+        NSLog(@"[TypeX] PullOver-X bridge: app resolution failed with %@", exception.name);
+        return nil;
+    }
+}
+
+// SquidGesturePro-style PullOver bridge. PullOver-X remains unchanged; TypeX
+// reaches SpringBoard and then invokes an entry point already implemented by
+// the installed PullOver-X version. Older builds expose the temporary-app API;
+// SGP-compatible builds expose pinAppWithBundleId:. Never use the similarly
+// named temporary native-app API because that deliberately launches full-screen.
+static void DXOpenApplicationNativelyFromSpringBoard(NSString *bundleIdentifier,
+                                                      NSString *reason) {
+    int result = SBSLaunchApplicationWithIdentifierAndLaunchOptions(bundleIdentifier, @{}, @{}, NO);
+    NSLog(@"[TypeX] PullOver-X bridge: native fallback for %@ (%@, result=%d)",
+          bundleIdentifier, reason ?: @"unknown", result);
+}
+
+// The legacy temporary-hosting entry point can create PullOver's card before
+// the target application has a process/scene. In that cold-launch case it
+// remains on the centered app-icon placeholder forever. PullOver-X itself uses
+// this UIApplication SPI when preparing a hosted scene, so perform the same
+// non-foreground warm-up before asking that older entry point to attach it.
+static BOOL DXPrewarmApplicationForPullOver(NSString *bundleIdentifier) {
+    UIApplication *application = UIApplication.sharedApplication;
+    SEL launchSelector = NSSelectorFromString(@"launchApplicationWithIdentifier:suspended:");
+    if (!application || ![application respondsToSelector:launchSelector]) {
+        NSLog(@"[TypeX] PullOver-X bridge: suspended launch unavailable for %@",
+              bundleIdentifier);
+        return NO;
+    }
+
+    @try {
+        ((void (*)(id, SEL, id, BOOL))objc_msgSend)(application,
+                                                    launchSelector,
+                                                    bundleIdentifier,
+                                                    YES);
+        NSLog(@"[TypeX] PullOver-X bridge: prewarmed %@ suspended", bundleIdentifier);
+        return YES;
+    } @catch (NSException *exception) {
+        NSLog(@"[TypeX] PullOver-X bridge: suspended launch %@ for %@",
+              exception.name, bundleIdentifier);
+        return NO;
+    }
+}
+
+static void DXOpenApplicationInPullOver(NSString *bundleIdentifier) {
+    if (!DXIsValidBundleIdentifier(bundleIdentifier)) return;
+
+    Class windowClass = objc_getClass("PullOverWindow");
+    SEL sharedWindowSelector = NSSelectorFromString(@"sharedWindow");
+    SEL controllerSelector = NSSelectorFromString(@"controller");
+    SEL pinSelector = NSSelectorFromString(@"pinAppWithBundleId:");
+    SEL temporarySelector = NSSelectorFromString(@"openTemporaryAppWithBundleId:universalLink:completion:");
+    SEL canAcceptSelector = NSSelectorFromString(@"canAcceptTemporaryExternalOpen");
+    if (!windowClass || ![windowClass respondsToSelector:sharedWindowSelector]) {
+        NSLog(@"[TypeX] PullOver-X bridge: PullOverWindow unavailable for %@", bundleIdentifier);
+        DXOpenApplicationNativelyFromSpringBoard(bundleIdentifier, @"PullOverWindow unavailable");
+        return;
+    }
+
+    @try {
+        id (*sendObject)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
+        id window = sendObject(windowClass, sharedWindowSelector);
+        id propertyController = window && [window respondsToSelector:controllerSelector]
+            ? sendObject(window, controllerSelector) : nil;
+        id rootController = [window isKindOfClass:[UIWindow class]]
+            ? ((UIWindow *)window).rootViewController : nil;
+        id controller = ([propertyController respondsToSelector:pinSelector] ||
+                         [propertyController respondsToSelector:temporarySelector])
+            ? propertyController
+            : (([rootController respondsToSelector:pinSelector] ||
+                [rootController respondsToSelector:temporarySelector]) ? rootController : nil);
+        if (!controller) {
+            NSLog(@"[TypeX] PullOver-X bridge: no compatible open method for %@ "
+                  "(window=%@ propertyController=%@ rootController=%@)",
+                  bundleIdentifier,
+                  window ? NSStringFromClass([window class]) : @"nil",
+                  propertyController ? NSStringFromClass([propertyController class]) : @"nil",
+                  rootController ? NSStringFromClass([rootController class]) : @"nil");
+            DXOpenApplicationNativelyFromSpringBoard(bundleIdentifier, @"no compatible controller");
+            return;
+        }
+
+        if ([controller respondsToSelector:canAcceptSelector] &&
+            !((BOOL (*)(id, SEL))objc_msgSend)(controller, canAcceptSelector)) {
+            NSLog(@"[TypeX] PullOver-X bridge: controller is not active for %@", bundleIdentifier);
+            DXOpenApplicationNativelyFromSpringBoard(bundleIdentifier, @"PullOver-X inactive");
+            return;
+        }
+
+        NSString *source = controller == propertyController ? @"controller" : @"rootViewController";
+        if ([controller respondsToSelector:pinSelector]) {
+            ((void (*)(id, SEL, id))objc_msgSend)(controller, pinSelector, bundleIdentifier);
+            NSLog(@"[TypeX] PullOver-X bridge: requested %@ via %@ (%@) using pin",
+                  bundleIdentifier, source, NSStringFromClass([controller class]));
+        } else {
+            if (!DXPrewarmApplicationForPullOver(bundleIdentifier)) {
+                DXOpenApplicationNativelyFromSpringBoard(bundleIdentifier,
+                                                          @"suspended prewarm unavailable");
+                return;
+            }
+
+            // Give FrontBoard one run-loop interval to create the cold app's
+            // process/scene. Re-check readiness because the PullOver panel can
+            // start transitioning while the target is warming.
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                if ([controller respondsToSelector:canAcceptSelector] &&
+                    !((BOOL (*)(id, SEL))objc_msgSend)(controller, canAcceptSelector)) {
+                    DXOpenApplicationNativelyFromSpringBoard(bundleIdentifier,
+                                                              @"PullOver-X changed state during prewarm");
+                    return;
+                }
+
+                @try {
+                    void (^completion)(void) = ^{
+                        NSLog(@"[TypeX] PullOver-X bridge: temporary open completed for %@",
+                              bundleIdentifier);
+                    };
+                    ((void (*)(id, SEL, id, id, id))objc_msgSend)(controller,
+                                                                  temporarySelector,
+                                                                  bundleIdentifier,
+                                                                  nil,
+                                                                  completion);
+                    NSLog(@"[TypeX] PullOver-X bridge: requested %@ via %@ (%@) using temporary open",
+                          bundleIdentifier, source, NSStringFromClass([controller class]));
+                } @catch (NSException *exception) {
+                    NSLog(@"[TypeX] PullOver-X bridge: delayed temporary open %@ for %@",
+                          exception.name, bundleIdentifier);
+                    DXOpenApplicationNativelyFromSpringBoard(bundleIdentifier, exception.name);
+                }
+            });
+        }
+    } @catch (NSException *exception) {
+        NSLog(@"[TypeX] PullOver-X bridge: %@ for %@", exception.name, bundleIdentifier);
+        DXOpenApplicationNativelyFromSpringBoard(bundleIdentifier, exception.name);
+    }
+}
+
+static void pullOverOpenRequestCallback(CFNotificationCenterRef center,
+                                        void *observer,
+                                        CFStringRef name,
+                                        const void *object,
+                                        CFDictionaryRef userInfo) {
+    uint64_t state = 0;
+    uint32_t status = gPullOverOpenStateToken == NOTIFY_TOKEN_INVALID
+        ? NOTIFY_STATUS_INVALID_TOKEN
+        : notify_get_state(gPullOverOpenStateToken, &state);
+    if (status != NOTIFY_STATUS_OK || state == 0) {
+        NSLog(@"[TypeX] PullOver-X bridge: failed to read Darwin state (%u)", status);
+        return;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSString *bundleIdentifier = DXPullOverBundleIdentifierForState(state);
+        if (bundleIdentifier.length == 0) {
+            NSLog(@"[TypeX] PullOver-X bridge: no installed app matches state");
+            return;
+        }
+        DXOpenApplicationInPullOver(bundleIdentifier);
     });
 }
 
@@ -1281,6 +1485,14 @@ static void shortcutRefreshRequestCallback(CFNotificationCenterRef center,
                     if (isSpringBoard) {
                         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, shortcutRefreshRequestCallback, (CFStringRef)kShortcutRefreshRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, aiChatRequestCallback, (CFStringRef)kAIChatRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+                        uint32_t pullOverStatus = notify_register_check(kPullOverOpenRequestIdentifier.UTF8String,
+                                                                       &gPullOverOpenStateToken);
+                        if (pullOverStatus == NOTIFY_STATUS_OK) {
+                            CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, pullOverOpenRequestCallback, (CFStringRef)kPullOverOpenRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+                        } else {
+                            NSLog(@"[TypeX] PullOver-X bridge: state registration failed (%u)",
+                                  pullOverStatus);
+                        }
                     }
                 }
             }
