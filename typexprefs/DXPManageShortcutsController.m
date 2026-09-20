@@ -98,9 +98,11 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
 
 #pragma mark - Table view: configured buttons only
 
-// Section 0 lists buttons, section 1 controls button appearance, and section 2
-// controls the sub-action panel. Section 3 is scoped per page: the top page
-// carries the multi-row layout controls, the bottom page the toolbar height.
+// Section 0 lists buttons, section 1 controls button appearance — the top page
+// keeps the per-row count here because it also pages the single-row layout —
+// and section 2 controls the sub-action panel. Section 3 is scoped per page:
+// the top page carries the multi-row layout controls, the bottom page the
+// toolbar height.
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
     return 4;
 }
@@ -125,7 +127,8 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     if (section == 0)
         return self.topConfiguration ? LOCALIZED(@"FOOTER_TOP_TOOLBAR_BUTTONS")
                                      : LOCALIZED(@"FOOTER_TOOLBAR_BUTTONS");
-    if (section == 1) return LOCALIZED(@"FOOTER_BUTTON_SETTINGS");
+    if (section == 1)
+        return LOCALIZED(self.topConfiguration ? @"FOOTER_BUTTON_SETTINGS_TOP" : @"FOOTER_BUTTON_SETTINGS");
     if (section == 2) return LOCALIZED(@"FOOTER_PANEL_SETTINGS");
     if (section == 3 && self.topConfiguration) return LOCALIZED(@"FOOTER_MULTILINE");
     return nil;
@@ -491,6 +494,12 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
             [DXSettingsRow sliderRowWithKey:[self scopedAppearanceKey:kBottomSpacingKey]
                                       label:LOCALIZED(@"BOTTOM_SPACING") minValue:0 maxValue:20 step:0.1
                                   defaultValue:topBottomSpacingDefault]];
+        // 每行个数放在按钮设置分组（原多行布局分组迁入）：除多行换行外，它同时
+        // 是未开启多行模式时单行分页的页长，属于按钮布局基础项。
+        [appearanceRows addObject:
+            [DXSettingsRow sliderRowWithKey:[self scopedAppearanceKey:kButtonsPerRowKey]
+                                      label:LOCALIZED(@"BUTTONS_PER_ROW") minValue:1 maxValue:8 step:1
+                                  defaultValue:buttonsPerRowDefault]];
     }
     self.appearanceRows = appearanceRows;
 
@@ -502,14 +511,11 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     self.panelRows = @[panelScaleRow];
 
     if (self.topConfiguration) {
-        // 面板设置分组下方的多行布局：开关、每行个数、按钮行距各自独立，键沿用
-        // 外观键的顶部作用域约定（top 前缀），仅顶部工具栏读取。
+        // 面板设置分组下方的多行布局：开关与按钮行距。每行个数已迁入上方按钮
+        // 设置分组（它同时决定单行模式的分页页长），容量校验仍读同一个键。
         self.multiRowRows = @[
             [DXSettingsRow switchRowWithKey:[self scopedAppearanceKey:kMultiRowEnabledKey]
                                       label:LOCALIZED(@"MULTI_ROW_MODE") defaultValue:NO],
-            [DXSettingsRow sliderRowWithKey:[self scopedAppearanceKey:kButtonsPerRowKey]
-                                      label:LOCALIZED(@"BUTTONS_PER_ROW") minValue:1 maxValue:8 step:1
-                                  defaultValue:buttonsPerRowDefault],
             [DXSettingsRow sliderRowWithKey:[self scopedAppearanceKey:kMultiRowSpacingKey]
                                       label:LOCALIZED(@"BUTTON_ROW_SPACING") minValue:0 maxValue:20 step:0.1
                                   defaultValue:multiRowSpacingDefault],

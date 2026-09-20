@@ -18,6 +18,6 @@
 @property (nonatomic, copy) NSArray<DXSettingsRow *> *appearanceRows;
 @property (nonatomic, copy) NSArray<DXSettingsRow *> *panelRows;
 @property (nonatomic, copy) NSArray<DXSettingsRow *> *offsetRows;
-    // 顶部页专属：多行开关、每行个数和按钮行距。
+    // 顶部页专属：多行开关和按钮行距（每行个数在按钮设置分组）。
 @property (nonatomic, copy) NSArray<DXSettingsRow *> *multiRowRows;
 @end

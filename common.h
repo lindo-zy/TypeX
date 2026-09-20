@@ -81,7 +81,8 @@
 #define kButtonWidthScalekey @"shortcutwidthscale"
 #define kSubActionPanelScaleKey @"subactionpanelscale"
 // 多行模式（仅顶部工具栏设置页提供）：开启后按钮按"每行个数"换行，第一行
-// 紧贴键盘、第二行向上堆叠；关闭时保持横向分页。行距只作用于两行之间。
+// 紧贴键盘、第二行向上堆叠；关闭时以每行个数为页长横向分页。行距只作用于
+// 两行之间。
 #define kMultiRowEnabledKey @"multirowBOOL"
 #define kButtonsPerRowKey @"buttonsperrow"
 #define kMultiRowSpacingKey @"multirowspacing"
@@ -113,10 +114,11 @@
 
 #define tweakVersion @"1.3.1"
 #define maxdefaultshortcuts 6
-// Page size of the classic single-row horizontal paging layout: with multi-row
-// mode off, buttons beyond this number wrap into additional horizontally
-// paged sections. This is a page-size constant, not the sixteen-button active
-// limit above.
+// Page size of the classic single-row horizontal paging layout on the bottom
+// toolbar only: with multi-row mode off the top toolbar pages by its configured
+// per-row count instead, and buttons beyond one page wrap into additional
+// horizontally paged sections. This is a page-size constant, not the
+// sixteen-button active limit above.
 #define maxshortcutpersection 8
 #define granularity 3
 

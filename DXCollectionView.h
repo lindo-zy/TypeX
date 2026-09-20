@@ -53,7 +53,8 @@ typedef NS_ENUM(NSInteger, direction) {
 @property (nonatomic, assign) BOOL useShortLabel;
 
 // 多行模式（仅顶部工具栏生效）：YES 时按钮按 buttonsPerRow 换行，第一行
-// 紧贴键盘、第二行向上堆叠，最多两行/16 个；NO 时保持横向分页。
+// 紧贴键盘、第二行向上堆叠，最多两行/16 个；NO 时以 buttonsPerRow 为页长
+// 横向分页。
 @property (nonatomic, assign, readonly) BOOL multiRowEnabled;
 @property (nonatomic, assign, readonly) NSInteger buttonsPerRow;
 @property (nonatomic, assign, readonly) CGFloat rowSpacing;

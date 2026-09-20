@@ -223,8 +223,11 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 - (int)shortcutsPerSection {
     // Page size of the single-row horizontal paging layout (multi-row mode off).
-    // The top toolbar's sixteen-button active cap can span multiple pages; the
-    // bottom toolbar keeps its existing unrestricted paging behavior.
+    // On the top toolbar the configured per-row count is the page size — e.g.
+    // six per row with twelve enabled buttons shows six, then the remaining six
+    // after one swipe — while the bottom toolbar keeps its fixed eight-per-page
+    // behavior.
+    if ([self.configuration isEqualToString:@"top"]) return MAX(1, self.buttonsPerRow);
     return maxshortcutpersection;
 }
 
@@ -475,7 +478,11 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         self.sectionOffsetBackwardArray = [self synthesizeIndexingForIndexOrOffset:NO descendingOffset:YES numberOfItems:[self shortcutsPerSection]];
     }
     
-    NSIndexPath *newIndexPath = [NSIndexPath indexPathForRow:[self.indexArray[y+allowedMaxY-(G+1)] intValue]  inSection:x - [self.sectionOffsetBackwardArray[y+allowedMaxY-(G+1)] intValue]];
+    // 每行个数也是单行分页页长，页长小到 1 时旧索引式会落到数组界外，先夹进
+    // 两个平行数组的公共有效范围。
+    NSInteger backwardIndex = MIN((NSInteger)self.indexArray.count - 1,
+                                  MAX(0, y + allowedMaxY - (G + 1)));
+    NSIndexPath *newIndexPath = [NSIndexPath indexPathForRow:[self.indexArray[backwardIndex] intValue]  inSection:x - [self.sectionOffsetBackwardArray[backwardIndex] intValue]];
     [self scrollToItemAtIndexPath:newIndexPath atScrollPosition:UICollectionViewScrollPositionLeft animated:YES];
     //int firstCellGlobalIndex = [self shortcutsPerSection]*firstCellIndexPath.section + firstCellIndexPath.row;
     //int newRowIndex =  [fullIndexArray[rowIndex - G] intValue];
@@ -533,7 +540,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         self.sectionOffsetForwardArray = [NSArray array];
         self.sectionOffsetForwardArray = [self synthesizeIndexingForIndexOrOffset:NO descendingOffset:NO numberOfItems:[self shortcutsPerSection]];
     }
-    NSIndexPath *newIndexPath = [NSIndexPath indexPathForRow:[self.indexArray[y+G+1] intValue] inSection:x + [self.sectionOffsetForwardArray[y+G+1] intValue]];
+    NSInteger forwardIndex = MIN((NSInteger)self.indexArray.count - 1,
+                                 MAX(0, y + G + 1));
+    NSIndexPath *newIndexPath = [NSIndexPath indexPathForRow:[self.indexArray[forwardIndex] intValue] inSection:x + [self.sectionOffsetForwardArray[forwardIndex] intValue]];
     
     [self scrollToItemAtIndexPath:newIndexPath atScrollPosition:UICollectionViewScrollPositionLeft animated:YES];
     
