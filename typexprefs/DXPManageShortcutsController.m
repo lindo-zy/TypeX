@@ -699,6 +699,16 @@ static NSString *DXFormatSettingsValue(float value, float step, NSString *suffix
             ![DXShortcutsGenerator isShellXScreenshotAvailable]) {
             continue;
         }
+        // 剪贴板按钮只在检测到 Kayoko/KayokoX 已安装时进入目录
+        if ([defaultOrderSelector[i] isEqualToString:@"clipboardAction:"] &&
+            ![DXShortcutsGenerator isKayokoInstalled]) {
+            continue;
+        }
+        // 小把手按钮只在检测到 PullOver X 已安装时进入目录
+        if ([defaultOrderSelector[i] isEqualToString:@"pulloverWakeAction:"] &&
+            ![DXShortcutsGenerator isPullOverXInstalled]) {
+            continue;
+        }
         [fullOrderDict addObject: @{
             @"label" : defaultOrderLabel[i],
             @"images12" : defaultOrder12[i],

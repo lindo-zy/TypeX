@@ -736,24 +736,10 @@ static void reloadPrefs(void);
         
         [dockView addSubview:self.typex];
         
-        // The dock mode decides which stock dock buttons survive; the toolbar
-        // insets clear the buttons that remain (69/-60 keep both stock buttons,
-        // 5/-5 stretch the bar to the dock's edge).
+        // Stock globe/dictation buttons always stay; the toolbar sits between
+        // them (69/-60 clear both stock buttons).
         float leading = 69.0f;
         float trailing = -60.0f;
-
-        switch (preferencesInt(kDockModekey, 0)){
-            case 1:
-                leading = 5.0f;
-                break;
-            case 2:
-                trailing = -5.0f;
-                break;
-            case 3:
-                leading = 5.0f;
-                trailing = -5.0f;
-                break;
-        }
 
         NSLayoutConstraint *leadingConstraint = [NSLayoutConstraint constraintWithItem:self.typex attribute:NSLayoutAttributeLeading relatedBy:NSLayoutRelationEqual toItem:dockView attribute:NSLayoutAttributeLeading multiplier:1.0 constant:leading];
         leadingConstraint.identifier = @"TypeX";
@@ -817,24 +803,20 @@ static void reloadPrefs(void);
             currentTintColor = dockItem.button.tintColor;
         }
         if (preferencesInt(kDedicatedGestureButtonkey, 0) == 1 || preferencesInt(kDedicatedGestureButtonkey, 0) == 3){
-            if (preferencesInt(kDockModekey, 0) != 1 && preferencesInt(kDockModekey, 0) != 3) {
-                %orig;
+            %orig;
+            if (preferencesInt(kGestureTypekey,0) == 1){
+                singleTapGlobeEnabled = NO;
+                UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(performTypeXToggling:)];
+                longPress.minimumPressDuration = 0.3;
+                [dockItem.button addGestureRecognizer:longPress];
+            }else{
+                singleTapGlobeEnabled = YES;
+                [dockItem.button removeTarget:nil action:NULL forControlEvents:UIControlEventAllEvents];
+                UITapGestureRecognizer *singleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(performTypeXTogglingTap:)];
+                singleTap.numberOfTapsRequired = 1;
+                [dockItem.button addGestureRecognizer:singleTap];
             }
-            if (preferencesInt(kDockModekey, 0) != 1 && preferencesInt(kDockModekey, 0) != 3){
-                if (preferencesInt(kGestureTypekey,0) == 1){
-                    singleTapGlobeEnabled = NO;
-                    UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(performTypeXToggling:)];
-                    longPress.minimumPressDuration = 0.3;
-                    [dockItem.button addGestureRecognizer:longPress];
-                }else{
-                    singleTapGlobeEnabled = YES;
-                    [dockItem.button removeTarget:nil action:NULL forControlEvents:UIControlEventAllEvents];
-                    UITapGestureRecognizer *singleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(performTypeXTogglingTap:)];
-                    singleTap.numberOfTapsRequired = 1;
-                    [dockItem.button addGestureRecognizer:singleTap];
-                }
-                return;
-            }
+            return;
         }
     }
     %orig;
@@ -859,7 +841,6 @@ static void reloadPrefs(void);
         if (!preferencesBool(kShortcutsTintEnabled,NO)){
             currentTintColor = dockItem.button.tintColor;
         }
-        if (preferencesInt(kDockModekey, 0) == 2 || preferencesInt(kDockModekey, 0) == 3) return;
         if (preferencesInt(kDedicatedGestureButtonkey, 0) == 2 || preferencesInt(kDedicatedGestureButtonkey, 0) == 3){
             %orig;
             if (preferencesInt(kGestureTypekey,0) == 1){
@@ -1200,7 +1181,7 @@ static void reloadPrefs(void);
     //if (preferencesBool(kEnabledkey,YES) && !(preferencesInt(kDedicatedGestureButtonkey, 0) < 1)){
     // return;
     //}
-    if (preferencesBool(kEnabledkey,YES) && preferencesInt(kDockModekey, 0) < 3){
+    if (preferencesBool(kEnabledkey,YES)){
         if ((preferencesInt(kDedicatedGestureButtonkey, 0) == 1 || preferencesInt(kDedicatedGestureButtonkey, 0) == 3) && [[self inputView].currentImage.description containsString:@"globe"]){
             return;
         }
@@ -1334,8 +1315,8 @@ static void reloadPrefs(void) {
     }
     
     toggledOn = preferencesBool(kToggledOnkey,YES);
-    singleTapGlobeEnabled = (((preferencesInt(kDockModekey, 0) == 0 || preferencesInt(kDockModekey, 0) == 2)) && (preferencesInt(kDedicatedGestureButtonkey,0) == 1 || preferencesInt(kDedicatedGestureButtonkey,0) == 3) && (preferencesInt(kGestureTypekey,0) == 0)) ? YES : NO;
-    singleTapDictationEnabled = (((preferencesInt(kDockModekey, 0) == 0 || preferencesInt(kDockModekey, 0) == 1)) && (preferencesInt(kDedicatedGestureButtonkey,0) == 2 || preferencesInt(kDedicatedGestureButtonkey,0) == 3) && (preferencesInt(kGestureTypekey,0) == 0)) ? YES : NO;
+    singleTapGlobeEnabled = ((preferencesInt(kDedicatedGestureButtonkey,0) == 1 || preferencesInt(kDedicatedGestureButtonkey,0) == 3) && (preferencesInt(kGestureTypekey,0) == 0)) ? YES : NO;
+    singleTapDictationEnabled = ((preferencesInt(kDedicatedGestureButtonkey,0) == 2 || preferencesInt(kDedicatedGestureButtonkey,0) == 3) && (preferencesInt(kGestureTypekey,0) == 0)) ? YES : NO;
 
 
     heightOffset = preferencesFloat(kHeightOffsetkey, heightOffsetDefault);

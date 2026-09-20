@@ -13,12 +13,7 @@
 "FOOTER_DISPLAY_STYLE" = "设置快捷方式的显示样式。";
 "ANSWER_YES" = "是";
 "ANSWER_NO" = "否";
-"FOOTER_DOCK_MODE" = "设置键盘 Dock 模式。";
-"DEFAULT" = "默认";
-"DICTATION_ONLY" = "仅听写";
-"GLOBE_ONLY" = "仅地球键";
-"NONE" = "无";
-"FOOTER_TOGGLE_BUTTON" = "设置用于切换 TypeX 的按钮。当 Dock 模式为“无”时，此设置不可用。";
+"FOOTER_TOGGLE_BUTTON" = "设置用于切换 TypeX 的按钮。";
 "GLOBE" = "地球键";
 "DICTATION" = "听写";
 "BOTH" = "两者";

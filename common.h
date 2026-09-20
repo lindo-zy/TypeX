@@ -31,7 +31,6 @@
 #define kSpaceBarScrollingBOOL @"enabledSpaceBarScrollingBOOL"
 #define kGranularity @"granularityvalue"
 #define kToggledOnkey @"toggledOnBOOL"
-#define kDockModekey @"dockmode"
 #define kDedicatedGestureButtonkey @"gesturebutton"
 #define kGestureTypekey @"gesturetype"
 #define kCustomActionskey @"customactions"

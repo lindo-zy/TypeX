@@ -13,12 +13,7 @@
 "FOOTER_DISPLAY_STYLE" = "Set shortcuts displaying style.";
 "ANSWER_YES" = "Yes";
 "ANSWER_NO" = "No";
-"FOOTER_DOCK_MODE" = "Set preferred dock mode.";
-"DEFAULT" = "Default";
-"DICTATION_ONLY" = "Dictation Only";
-"GLOBE_ONLY" = "Globe Only";
-"NONE" = "None";
-"FOOTER_TOGGLE_BUTTON" = "Set the button to be used for toggling TypeX. This setting is disabled if dock mode is \"None\".";
+"FOOTER_TOGGLE_BUTTON" = "Set the button to be used for toggling TypeX.";
 "GLOBE" = "Globe";
 "DICTATION" = "Dictation";
 "BOTH" = "Both";

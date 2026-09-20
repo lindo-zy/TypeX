@@ -11,8 +11,10 @@ static NSBundle *tweakBundle;
 // add flow, an 编辑/完成 nav button toggling delete mode, and usage-hint
 // footers under both groups.
 
-// Subtitle cell whose icon is enlarged for the reference look; re-pinning the
-// frame in layoutSubviews keeps it from being reset by the style's layout.
+// Subtitle cell rendering icons at their natural size — SF Symbols and the
+// 24pt rounded app-icon slot alike — so 已选择 rows match the 选择动作 type
+// rows below instead of showing enlarged 40pt glyphs. Re-pinning origin.y in
+// layoutSubviews keeps the small icon vertically centered in the taller row.
 @interface DXPManagedActionCell : UITableViewCell
 @end
 @implementation DXPManagedActionCell
@@ -23,12 +25,10 @@ static NSBundle *tweakBundle;
 }
 - (void)layoutSubviews {
     [super layoutSubviews];
-    CGRect frame = self.imageView.frame;
-    frame.size = CGSizeMake(40.0, 40.0);
-    frame.origin.y = roundf((CGRectGetHeight(self.contentView.bounds) - 40.0) / 2.0);
-    frame.origin.x = 0.0;
-    self.imageView.frame = frame;
     self.imageView.contentMode = UIViewContentModeScaleAspectFit;
+    CGRect frame = self.imageView.frame;
+    frame.origin.y = roundf((CGRectGetHeight(self.contentView.bounds) - frame.size.height) / 2.0);
+    self.imageView.frame = frame;
 }
 @end
 
@@ -141,6 +141,9 @@ static NSInteger const DXSectionAddType = 1;
     cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
     cell.imageView.image = [DXHelper imageForIconConfig:icon defaultSymbolName:[DXPLinkActionEditorController defaultIconForType:type]]
         ?: [UIImage systemImageNamed:[DXPLinkActionEditorController defaultIconForType:type]];
+    // Same explicit tint as the 选择动作 rows; app icons are AlwaysOriginal and
+    // unaffected, so both sections draw symbols in the same blue.
+    cell.imageView.tintColor = [UIColor systemBlueColor];
     cell.accessoryType = self.tableView.editing ? UITableViewCellAccessoryNone : UITableViewCellAccessoryDisclosureIndicator;
     cell.editingAccessoryType = UITableViewCellAccessoryNone;
     return cell;

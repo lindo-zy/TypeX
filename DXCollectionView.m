@@ -1160,6 +1160,26 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     [self autoPaginationControl];
 }
 
+// 剪贴板按钮：Kayoko/KayokoX 只在自己注入的进程里挂 Darwin 观察者，键盘进程内
+// 没有可调用的类，dev.traurige.kayoko.core.show 就是它官方的唤起入口（同 ShellX
+// 截图按钮的跨进程套路）。未安装时通知无人接收，无害。
+-(void)clipboardAction:(UIButton*)sender{
+    [self autoPaginationControl];
+    [self triggerImpactAndAnimationWithButton:sender];
+    notify_post("dev.traurige.kayoko.core.show");
+    [self autoPaginationControl];
+}
+
+// 小把手按钮：PullOver X 在 SpringBoard 进程内常驻观察 external-wake 通知——
+// 面板展开时收起，把手缩点时展开把手并唤出常驻竖栏，其余状态不动作（收端有
+// externalWakeEnabled 开关与 1s 节流）。Darwin 通知系统级广播，键盘进程直发即达。
+-(void)pulloverWakeAction:(UIButton*)sender{
+    [self autoPaginationControl];
+    [self triggerImpactAndAnimationWithButton:sender];
+    notify_post("com.mlgm.pulloverx.external-wake");
+    [self autoPaginationControl];
+}
+
 // Match SquidGesturePro's PullOver integration: publish the target Bundle ID to
 // TypeX's SpringBoard injection, which calls PullOverWindow.controller's
 // pinAppWithBundleId: directly. The 64-bit Darwin state is visible across App
@@ -1188,10 +1208,10 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 // Same probe idiom as isShellXScreenshotAvailable: dylib file existence under
-// the tweak loader directory, resolved through the jbroot prefix.
+// the tweak loader directory, resolved through the jbroot prefix. Single source
+// of truth lives on DXShortcutsGenerator (the prefs catalog gates on it too).
 -(BOOL)isPullOverXInstalled{
-    NSString *dylibPath = DX_ROOT_PATH_NS(@"/Library/MobileSubstrate/DynamicLibraries/PullOverX.dylib");
-    return dylibPath.length > 0 && [[NSFileManager defaultManager] fileExistsAtPath:dylibPath];
+    return [DXShortcutsGenerator isPullOverXInstalled];
 }
 
 // AI 问答按钮，按承载能力分派（第一版 + ShellX 时代两套验证过的路径）：
@@ -2082,7 +2102,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 // Text-action templates: {{clipboard}} {{selection}} {{date1}} {{date2}}
-// {{now1}} {{now2}} {{time}}, freely combinable. {{clipboard}} only expands
+// {{date3}} {{now1}} {{now2}} {{time}}, freely combinable. {{clipboard}} only expands
 // for textual clipboard content — an image on the pasteboard leaves the
 // placeholder untouched. Substitution runs in a single left-to-right pass so
 // a value pulled out of the clipboard or the field is never rescanned for
@@ -2105,6 +2125,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         @"{{selection}}": [self currentInputTextForCustomAction],
         @"{{date1}}": [self formattedDateTimeForTemplate:@"yyyy/MM/dd"],
         @"{{date2}}": [self formattedDateTimeForTemplate:@"yyyy-MM-dd"],
+        @"{{date3}}": [self formattedDateTimeForTemplate:@"yyyy'年'MM'月'dd'日'"],
         @"{{now1}}": [self formattedDateTimeForTemplate:@"yyyy/MM/dd-HH:mm:ss"],
         @"{{now2}}": [self formattedDateTimeForTemplate:@"yyyy-MM-dd-HH:mm:ss"],
         @"{{time}}": [self formattedDateTimeForTemplate:@"HH:mm:ss"],
@@ -2716,6 +2737,42 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
 }
 
 
+// 短文本按钮标题自适应：短标签模式下每个按钮只有一格宽度，两三个字放得下，
+// 更多字数会被 UIButton 整体截成"…"。按"按钮可用宽度 / 文本自然宽度"等比缩小
+// 字号（最小压到 9pt）让全文显示，仍放不下才回落系统截断。颜色属性刻意不带，
+// 继续走 setTitleColor 设置的 textColor。
+- (NSAttributedString *)shortLabelTitleByFittingText:(NSAttributedString *)title
+                                              button:(UIButton *)button
+                                      collectionView:(UICollectionView *)collectionView
+                                           indexPath:(NSIndexPath *)indexPath {
+    NSString *text = title.string;
+    if (text.length == 0) return title;
+
+    CGSize slot = [self collectionView:collectionView layout:collectionView.collectionViewLayout
+              sizeForItemAtIndexPath:indexPath];
+    CGFloat multiplier = self.widthScale / buttonWidthScaleDefault;
+    if (multiplier <= 0) multiplier = 1.0;
+    CGFloat available = slot.width * multiplier - 6.0; // 两侧各留 3pt，不顶圆角边框
+    if (available <= 0) return title;
+
+    UIFont *baseFont = button.titleLabel.font ?: [UIFont systemFontOfSize:15.0];
+    CGFloat textWidth = [text sizeWithAttributes:@{NSFontAttributeName : baseFont}].width;
+    CGFloat scaledSize = baseFont.pointSize;
+    if (textWidth > available) {
+        scaledSize = MAX(floorf(baseFont.pointSize * available / textWidth * 2.0) / 2.0, 9.0);
+    }
+    UIFontDescriptor *descriptor = [baseFont.fontDescriptor fontDescriptorWithSize:scaledSize];
+    // SDK 头文件未声明 fontWithDescriptor:traits:，system 字体按 traits 走对应便捷构造
+    UIFont *fittedFont = baseFont;
+    if (descriptor.pointSize != baseFont.pointSize) {
+        BOOL bold = (baseFont.fontDescriptor.symbolicTraits & UIFontDescriptorTraitBold) != 0;
+        fittedFont = bold ? [UIFont boldSystemFontOfSize:descriptor.pointSize]
+                          : [UIFont systemFontOfSize:descriptor.pointSize];
+    }
+    return [[NSMutableAttributedString alloc] initWithString:text
+                                                  attributes:@{NSFontAttributeName : fittedFont}];
+}
+
 - (UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath {
     DXCell *cell = [collectionView dequeueReusableCellWithReuseIdentifier:@"kTypeXCellID" forIndexPath:indexPath];
     //cell.transform = CGAffineTransformMakeScale(-1, 1);
@@ -2741,7 +2798,11 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
     }
     if (self.useShortLabel){
         [cell.btn setImage:nil forState:UIControlStateNormal];
-        [cell.btn setAttributedTitle:imageOfName forState:UIControlStateNormal];
+        [cell.btn setAttributedTitle:[self shortLabelTitleByFittingText:imageOfName
+                                                                 button:cell.btn
+                                                         collectionView:collectionView
+                                                              indexPath:indexPath]
+                           forState:UIControlStateNormal];
     }else{
         [cell.btn setAttributedTitle:nil forState:UIControlStateNormal];
         [cell.btn setImage:image forState:UIControlStateNormal];
