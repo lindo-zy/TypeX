@@ -99,16 +99,16 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
 #pragma mark - Table view: configured buttons only
 
 // Section 0 lists buttons, section 1 controls button appearance, and section 2
-// controls the sub-action panel. The bottom page additionally carries the
-// toolbar-height section at index 3.
+// controls the sub-action panel. Section 3 is scoped per page: the top page
+// carries the multi-row layout controls, the bottom page the toolbar height.
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return self.topConfiguration ? 3 : 4;
+    return 4;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     if (section == 1) return LOCALIZED(@"BUTTON_SETTINGS");
     if (section == 2) return LOCALIZED(@"PANEL_SETTINGS");
-    if (section == 3) return LOCALIZED(@"OFFSETS");
+    if (section == 3) return self.topConfiguration ? LOCALIZED(@"MULTILINE_SETTINGS") : LOCALIZED(@"OFFSETS");
     return nil;
 }
 
@@ -116,16 +116,18 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     switch (section) {
         case 1: return self.appearanceRows.count;
         case 2: return self.panelRows.count;
-        case 3: return self.offsetRows.count;
+        case 3: return self.topConfiguration ? self.multiRowRows.count : self.offsetRows.count;
         default: return [self.currentOrder[0] count];
     }
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     if (section == 0)
-        return [NSString stringWithFormat:LOCALIZED(@"FOOTER_TOOLBAR_BUTTONS"), (int)maxshortcutpersection];
+        return self.topConfiguration ? LOCALIZED(@"FOOTER_TOP_TOOLBAR_BUTTONS")
+                                     : LOCALIZED(@"FOOTER_TOOLBAR_BUTTONS");
     if (section == 1) return LOCALIZED(@"FOOTER_BUTTON_SETTINGS");
     if (section == 2) return LOCALIZED(@"FOOTER_PANEL_SETTINGS");
+    if (section == 3 && self.topConfiguration) return LOCALIZED(@"FOOTER_MULTILINE");
     return nil;
 }
 
@@ -193,31 +195,40 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     return cell;
 }
 
-// Number of stored buttons that are currently switched on.
-- (NSInteger)enabledButtonCount {
-    NSInteger count = 0;
-    for (NSDictionary *item in self.currentOrder[0]) {
-        if ([item isKindOfClass:[NSDictionary class]] && ![item[@"disabled"] boolValue]) count++;
-    }
-    return count;
-}
-
 // Row recovered from the switch's cell: rows move and delete, so a cached
-// index would go stale.
+// index would go stale. The list itself is unlimited, but the top toolbar may
+// have at most sixteen enabled buttons. Multi-row mode can lower that active
+// capacity when the chosen column count only fits fewer buttons in two rows.
 - (void)buttonEnabledToggleChanged:(UISwitch *)sender {
     UIView *view = sender;
     while (view && ![view isKindOfClass:[UITableViewCell class]]) view = view.superview;
     NSIndexPath *indexPath = [self.tableView indexPathForCell:(UITableViewCell *)view];
     if (!indexPath || indexPath.section != 0 || indexPath.row >= (NSInteger)[self.currentOrder[0] count]) return;
 
-    if (sender.on && [self enabledButtonCount] >= maxshortcutpersection) {
-        sender.on = NO;
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"TypeX"
-                                                                       message:[NSString stringWithFormat:LOCALIZED(@"MAX_ENABLED_REACHED"), (int)maxshortcutpersection]
-                                                                preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK") style:UIAlertActionStyleCancel handler:nil]];
-        [self presentViewController:alert animated:YES completion:nil];
-        return;
+    NSDictionary *preferences = [[DXPrefsManager sharedInstance] readPrefs];
+    if (sender.isOn && self.topConfiguration) {
+        NSInteger enabledCount = [self enabledButtonCount];
+        if (enabledCount >= maxEnabledTopButtons) {
+            [sender setOn:NO animated:YES];
+            NSString *message = [NSString stringWithFormat:LOCALIZED(@"ENABLED_BUTTON_LIMIT_MESSAGE"),
+                                 maxEnabledTopButtons];
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"TypeX"
+                                                                           message:message
+                                                                    preferredStyle:UIAlertControllerStyleAlert];
+            [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK")
+                                                     style:UIAlertActionStyleCancel handler:nil]];
+            [self presentViewController:alert animated:YES completion:nil];
+            return;
+        }
+        if (DXMultiRowEnabledForPreferences(preferences)) {
+            NSInteger perRow = DXMultiRowButtonsPerRowFromPreferences(preferences);
+            NSInteger capacity = DXMultiRowCapacityForPreferences(preferences);
+            if (enabledCount >= capacity) {
+                [sender setOn:NO animated:YES];
+                [self showMultiRowLimitAlertForCapacity:capacity buttonsPerRow:perRow];
+                return;
+            }
+        }
     }
 
     NSMutableDictionary *entry = [self.currentOrder[0][indexPath.row] mutableCopy];
@@ -424,6 +435,25 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     return [value respondsToSelector:@selector(boolValue)] ? [value boolValue] : fallback;
 }
 
+- (NSInteger)enabledButtonCount {
+    NSInteger count = 0;
+    for (NSDictionary *entry in self.currentOrder.firstObject) {
+        if ([entry isKindOfClass:[NSDictionary class]] && ![entry[@"disabled"] boolValue]) count++;
+    }
+    return count;
+}
+
+- (void)showMultiRowLimitAlertForCapacity:(NSInteger)capacity buttonsPerRow:(NSInteger)buttonsPerRow {
+    NSString *message = [NSString stringWithFormat:LOCALIZED(@"MULTI_ROW_LIMIT_MESSAGE"),
+                         (int)capacity, (int)buttonsPerRow];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"TypeX"
+                                                                   message:message
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK")
+                                             style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
 - (void)buildSettingsRows {
     // The runtime adds +5 to the unprefixed height fallback while the shared
     // background tint is on; mirror that so the slider shows the effective
@@ -433,7 +463,7 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     float heightDefault = self.topConfiguration ? 33.33
         : (backgroundTintOn ? cellsHeightDefault + 5 : cellsHeightDefault);
 
-    self.appearanceRows = @[
+    NSMutableArray<DXSettingsRow *> *appearanceRows = [@[
         [DXSettingsRow segmentRowWithKey:[self scopedAppearanceKey:kShortLabelEnabledKey]
                                   label:LOCALIZED(@"DISPLAY_STYLE")
                                  titles:@[LOCALIZED(@"ICON"), LOCALIZED(@"TEXT")]
@@ -455,7 +485,14 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
         [DXSettingsRow sliderRowWithKey:[self scopedAppearanceKey:kCellSpacingkey]
                                   label:LOCALIZED(@"SPACING") minValue:0 maxValue:20 step:0.5
                             defaultValue:spacingBetweenCellsDefault],
-    ];
+    ] mutableCopy];
+    if (self.topConfiguration) {
+        [appearanceRows addObject:
+            [DXSettingsRow sliderRowWithKey:[self scopedAppearanceKey:kBottomSpacingKey]
+                                      label:LOCALIZED(@"BOTTOM_SPACING") minValue:0 maxValue:20 step:0.1
+                                  defaultValue:topBottomSpacingDefault]];
+    }
+    self.appearanceRows = appearanceRows;
 
     DXSettingsRow *panelScaleRow = [DXSettingsRow sliderRowWithKey:[self scopedAppearanceKey:kSubActionPanelScaleKey]
                                                               label:LOCALIZED(@"PANEL_SIZE")
@@ -464,7 +501,21 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     panelScaleRow.valueSuffix = @"%";
     self.panelRows = @[panelScaleRow];
 
-    if (self.topConfiguration) return;
+    if (self.topConfiguration) {
+        // 面板设置分组下方的多行布局：开关、每行个数、按钮行距各自独立，键沿用
+        // 外观键的顶部作用域约定（top 前缀），仅顶部工具栏读取。
+        self.multiRowRows = @[
+            [DXSettingsRow switchRowWithKey:[self scopedAppearanceKey:kMultiRowEnabledKey]
+                                      label:LOCALIZED(@"MULTI_ROW_MODE") defaultValue:NO],
+            [DXSettingsRow sliderRowWithKey:[self scopedAppearanceKey:kButtonsPerRowKey]
+                                      label:LOCALIZED(@"BUTTONS_PER_ROW") minValue:1 maxValue:8 step:1
+                                  defaultValue:buttonsPerRowDefault],
+            [DXSettingsRow sliderRowWithKey:[self scopedAppearanceKey:kMultiRowSpacingKey]
+                                      label:LOCALIZED(@"BUTTON_ROW_SPACING") minValue:0 maxValue:20 step:0.1
+                                  defaultValue:multiRowSpacingDefault],
+        ];
+        return;
+    }
 
     // The toolbar height is the only remaining positioning control; the
     // leading/trailing/vertical offsets and the insets are fixed in the tweak.
@@ -477,7 +528,8 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     switch (indexPath.section) {
         case 1: return self.appearanceRows[indexPath.row];
         case 2: return self.panelRows[indexPath.row];
-        default: return self.offsetRows[indexPath.row];
+        case 3: return self.topConfiguration ? self.multiRowRows[indexPath.row] : self.offsetRows[indexPath.row];
+        default: return nil;
     }
 }
 
@@ -605,6 +657,17 @@ static NSString *DXFormatSettingsValue(float value, float step, NSString *suffix
 
 - (void)settingsSwitchChanged:(UISwitch *)sender {
     DXSettingsRow *row = objc_getAssociatedObject(sender, @selector(key));
+    NSString *multiRowKey = DXScopedPreferenceKey(kMultiRowEnabledKey, @"top");
+    if (self.topConfiguration && sender.isOn && [row.key isEqualToString:multiRowKey]) {
+        NSDictionary *preferences = [[DXPrefsManager sharedInstance] readPrefs];
+        NSInteger perRow = DXMultiRowButtonsPerRowFromPreferences(preferences);
+        NSInteger capacity = DXMultiRowCapacityForPreferences(preferences);
+        if ([self enabledButtonCount] > capacity) {
+            [sender setOn:NO animated:YES];
+            [self showMultiRowLimitAlertForCapacity:capacity buttonsPerRow:perRow];
+            return;
+        }
+    }
     [[DXPrefsManager sharedInstance] setValue:@(sender.isOn) forKey:row.key];
 }
 
@@ -623,15 +686,33 @@ static NSString *DXFormatSettingsValue(float value, float step, NSString *suffix
 
 - (void)settingsSliderReleased:(UISlider *)sender {
     DXSettingsRow *row = objc_getAssociatedObject(sender, @selector(key));
+    float stepped = row.minValue + roundf((sender.value - row.minValue) / row.step) * row.step;
+    stepped = MIN(row.maxValue, MAX(row.minValue, stepped));
+
+    NSString *perRowKey = DXScopedPreferenceKey(kButtonsPerRowKey, @"top");
+    NSDictionary *preferences = [[DXPrefsManager sharedInstance] readPrefs];
+    if (self.topConfiguration && [row.key isEqualToString:perRowKey] &&
+        DXMultiRowEnabledForPreferences(preferences)) {
+        NSInteger perRow = MIN(8, MAX(1, (NSInteger)stepped));
+        NSInteger capacity = MIN(maxMultiRowButtons, perRow * maxMultiRowRows);
+        if ([self enabledButtonCount] > capacity) {
+            sender.value = [self storedFloatForRow:row];
+            UILabel *valueLabel = (UILabel *)[(UIView *)sender.superview viewWithTag:2];
+            valueLabel.text = DXFormatSettingsValue(sender.value, row.step, row.valueSuffix);
+            [self showMultiRowLimitAlertForCapacity:capacity buttonsPerRow:perRow];
+            return;
+        }
+    }
+
+    sender.value = stepped;
+    UILabel *valueLabel = (UILabel *)[(UIView *)sender.superview viewWithTag:2];
+    valueLabel.text = DXFormatSettingsValue(stepped, row.step, row.valueSuffix);
     [self persistRowValue:row rawValue:sender.value];
 }
 
 #pragma mark - Add button
 
 - (void)addButtonTapped{
-    // Adding is unlimited; only the number of switched-on buttons is capped
-    // (enforced at enable time, and new buttons join switched off when 8 are
-    // already on).
     DXPGesturePickerController *gesturePickerController = [[DXPGesturePickerController alloc] init];
     gesturePickerController.fullOrder = self.fullOrder;
     gesturePickerController.configuration = self.topConfiguration ? @"top" : @"bottom";
@@ -737,6 +818,25 @@ static NSString *DXFormatSettingsValue(float value, float step, NSString *suffix
     // emptied toolbar (user deleted every button) stays empty.
     if (!hasStoredOrder) {
         DXAppendUniqueShortcuts(fullOrderDict, enabled, seenSelectors, maxdefaultshortcuts);
+    }
+
+    // Migrate legacy configurations without deleting buttons. The first
+    // sixteen enabled top buttons stay on; all later ones are persisted as
+    // disabled. Multi-row mode can lower this to its current two-row capacity.
+    if (self.topConfiguration) {
+        NSInteger capacity = maxEnabledTopButtons;
+        if (DXMultiRowEnabledForPreferences(prefs)) {
+            capacity = MIN(capacity, DXMultiRowCapacityForPreferences(prefs));
+        }
+        NSInteger activeCount = 0;
+        for (NSUInteger index = 0; index < enabled.count; index++) {
+            NSDictionary *entry = enabled[index];
+            if ([entry[@"disabled"] boolValue]) continue;
+            if (activeCount++ < capacity) continue;
+            NSMutableDictionary *disabledEntry = [entry mutableCopy];
+            disabledEntry[@"disabled"] = @YES;
+            enabled[index] = disabledEntry;
+        }
     }
 
     if (hasStoredOrder) {

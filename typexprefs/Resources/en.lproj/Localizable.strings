@@ -108,6 +108,13 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "PANEL_SETTINGS" = "Panel Settings";
 "PANEL_SIZE" = "Panel Size";
 "FOOTER_PANEL_SETTINGS" = "Adjust the size of the sub-action panel opened from this toolbar. Top and bottom settings are independent.";
+"MULTILINE_SETTINGS" = "Multi-Row Layout";
+"MULTI_ROW_MODE" = "Multi-Row Mode";
+"BUTTONS_PER_ROW" = "Buttons per Row";
+"BUTTON_ROW_SPACING" = "Button Row Spacing";
+"FOOTER_MULTILINE" = "When enabled, the first row hugs the keyboard and the second stacks above it, with at most two rows. The enabled limit is twice the per-row count, up to 16 buttons. Row spacing is adjustable from 0–20 in 0.1 increments. When disabled, buttons page horizontally as before.";
+"MULTI_ROW_LIMIT_MESSAGE" = "With %2$d buttons per row, multi-row mode supports at most two rows and %1$d enabled buttons. Disable extra buttons or increase the per-row count first.";
+"ENABLED_BUTTON_LIMIT_MESSAGE" = "The top toolbar can have at most %d enabled buttons. Disable an enabled button before turning on another one.";
 //Offsets
 "OFFSETS" = "Offsets";
 //Insets
@@ -209,6 +216,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "ANSWER_YES" = "Yes";
 "ANSWER_NO" = "No";
 "SPACING" = "Button Spacing";
+"BOTTOM_SPACING" = "Bottom Spacing";
 "HEIGHT" = "Button Height";
 "RADIUS" = "Corner Radius";
 "DESCRIPTION" = "Description";
@@ -217,11 +225,11 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "EMOJI" = "Emoji";
 "GESTURE_TAP" = "Tap";
 "NEW_BUTTON" = "New Button";
-"MAX_BUTTONS_REACHED" = "A toolbar can hold up to %d buttons";
-"MAX_ENABLED_REACHED" = "Up to %d buttons can be enabled at once";
+"MAX_BUTTONS_REACHED" = "The top toolbar can have at most %d enabled buttons";
 "DUPLICATE_ACTION" = "This action is already in the toolbar";
 "CHOOSE_TAP_FIRST" = "Set the tap action first";
-"FOOTER_TOOLBAR_BUTTONS" = "Tap a button to edit its gestures, drag to reorder. The switch controls whether the button shows on the toolbar; up to %d can be enabled at once, and the number of buttons is unlimited. Use “+” to add a new button.";
+"FOOTER_TOOLBAR_BUTTONS" = "Tap a button to edit its gestures and drag to reorder. You can add any number of buttons, and the switch controls whether each button is shown. Use “+” to add a new button.";
+"FOOTER_TOP_TOOLBAR_BUTTONS" = "Tap a button to edit its gestures and drag to reorder. You can add any number of buttons; at most 16 can be enabled at once, and new buttons beyond the active capacity default to off. Disable one before enabling another.";
 "ANSWER_OK" = "OK";
 "ANSWER_CANCEL" = "Cancel";
 "SAVE" = "Save";

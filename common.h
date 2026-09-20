@@ -75,10 +75,24 @@
 #define kCellHeightkey @"shortcutheight"
 #define kCellRadiuskey @"shortcutradius"
 #define kCellSpacingkey @"shortcutspacing"
+#define kBottomSpacingKey @"bottomspacing"
 #define kCellBorderEnabledkey @"shortcutborderBOOL"
 #define kCellBorderWidthkey @"shortcutborderwidth"
 #define kButtonWidthScalekey @"shortcutwidthscale"
 #define kSubActionPanelScaleKey @"subactionpanelscale"
+// 多行模式（仅顶部工具栏设置页提供）：开启后按钮按"每行个数"换行，第一行
+// 紧贴键盘、第二行向上堆叠；关闭时保持横向分页。行距只作用于两行之间。
+#define kMultiRowEnabledKey @"multirowBOOL"
+#define kButtonsPerRowKey @"buttonsperrow"
+#define kMultiRowSpacingKey @"multirowspacing"
+#define buttonsPerRowDefault 6.0f
+#define multiRowSpacingDefault 4.0f
+#define maxMultiRowRows 2
+// The top toolbar may store any number of buttons, but at most sixteen may be
+// switched on at once. Multi-row mode can impose a smaller limit when its
+// configured column count cannot fit sixteen buttons into two rows.
+#define maxEnabledTopButtons 16
+#define maxMultiRowButtons maxEnabledTopButtons
 #define kSpongebobEntropyKey @"spongebobEntropy"
 // Clipboard image quick paste: floating thumbnail above the keyboard +
 // auto-answering of the iOS 16+ paste-permission alert, one switch for both.
@@ -99,9 +113,10 @@
 
 #define tweakVersion @"1.3.1"
 #define maxdefaultshortcuts 6
-// Button count is code-controlled, not a preference: each toolbar shows every
-// configured button, clamped to [0, maxshortcutpersection].  Both the toolbar
-// and the manage-shortcuts page cap at this value.
+// Page size of the classic single-row horizontal paging layout: with multi-row
+// mode off, buttons beyond this number wrap into additional horizontally
+// paged sections. This is a page-size constant, not the sixteen-button active
+// limit above.
 #define maxshortcutpersection 8
 #define granularity 3
 
@@ -111,6 +126,7 @@
 #define searchedCountEaster 100
 
 #define spacingBetweenCellsDefault 3
+#define topBottomSpacingDefault 0.0f
 #define cellsHeightDefault 30
 #define cellsRadiusDefault 5
 
@@ -228,6 +244,27 @@ static inline NSString *DXScopedPreferenceKey(NSString *baseKey, NSString *confi
         return [@"top" stringByAppendingString:baseKey];
     }
     return baseKey;
+}
+
+static inline NSInteger DXMultiRowButtonsPerRowFromPreferences(NSDictionary *preferences) {
+    id value = [preferences isKindOfClass:[NSDictionary class]]
+        ? preferences[DXScopedPreferenceKey(kButtonsPerRowKey, @"top")] : nil;
+    NSInteger perRow = [value respondsToSelector:@selector(integerValue)]
+        ? [value integerValue] : (NSInteger)buttonsPerRowDefault;
+    return MIN(8, MAX(1, perRow));
+}
+
+static inline BOOL DXMultiRowEnabledForPreferences(NSDictionary *preferences) {
+    id value = [preferences isKindOfClass:[NSDictionary class]]
+        ? preferences[DXScopedPreferenceKey(kMultiRowEnabledKey, @"top")] : nil;
+    return [value respondsToSelector:@selector(boolValue)] && [value boolValue];
+}
+
+// Two rows are the hard layout limit. The configured per-row count can lower
+// the active capacity, while eight columns keep the absolute ceiling at 16.
+static inline NSInteger DXMultiRowCapacityForPreferences(NSDictionary *preferences) {
+    return MIN(maxMultiRowButtons,
+               DXMultiRowButtonsPerRowFromPreferences(preferences) * maxMultiRowRows);
 }
 
 // Fields whose text was set programmatically start editing with the caret at

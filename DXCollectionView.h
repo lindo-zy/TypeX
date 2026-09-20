@@ -43,12 +43,24 @@ typedef NS_ENUM(NSInteger, direction) {
 @property (nonatomic, assign) CGFloat buttonHeight;
 @property (nonatomic, assign) CGFloat buttonRadius;
 @property (nonatomic, assign) CGFloat buttonSpacing;
+// Top-toolbar-only gap between the first/bottom row and the keyboard edge.
+@property (nonatomic, assign, readonly) CGFloat bottomSpacing;
 @property (nonatomic, assign) BOOL borderEnabled;
 @property (nonatomic, assign) CGFloat borderWidth;
 @property (nonatomic, assign) CGFloat widthScale;
 // Display style is per toolbar too: YES renders short text labels, NO renders
 // the stock icons (the default).
 @property (nonatomic, assign) BOOL useShortLabel;
+
+// 多行模式（仅顶部工具栏生效）：YES 时按钮按 buttonsPerRow 换行，第一行
+// 紧贴键盘、第二行向上堆叠，最多两行/16 个；NO 时保持横向分页。
+@property (nonatomic, assign, readonly) BOOL multiRowEnabled;
+@property (nonatomic, assign, readonly) NSInteger buttonsPerRow;
+@property (nonatomic, assign, readonly) CGFloat rowSpacing;
+
+// 工具栏自身期望的整条高度。顶部工具栏多行模式下随行数增长，其余情况返回
+// 单行固定高度；DXTopAccessoryContainer 以此决定容器（含原附件）的占位。
+- (CGFloat)preferredToolbarHeight;
 
 -(void)reloadButtonChrome;
 - (BOOL)buttonChromeActive;

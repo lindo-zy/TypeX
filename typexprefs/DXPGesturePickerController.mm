@@ -234,14 +234,6 @@ static NSBundle *tweakBundle;
     if (iconOut) *iconOut = self.pendingIcon.length ? self.pendingIcon : @"doc.text";
 }
 
-- (void)showSaveFailureAlertWithMessage:(NSString *)message {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"TypeX"
-                                                                   message:message
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK") style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
-}
-
 // Rendering a bundle-ID icon needs an app-icon lookup that sandboxed toolbar
 // hosts may not be able to perform themselves, so a successful Settings-side
 // load is staged as a PNG under the shared snapshot for them.
@@ -298,11 +290,17 @@ static NSBundle *tweakBundle;
     NSMutableArray *enabled = [mutableSections[0] isKindOfClass:[NSArray class]]
         ? [mutableSections[0] mutableCopy] : [NSMutableArray array];
 
-    // Adding is unlimited. A button saved while 8 are already switched on
-    // joins the toolbar switched off instead of being rejected.
-    NSInteger enabledCount = 0;
-    for (NSDictionary *item in enabled) {
-        if ([item isKindOfClass:[NSDictionary class]] && ![item[@"disabled"] boolValue]) enabledCount++;
+    BOOL disableNewEntry = NO;
+    if ([self.configuration isEqualToString:@"top"]) {
+        NSInteger enabledCount = 0;
+        for (NSDictionary *entry in enabled) {
+            if ([entry isKindOfClass:[NSDictionary class]] && ![entry[@"disabled"] boolValue]) enabledCount++;
+        }
+        NSInteger capacity = maxEnabledTopButtons;
+        if (DXMultiRowEnabledForPreferences(prefs)) {
+            capacity = MIN(capacity, DXMultiRowCapacityForPreferences(prefs));
+        }
+        disableNewEntry = enabledCount >= capacity;
     }
 
     // Every saved button gets its own synthetic identifier (draft prefix), so
@@ -324,7 +322,9 @@ static NSBundle *tweakBundle;
     if (!entry[@"images12"]) entry[@"images12"] = canonical[@"images12"] ?: @"UIButtonBarListIcon";
     if (!entry[@"images13"]) entry[@"images13"] = icon;
     if (self.pendingTapSubActions) entry[kTapSubActionsEntryKey] = @YES;
-    if (enabledCount >= maxshortcutpersection) entry[@"disabled"] = @YES;
+    // Adding is unlimited. Once the active capacity is full, save the new
+    // button in the same list but keep its switch off until another is closed.
+    if (disableNewEntry) entry[@"disabled"] = @YES;
     [enabled addObject:entry];
     mutableSections[0] = enabled;
     prefs[shortcutsKey] = mutableSections;

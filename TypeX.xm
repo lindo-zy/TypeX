@@ -40,12 +40,19 @@ static NSUInteger topToolbarPresentationGeneration;
 static __weak UIResponder *topToolbarCurrentResponder;
 static int gPullOverOpenStateToken = NOTIFY_TOKEN_INVALID;
 
-@interface DXTopAccessoryContainer : UIView
+@interface DXTopAccessoryContainer : UIInputView
 @property(nonatomic, strong) DXCollectionView *toolbar;
 @property(nonatomic, strong) UIView *originalAccessory;
 @end
 
 @implementation DXTopAccessoryContainer
+
+// 工具栏自身高度：多行模式随行数增长（preferredToolbarHeight），其余为固定
+// 单行高度。容器与原附件的占位都跟随这个值。
+- (CGFloat)dxToolbarHeight {
+    CGFloat preferred = self.toolbar.preferredToolbarHeight;
+    return preferred > 0.0 ? preferred : kDXTopToolbarHeight;
+}
 
 - (CGFloat)dxOriginalAccessoryHeight {
     if (!self.originalAccessory) return 0.0;
@@ -57,18 +64,57 @@ static int gPullOverOpenStateToken = NOTIFY_TOKEN_INVALID;
     return height;
 }
 
-- (CGSize)intrinsicContentSize {
+- (CGFloat)dxDesiredHeight {
     CGFloat originalHeight = [self dxOriginalAccessoryHeight];
-    return CGSizeMake(UIViewNoIntrinsicMetric,
-                      kDXTopToolbarHeight + (originalHeight > 0.0 ? originalHeight + 1.0 : 0.0));
+    return [self dxToolbarHeight] + (originalHeight > 0.0 ? originalHeight + 1.0 : 0.0);
+}
+
+- (CGSize)intrinsicContentSize {
+    return CGSizeMake(UIViewNoIntrinsicMetric, [self dxDesiredHeight]);
+}
+
+// An input accessory is initially measured from its frame on some UIKit paths
+// and from self-sizing on others.  Supplying both answers prevents the old
+// one-row frame (41.5pt) from clipping the bottom/first row when multi-row mode
+// increases the toolbar height.
+- (CGSize)sizeThatFits:(CGSize)size {
+    return CGSizeMake(size.width, [self dxDesiredHeight]);
+}
+
+- (CGSize)systemLayoutSizeFittingSize:(CGSize)targetSize {
+    return CGSizeMake(targetSize.width, [self dxDesiredHeight]);
+}
+
+- (CGSize)systemLayoutSizeFittingSize:(CGSize)targetSize
+        withHorizontalFittingPriority:(UILayoutPriority)horizontalFittingPriority
+              verticalFittingPriority:(UILayoutPriority)verticalFittingPriority {
+    return CGSizeMake(targetSize.width, [self dxDesiredHeight]);
+}
+
+- (void)dxSynchronizeHeight {
+    CGFloat desiredHeight = [self dxDesiredHeight];
+    [self invalidateIntrinsicContentSize];
+
+    // Apple documents the frame as the sizing source for ordinary input
+    // accessory views. UIInputView self-sizing covers the newer fitting path;
+    // keeping the frame in sync also covers hosts that still use the former.
+    CGRect frame = self.frame;
+    // Row spacing is adjustable in 0.1pt steps, so preserve sub-point height
+    // changes instead of treating them as layout noise.
+    if (fabs(CGRectGetHeight(frame) - desiredHeight) > 0.01) {
+        frame.size.height = desiredHeight;
+        self.frame = frame;
+    }
+    [self setNeedsLayout];
 }
 
 - (void)layoutSubviews {
     [super layoutSubviews];
-    self.toolbar.frame = CGRectMake(0.0, 0.0, CGRectGetWidth(self.bounds), kDXTopToolbarHeight);
+    CGFloat toolbarHeight = [self dxToolbarHeight];
+    self.toolbar.frame = CGRectMake(0.0, 0.0, CGRectGetWidth(self.bounds), toolbarHeight);
     if (self.originalAccessory) {
         CGFloat originalHeight = [self dxOriginalAccessoryHeight];
-        self.originalAccessory.frame = CGRectMake(0.0, kDXTopToolbarHeight + 1.0,
+        self.originalAccessory.frame = CGRectMake(0.0, toolbarHeight + 1.0,
                                                    CGRectGetWidth(self.bounds), originalHeight);
     }
     [self dxApplyBackgroundColor];
@@ -81,6 +127,7 @@ static int gPullOverOpenStateToken = NOTIFY_TOKEN_INVALID;
 
 - (void)didMoveToWindow {
     [super didMoveToWindow];
+    [self dxSynchronizeHeight];
     [self dxApplyBackgroundColor];
 }
 
@@ -194,7 +241,7 @@ static UIView *DXAccessoryByWrappingReplacement(UIResponder *responder, UIView *
     if (replacement && replacement.superview != container) {
         [container addSubview:replacement];
     }
-    [container invalidateIntrinsicContentSize];
+    [container dxSynchronizeHeight];
     [container dxApplyBackgroundColor];
     return container;
 }
@@ -213,20 +260,31 @@ static void DXInstallTopAccessoryForResponder(UIResponder *responder, BOOL reloa
 
     if (!container && mayCreate) {
         container = [[DXTopAccessoryContainer alloc] initWithFrame:CGRectMake(0.0, 0.0, 0.0,
-                                                                               kDXTopToolbarHeight)];
+                                                                               kDXTopToolbarHeight)
+                                                     inputViewStyle:UIInputViewStyleDefault];
+        container.allowsSelfSizing = YES;
         container.clipsToBounds = YES;
         container.toolbar = [[DXCollectionView alloc] initWithConfiguration:@"top"];
         container.toolbar.clipsToBounds = YES;
         [container addSubview:container.toolbar];
+        [container dxSynchronizeHeight];
         objc_setAssociatedObject(responder, &kDXTopAccessoryContainerKey, container, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         createdContainer = YES;
     }
     if (!container) return;
 
     if ((reloadConfiguration || preferencesRecovered) && !createdContainer) {
+        CGFloat previousToolbarHeight = CGRectGetHeight(container.toolbar.frame);
         [container.toolbar reloadShortcutConfiguration];
         [container.toolbar.collectionViewLayout invalidateLayout];
         [container.toolbar reloadData];
+        // 多行模式增减行数会改变工具栏自身高度：失效容器高度并让输入视图重新
+        // 测量，否则新行数要等键盘下一次重建才生效。
+        if (fabs([container dxToolbarHeight] - previousToolbarHeight) > 0.01) {
+            [container dxSynchronizeHeight];
+            [container layoutIfNeeded];
+            if (responder.isFirstResponder) [responder reloadInputViews];
+        }
     }
 
     BOOL shouldDisplay = DXShouldDisplayTopAccessory(container);
@@ -246,7 +304,7 @@ static void DXInstallTopAccessoryForResponder(UIResponder *responder, BOOL reloa
             container.originalAccessory = currentAccessory;
         }
         if (currentAccessory.superview != container) [container addSubview:currentAccessory];
-        [container invalidateIntrinsicContentSize];
+        [container dxSynchronizeHeight];
     }
 
     [container dxApplyBackgroundColor];

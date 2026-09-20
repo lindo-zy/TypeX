@@ -92,6 +92,10 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 @interface DXCollectionView ()
 @property (nonatomic, assign, readwrite) BOOL shortcutConfigurationAvailable;
+@property (nonatomic, assign, readwrite) CGFloat bottomSpacing;
+@property (nonatomic, assign, readwrite) BOOL multiRowEnabled;
+@property (nonatomic, assign, readwrite) NSInteger buttonsPerRow;
+@property (nonatomic, assign, readwrite) CGFloat rowSpacing;
 @property (nonatomic, strong) UIControl *subActionPanelOverlay;
 @property (nonatomic, strong) UIButton *subActionPanelSourceButton;
 @end
@@ -108,6 +112,87 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 - (BOOL)flipsHorizontallyInOppositeLayoutDirection {
     return NO;
+}
+
+@end
+
+// 多行模式布局：按钮按行填充，第一行钉在工具栏底部（贴键盘），第二行向上
+// 堆叠。UICollectionViewFlowLayout 按方向整行/整列顺序填充，表达不了"短行
+// 位于顶部"（末行不满时缺口会落在填充序列中段），所以直接自绘几何。
+@interface DXMultiRowTopLayout : UICollectionViewLayout
+@end
+
+@implementation DXMultiRowTopLayout
+
+- (DXCollectionView *)toolbar {
+    return (DXCollectionView *)self.collectionView;
+}
+
+- (NSInteger)dxColumnCount {
+    return MAX(1, self.toolbar.buttonsPerRow);
+}
+
+- (CGFloat)dxVerticalGap {
+    return self.toolbar.rowSpacing;
+}
+
+- (CGFloat)dxHorizontalGap {
+    return [self.toolbar buttonChromeActive] ? self.toolbar.buttonSpacing : 0.0;
+}
+
+- (CGFloat)dxHorizontalInset {
+    return [self.toolbar buttonChromeActive] ? self.toolbar.buttonSpacing / 2.0 : 0.0;
+}
+
+// 逻辑行数：ceil(按钮数 / 每行个数)，空工具栏按 1 行占位，最多 2 行。
+- (NSInteger)dxRowCount {
+    NSInteger items = [self.collectionView numberOfItemsInSection:0];
+    if (items <= 0) return 1;
+    return MIN(maxMultiRowRows,
+               (NSInteger)ceil((double)items / (double)self.dxColumnCount));
+}
+
+- (CGSize)collectionViewContentSize {
+    CGFloat height = 8.0 + self.dxRowCount * self.toolbar.buttonHeight
+                   + MAX(0, self.dxRowCount - 1) * self.dxVerticalGap
+                   + self.toolbar.bottomSpacing;
+    return CGSizeMake(MAX(0.0, CGRectGetWidth(self.collectionView.bounds)), height);
+}
+
+- (NSArray<UICollectionViewLayoutAttributes *> *)layoutAttributesForElementsInRect:(CGRect)rect {
+    NSMutableArray *attributes = [NSMutableArray array];
+    NSInteger items = [self.collectionView numberOfItemsInSection:0];
+    for (NSInteger item = 0; item < items; item++) {
+        UICollectionViewLayoutAttributes *attribute = [self layoutAttributesForItemAtIndexPath:
+            [NSIndexPath indexPathForItem:item inSection:0]];
+        if (!attribute) continue;
+        if (CGRectIntersectsRect(attribute.frame, rect)) [attributes addObject:attribute];
+    }
+    return attributes;
+}
+
+- (UICollectionViewLayoutAttributes *)layoutAttributesForItemAtIndexPath:(NSIndexPath *)indexPath {
+    NSInteger columns = self.dxColumnCount;
+    NSInteger row = indexPath.item / columns;      // 0 = 底行（第一行，贴键盘）
+    NSInteger column = indexPath.item % columns;
+    CGFloat verticalGap = self.dxVerticalGap;
+    CGFloat horizontalGap = self.dxHorizontalGap;
+    CGFloat cellHeight = MAX(1.0, self.toolbar.buttonHeight);
+    CGFloat usableWidth = MAX(0.0, CGRectGetWidth(self.collectionView.bounds) - 2.0 * self.dxHorizontalInset);
+    CGFloat cellWidth = MAX(0.0, (usableWidth - (columns - 1) * horizontalGap) / columns);
+    CGFloat contentHeight = [self collectionViewContentSize].height;
+    CGFloat y = contentHeight - self.toolbar.bottomSpacing
+              - (row + 1) * cellHeight - row * verticalGap;
+    CGFloat x = self.dxHorizontalInset + column * (cellWidth + horizontalGap);
+
+    UICollectionViewLayoutAttributes *attributes =
+        [UICollectionViewLayoutAttributes layoutAttributesForCellWithIndexPath:indexPath];
+    attributes.frame = CGRectMake(x, y, cellWidth, cellHeight);
+    return attributes;
+}
+
+- (BOOL)shouldInvalidateLayoutForBoundsChange:(CGRect)newBounds {
+    return !CGSizeEqualToSize(newBounds.size, self.collectionView.bounds.size);
 }
 
 @end
@@ -137,10 +222,16 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 - (int)shortcutsPerSection {
-    // Button count is code-controlled, not a preference: the toolbar renders
-    // every configured button clamped to [0, maxshortcutpersection].  The cap
-    // equals the page size, so the toolbar always fits on a single section.
+    // Page size of the single-row horizontal paging layout (multi-row mode off).
+    // The top toolbar's sixteen-button active cap can span multiple pages; the
+    // bottom toolbar keeps its existing unrestricted paging behavior.
     return maxshortcutpersection;
+}
+
+// 多行模式（仅顶部）：单节承载全部按钮，由 DXMultiRowTopLayout 负责换行；
+// 不再走"节=分页"的横滑模型。
+- (BOOL)multiRowActive {
+    return self.multiRowEnabled && [self.configuration isEqualToString:@"top"];
 }
 
 // Button chrome is per toolbar: every value lives under the configuration-
@@ -154,10 +245,61 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     self.buttonHeight = preferencesFloat([self scopedPreferenceKey:kCellHeightkey], heightFallback);
     self.buttonRadius = preferencesFloat([self scopedPreferenceKey:kCellRadiuskey], cellsRadiusDefault);
     self.buttonSpacing = preferencesFloat([self scopedPreferenceKey:kCellSpacingkey], spacingBetweenCellsDefault);
+    self.bottomSpacing = isTop ? MIN(20.0, MAX(0.0,
+        preferencesFloat([self scopedPreferenceKey:kBottomSpacingKey], topBottomSpacingDefault))) : 0.0;
     self.borderEnabled = preferencesBool([self scopedPreferenceKey:kCellBorderEnabledkey], NO);
     self.borderWidth = preferencesFloat([self scopedPreferenceKey:kCellBorderWidthkey], buttonBorderWidthDefault);
     self.widthScale = preferencesFloat([self scopedPreferenceKey:kButtonWidthScalekey], buttonWidthScaleDefault);
     self.useShortLabel = preferencesBool([self scopedPreferenceKey:kShortLabelEnabledKey], NO);
+    // 多行模式与每行个数只对顶部工具栏生效；每行个数夹在 [1, 8] 防御 plist
+    // 手改出的越界值（设置页滑动条本身已限范围）。
+    self.multiRowEnabled = isTop && preferencesBool([self scopedPreferenceKey:kMultiRowEnabledKey], NO);
+    float storedPerRow = preferencesFloat([self scopedPreferenceKey:kButtonsPerRowKey], buttonsPerRowDefault);
+    self.buttonsPerRow = MIN(8, MAX(1, (NSInteger)storedPerRow));
+    self.rowSpacing = MIN(20.0, MAX(0.0,
+        preferencesFloat([self scopedPreferenceKey:kMultiRowSpacingKey], multiRowSpacingDefault)));
+}
+
+// 多行模式最多两行；超量旧配置由数据源先裁到当前两行容量。
+- (NSInteger)multiRowVisibleItemCount {
+    NSInteger items = ((NSArray *)_shortcuts[kbuttonsImages12]).count;
+    NSInteger capacity = MIN(maxMultiRowButtons, MAX(1, self.buttonsPerRow) * maxMultiRowRows);
+    return MIN(items, capacity);
+}
+
+// 逻辑行数与布局共用：ceil(可见按钮数 / 每行个数)，范围 1...2。
+- (NSInteger)multiRowCountOfRows {
+    NSInteger columns = MAX(1, self.buttonsPerRow);
+    NSInteger items = [self multiRowVisibleItemCount];
+    if (items <= 0) return 1;
+    return MIN(maxMultiRowRows, (NSInteger)ceil((double)items / (double)columns));
+}
+
+- (CGFloat)preferredToolbarHeight {
+    if (![self.configuration isEqualToString:@"top"]) return 0.0;
+    if (!self.multiRowEnabled) return 41.5 + self.bottomSpacing;
+    NSInteger rows = [self multiRowCountOfRows];
+    return 8.0 + rows * self.buttonHeight + (rows - 1) * self.rowSpacing
+         + self.bottomSpacing;
+}
+
+// 多行开关切换布局实例：自绘布局 ↔ 流式分页布局。放在 reloadShortcutConfiguration
+// 里执行，偏好恢复竞态（init 时快照未就绪）也会在下一次重载时纠正。
+- (void)dxApplyLayoutForConfiguration {
+    if (![self.configuration isEqualToString:@"top"]) return;
+    if (self.multiRowEnabled) {
+        if (![self.collectionViewLayout isKindOfClass:[DXMultiRowTopLayout class]]) {
+            [self setCollectionViewLayout:[[DXMultiRowTopLayout alloc] init] animated:NO];
+        }
+        return;
+    }
+    if (![self.collectionViewLayout isKindOfClass:[DXTopShortcutFlowLayout class]]) {
+        UICollectionViewFlowLayout *flowLayout = [[DXTopShortcutFlowLayout alloc] init];
+        flowLayout.scrollDirection = UICollectionViewScrollDirectionHorizontal;
+        flowLayout.minimumLineSpacing = 0;
+        flowLayout.minimumInteritemSpacing = [self buttonChromeActive] ? self.buttonSpacing : 0;
+        [self setCollectionViewLayout:flowLayout animated:NO];
+    }
 }
 
 // Buttons get visible chrome (per-button spacing, corner radius, spacing-aware
@@ -271,7 +413,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 -(void)scrollBackward:(NSNotification*)notification{
-    
+    // 多行模式无横滑分页，滚动索引数学不适用。
+    if ([self multiRowActive]) return;
+
     NSArray *indexPaths = [self indexPathsForVisibleItems];
     //NSSortDescriptor *sort = [NSSortDescriptor sortDescriptorWithKey:@"row" ascending:YES];
     //NSArray *orderedIndexPaths = [indexPaths sortedArrayUsingDescriptors:@[sort]];
@@ -339,6 +483,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 -(void)scrollForward:(NSNotification*)notification{
+    // 多行模式无横滑分页，滚动索引数学不适用。
+    if ([self multiRowActive]) return;
+
     NSArray *indexPaths = [self indexPathsForVisibleItems];
     //NSSortDescriptor *sort = [NSSortDescriptor sortDescriptorWithKey:@"row" ascending:YES];
     //NSArray *orderedIndexPaths = [indexPaths sortedArrayUsingDescriptors:@[sort]];
@@ -597,8 +744,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     if (self.shortcutConfigurationAvailable && configuredShortcuts.count > 0 &&
         [configuredShortcuts[0] isKindOfClass:[NSArray class]]) {
         NSMutableDictionary *customNames = [[NSMutableDictionary alloc] init];
+        NSInteger enabledTopButtons = 0;
         for (NSDictionary *item in configuredShortcuts[0]) {
-            if (images12.count >= [self shortcutsPerSection]) break;
             if (![item isKindOfClass:[NSDictionary class]]) continue;
             NSString *selector = item[@"selector"];
             // Draft buttons (saved without a tap action) render inert on the
@@ -606,8 +753,14 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
             if (!DXIsDraftActionSelector(selector) && DXIsHiddenShortcutSelector(selector)) continue;
             // Buttons switched off on the manage page stay stored but never render.
             if ([item[@"disabled"] boolValue]) continue;
+            // Defense in depth for legacy/manually-edited preferences: the top
+            // toolbar never renders more than sixteen enabled buttons even
+            // before Settings has normalized surplus entries to disabled.
+            if ([self.configuration isEqualToString:@"top"] &&
+                enabledTopButtons >= maxEnabledTopButtons) continue;
             if (item[@"images12"] && item[@"images13"] && selector) {
                 [self integrateShortcutItem:item intoImages12:images12 images13:images13 selectors:selectors names:customNames];
+                if ([self.configuration isEqualToString:@"top"]) enabledTopButtons++;
             }
         }
         self.customNames = customNames;
@@ -630,7 +783,11 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
     self.shortcuts = @[images12, images13, selectors];
     [self reloadButtonChrome];
-    ((UICollectionViewFlowLayout *)self.collectionViewLayout).minimumInteritemSpacing = [self buttonChromeActive] ? self.buttonSpacing : 0;
+    [self dxApplyLayoutForConfiguration];
+    UICollectionViewFlowLayout *activeFlowLayout = (UICollectionViewFlowLayout *)self.collectionViewLayout;
+    if ([activeFlowLayout isKindOfClass:[UICollectionViewFlowLayout class]]) {
+        activeFlowLayout.minimumInteritemSpacing = [self buttonChromeActive] ? self.buttonSpacing : 0;
+    }
     self.pagingEnabled = YES;
     self.indexArray = nil;
     self.sectionOffsetForwardArray = nil;
@@ -1749,11 +1906,15 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 -(NSInteger)numberOfSectionsInCollectionView:(UICollectionView *)collectionView
 {
+    if ([self multiRowActive]) return 1;
     return ceil((float)(((NSArray *)_shortcuts[kbuttonsImages12]).count)/(float)[self shortcutsPerSection]);
 }
 
 -(NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section
 {
+    if ([self multiRowActive]) {
+        return [self multiRowVisibleItemCount];
+    }
     if (([self numberOfSectionsInCollectionView:collectionView] -1) == section){
         return ((NSArray *)_shortcuts[kbuttonsImages12]).count-[self shortcutsPerSection]*(section);
     }else{
@@ -2873,6 +3034,16 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
 - (CGSize)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout sizeForItemAtIndexPath:(NSIndexPath *)indexPath {
     //CGFloat useableWidth = collectionView.frame.size.width / ((NSArray *)_shortcuts[kbuttonsImages12]).count;
     if ([self.configuration isEqualToString:@"top"]) {
+        if ([self multiRowActive]) {
+            // 与 DXMultiRowTopLayout 同一套几何：每行固定 buttonsPerRow 格，
+            // 供短标签自适应字号取槽宽。
+            NSInteger items = MAX(1, self.buttonsPerRow);
+            BOOL chrome = [self buttonChromeActive];
+            CGFloat halfGap = chrome ? self.buttonSpacing / 2.0 : 0.0;
+            CGFloat gaps = chrome ? self.buttonSpacing * (items - 1) : 0;
+            CGFloat width = MAX(0, (collectionView.frame.size.width - 2 * halfGap - gaps) / items);
+            return CGSizeMake(width, self.buttonHeight);
+        }
         NSInteger items = MAX(1, [self numberOfItemsInSection:indexPath.section]);
         CGFloat gaps = [self buttonChromeActive] ? self.buttonSpacing * (items - 1) : 0;
         CGFloat width = MAX(0, (collectionView.frame.size.width - gaps) / items);
