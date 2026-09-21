@@ -50,9 +50,13 @@
 // entry without a type is a legacy definition and keeps the old behavior of
 // auto-detecting web URL / URL scheme / bundle identifier from its link.
 // "url" additionally stores the APP内打开 choice under "inapp" (default YES).
+// Entries whose payload supports @@@ (legacy / url / urlscheme) store the
+// 剪切替换 choice under "cutreplace": ON clears the input field after its
+// text is passed in (cut), OFF keeps the field's content (copy, default).
 #define kCustomActionTypeKey @"type"
 #define kCustomActionInAppKey @"inapp"
 #define kCustomActionUsePullOverKey @"pullover"
+#define kCustomActionCutReplaceKey @"cutreplace"
 #define kCustomActionTypeURLScheme @"urlscheme"
 #define kCustomActionTypeText @"text"
 #define kCustomActionTypeURL @"url"

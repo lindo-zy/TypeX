@@ -2261,6 +2261,23 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     return [payload stringByReplacingOccurrencesOfString:@"@@@" withString:parameter];
 }
 
+// 剪切替换 for @@@: the entry's switch picks between cut semantics (the field
+// is cleared once its text has been passed into the payload) and copy
+// semantics (the field keeps its content, the historical default). Armed only
+// when the raw payload actually contains @@@ — a payload that never reads the
+// field must never clear it.
+-(BOOL)cutReplaceArmedForEntry:(NSDictionary *)entry rawPayload:(NSString *)rawPayload {
+    return [entry[kCustomActionCutReplaceKey] boolValue] && [rawPayload containsString:@"@@@"];
+}
+
+// Same whole-document clear the delete-all button and the AI seed hand-off
+// use. Only called after the action has passed its validation and is about to
+// dispatch, so a rejected action never destroys the field content.
+-(void)cutHostInputField {
+    [self beginUpdateDelegate];
+    [self clearHostInputText];
+}
+
 // Date/time piece for a text-action template. en_US_POSIX pins the digits and
 // separators so the user's 12-hour switch or calendar override cannot bend
 // the fixed formats.
@@ -2422,7 +2439,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }
 }
 
--(BOOL)dispatchWebURLCustomAction:(NSString *)link inApp:(BOOL)inApp {
+-(BOOL)dispatchWebURLCustomAction:(NSString *)link inApp:(BOOL)inApp cutInputField:(BOOL)cutInputField {
     NSString *lowercaseLink = link.lowercaseString;
     BOOL isHTTPURL = [lowercaseLink hasPrefix:@"http://"] || [lowercaseLink hasPrefix:@"https://"];
     BOOL isWWWURL = [lowercaseLink hasPrefix:@"www."];
@@ -2442,6 +2459,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         [self autoPaginationControl];
         return YES;
     }
+
+    // 剪切替换: the field goes only after the URL has been accepted.
+    if (cutInputField) [self cutHostInputField];
 
     if (inApp && [self openURLInAppBrowser:url]) {
         [self autoPaginationControl];
@@ -2503,7 +2523,10 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         id storedInApp = entry[kCustomActionInAppKey];
         // APP内打开 is the default: an absent flag still means in-app.
         BOOL inApp = (storedInApp == nil) || [storedInApp boolValue];
-        return [self dispatchWebURLCustomAction:[self expandedCustomActionPayload:link escaped:YES] inApp:inApp];
+        BOOL cutField = [self cutReplaceArmedForEntry:entry rawPayload:link];
+        return [self dispatchWebURLCustomAction:[self expandedCustomActionPayload:link escaped:YES]
+                                          inApp:inApp
+                                  cutInputField:cutField];
     }
 
     if ([type isEqualToString:kCustomActionTypeURLScheme]) {
@@ -2513,6 +2536,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
             [self autoPaginationControl];
             return YES;
         }
+        if ([self cutReplaceArmedForEntry:entry rawPayload:link]) [self cutHostInputField];
         NSURL *url = [NSURL URLWithString:payload];
         [self openCustomActionURL:url completion:^(BOOL success) {
             if (!success) {
@@ -2524,7 +2548,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }
 
     // Legacy entry: open a user-defined web URL, URL scheme, or installed app
-    // bundle ID, classified from the link itself.
+    // bundle ID, classified from the link itself. The armed flag reads the raw
+    // link before expansion overwrites it.
+    BOOL cutField = [self cutReplaceArmedForEntry:entry rawPayload:link];
     link = [self expandedCustomActionPayload:link escaped:YES];
     if (link.length == 0) {
         [self showCustomActionLinkError];
@@ -2536,7 +2562,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     BOOL isHTTPURL = [lowercaseLink hasPrefix:@"http://"] || [lowercaseLink hasPrefix:@"https://"];
     BOOL isWWWURL = [lowercaseLink hasPrefix:@"www."];
     if (isHTTPURL || isWWWURL) {
-        return [self dispatchWebURLCustomAction:link inApp:NO];
+        return [self dispatchWebURLCustomAction:link inApp:NO cutInputField:cutField];
     }
 
     NSRange schemeRange = [link rangeOfString:@"^[A-Za-z][A-Za-z0-9+.-]*:"
@@ -2548,6 +2574,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
             return YES;
         }
 
+        if (cutField) [self cutHostInputField];
         NSURL *url = [NSURL URLWithString:link];
         [self openCustomActionURL:url completion:^(BOOL success) {
             if (!success) {
@@ -2559,6 +2586,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }
 
     if ([self isBundleIdentifier:link]) {
+        if (cutField) [self cutHostInputField];
         [self openApplicationWithBundleIdentifier:link completion:^(BOOL success) {
             if (!success) {
                 [self showCustomActionLinkError];

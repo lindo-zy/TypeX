@@ -8,14 +8,18 @@ static NSBundle *tweakBundle;
 
 // Typed rows. 0-2 are shared by every type (类型 / 名称 / 图标); the payload
 // row depends on the entry's type:
-// - urlscheme: section 1 = full-width 文本框 (multi-line payload box)
+// - urlscheme: section 1 = full-width 文本框 (multi-line payload box), then
+//              the 剪切替换 switch (the box types that support @@@)
 // - text:      section 1 = full-width 文本框 (multi-line payload box)
-// - url:       3 = URL 设置 (field), 4 = APP内打开 switch
+// - url:       3 = URL 设置 (field), 4 = APP内打开 switch, 5 = 剪切替换 switch
 // - openapp:   3 = installed-app picker, 4 = PullOver-X switch when installed
+// 剪切替换 appears wherever the payload supports @@@ (legacy / url /
+// urlscheme): ON clears the input field after its text is passed in (cut),
+// OFF keeps the field's content (copy, the default).
 // The box types use two sections: section 0 holds the shared rows, section 1
 // the payload box with the type label as its header and hint as its footer.
-// Entries without a type keep the legacy layout (动作链接) so existing
-// definitions keep editing exactly as before.
+// Entries without a type keep the legacy layout (动作链接) plus the 剪切替换
+// row, so existing definitions keep editing almost exactly as before.
 static NSInteger const DXActionRowType = 0;
 static NSInteger const DXActionRowName = 1;
 static NSInteger const DXActionRowIcon = 2;
@@ -90,6 +94,7 @@ static NSInteger const DXLegacyRowLink = 2;
 @property (nonatomic, strong) UITextField *linkField;
 @property (nonatomic, strong) UISwitch *inAppSwitch;
 @property (nonatomic, strong) UISwitch *pullOverSwitch;
+@property (nonatomic, strong) UISwitch *cutReplaceSwitch;
 @property (nonatomic, copy) NSString *selectedAppName;
 // The one payload box cell for the box types (url scheme / text); kept as a
 // property so its text survives cell reuse while scrolling.
@@ -170,10 +175,30 @@ static NSInteger const DXLegacyRowLink = 2;
 }
 
 - (NSInteger)rowCount {
-    if (self.isLegacyEntry) return 3;
+    if (self.isLegacyEntry) return DXLegacyRowLink + 1 + (self.hasCutReplaceSwitch ? 1 : 0);
     BOOL hasSwitch = [_displayedType isEqualToString:kCustomActionTypeURL] ||
         (self.isOpenAppEntry && self.isPullOverXInstalled);
-    return DXActionRowPayload + 1 + (hasSwitch ? 1 : 0);
+    NSInteger rows = DXActionRowPayload + 1 + (hasSwitch ? 1 : 0);
+    if (self.hasCutReplaceSwitch) rows++;
+    return rows;
+}
+
+// 剪切替换 is offered wherever the payload can pull in the field's text via
+// @@@: legacy auto-detecting links, url, and url scheme. text expands its own
+// {{...}} templates and openapp carries a bundle identifier, so neither ever
+// reads the field through @@@ and neither gets the row.
+- (BOOL)hasCutReplaceSwitch {
+    if (self.isLegacyEntry) return YES;
+    return [_displayedType isEqualToString:kCustomActionTypeURL] ||
+        [_displayedType isEqualToString:kCustomActionTypeURLScheme];
+}
+
+// Last row of the single-section layouts (after 动作链接 or APP内打开); for
+// the box layout it follows the payload box in section 1.
+- (BOOL)isCutReplaceRow:(NSIndexPath *)indexPath {
+    if (![self hasCutReplaceSwitch]) return NO;
+    if ([self usesLargePayloadBox]) return indexPath.section == 1 && indexPath.row == 1;
+    return indexPath.row == [self rowCount] - 1;
 }
 
 - (NSString *)typeFooter {
@@ -263,8 +288,8 @@ static NSInteger const DXLegacyRowLink = 2;
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (![self usesLargePayloadBox]) return [self rowCount];
     // Box layout: section 0 holds the shared rows (类型/名称/图标), section 1
-    // the single payload box.
-    return section == 0 ? DXActionRowPayload : 1;
+    // the payload box followed by the 剪切替换 switch when the type supports @@@.
+    return section == 0 ? DXActionRowPayload : (self.hasCutReplaceSwitch ? 2 : 1);
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
@@ -280,10 +305,10 @@ static NSInteger const DXLegacyRowLink = 2;
     return section == 0 ? [self typeFooter] : nil;
 }
 
-// Only the payload box gets a custom height; every other row keeps the
-// system self-sizing it used before.
+// Only the payload box gets a custom height; every other row (including the
+// 剪切替换 row that follows it) keeps the system self-sizing it used before.
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if ([self usesLargePayloadBox] && indexPath.section == 1) return 120.0;
+    if ([self usesLargePayloadBox] && indexPath.section == 1 && indexPath.row == 0) return 120.0;
     return UITableViewAutomaticDimension;
 }
 
@@ -316,6 +341,20 @@ static NSInteger const DXLegacyRowLink = 2;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    // The 剪切替换 row shares section 1 with the payload box on box types, so
+    // it must be intercepted before the box cell short-circuit below.
+    if ([self isCutReplaceRow:indexPath]) {
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPLinkActionFieldCell" forIndexPath:indexPath];
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        cell.textLabel.text = LOCALIZED(@"CUT_REPLACE_FIELD");
+        cell.textLabel.font = [UIFont systemFontOfSize:16];
+        cell.imageView.image = nil;
+        cell.detailTextLabel.text = nil;
+        cell.accessoryType = UITableViewCellAccessoryNone;
+        cell.accessoryView = self.cutReplaceSwitch;
+        return cell;
+    }
+
     if ([self usesLargePayloadBox] && indexPath.section == 1) {
         return [self payloadBoxCellForRowAtIndexPath:indexPath];
     }
@@ -487,6 +526,8 @@ static NSInteger const DXLegacyRowLink = 2;
         [updated removeObjectForKey:kCustomActionTypeKey];
         [updated removeObjectForKey:kCustomActionInAppKey];
         [updated removeObjectForKey:kCustomActionUsePullOverKey];
+        // Legacy payloads support @@@, so the 剪切替换 choice applies to them.
+        updated[kCustomActionCutReplaceKey] = @(self.cutReplaceSwitch.on);
     } else {
         updated[kCustomActionTypeKey] = _displayedType;
         if ([_displayedType isEqualToString:kCustomActionTypeURL]) {
@@ -498,6 +539,13 @@ static NSInteger const DXLegacyRowLink = 2;
             updated[kCustomActionUsePullOverKey] = @(self.isPullOverXInstalled && self.pullOverSwitch.on);
         } else {
             [updated removeObjectForKey:kCustomActionUsePullOverKey];
+        }
+        if (self.hasCutReplaceSwitch) {
+            updated[kCustomActionCutReplaceKey] = @(self.cutReplaceSwitch.on);
+        } else {
+            // text / openapp never read the field through @@@, so the flag
+            // must not linger from an earlier edit.
+            [updated removeObjectForKey:kCustomActionCutReplaceKey];
         }
     }
     if (self.completion) self.completion(updated);
@@ -590,6 +638,13 @@ static NSInteger const DXLegacyRowLink = 2;
     self.pullOverSwitch = [[UISwitch alloc] init];
     self.pullOverSwitch.on = [self.entry[kCustomActionUsePullOverKey] boolValue];
     [self.pullOverSwitch addTarget:self action:@selector(inAppSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+
+    // 剪切替换 defaults to off: the field keeps its content (copy semantics,
+    // the historical behavior); on, the field is cleared after @@@ passes its
+    // text into the payload (cut semantics).
+    self.cutReplaceSwitch = [[UISwitch alloc] init];
+    self.cutReplaceSwitch.on = [self.entry[kCustomActionCutReplaceKey] boolValue];
+    [self.cutReplaceSwitch addTarget:self action:@selector(inAppSwitchChanged:) forControlEvents:UIControlEventValueChanged];
 
     if (self.isOpenAppEntry) {
         NSString *selectedBundleIdentifier = [self trimmedValue:self.linkField.text];
