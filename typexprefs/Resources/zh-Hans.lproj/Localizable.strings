@@ -181,6 +181,9 @@
 "OPEN_APP" = "打开应用";
 "SELECT_APP" = "选择应用";
 "SELECT_APP_REQUIRED" = "请先选择一个已安装的应用再保存。";
+"SELECTED_APP_SECTION" = "当前应用";
+"USER_APPS_SECTION" = "用户应用";
+"SYSTEM_APPS_SECTION" = "系统应用";
 "SELECT_SHORTCUT" = "选择快捷方式";
 "SEARCH_PLACEHOLDER" = "搜索";
 "SELECTED" = "已选择";

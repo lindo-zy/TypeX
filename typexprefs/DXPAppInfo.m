@@ -6,10 +6,20 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
+@interface LSApplicationRecord : NSObject
+@property (nonatomic, readonly) NSArray *appTags;
+@property (getter=isLaunchProhibited, readonly) BOOL launchProhibited;
+@end
+
 @interface LSApplicationProxy : NSObject
 @property (nonatomic, readonly, copy) NSString *applicationIdentifier;
 @property (nonatomic, readonly, copy) NSString *bundleIdentifier;
 @property (nonatomic, readonly, copy) NSString *localizedName;
+@property (nonatomic, readonly, copy) NSString *applicationType;
+@property (nonatomic, readonly) NSArray *appTags;
+@property (nonatomic, readonly) NSURL *bundleURL;
+@property (getter=isLaunchProhibited, nonatomic, readonly) BOOL launchProhibited;
+- (LSApplicationRecord *)correspondingApplicationRecord;
 @end
 
 @interface LSApplicationWorkspace : NSObject
@@ -24,6 +34,63 @@
 @end
 
 #pragma clang diagnostic pop
+
+// Visibility filter ported from PullOver-X QSFavoritesPickerController: an
+// entry is hidden when any of the three appTags collections (proxy, its
+// LaunchServices record, the bundle Info.plist SBAppTags) contains a "hidden"
+// tag, when it is launch-prohibited, or when it is a com.apple.webapp web
+// clip. Every probe is defensive — private-class behavior differences must
+// never take down the enumeration.
+static BOOL DXAppTagsContainHidden(NSArray *tags) {
+    if (![tags isKindOfClass:[NSArray class]]) {
+        return NO;
+    }
+    for (id tag in tags) {
+        if ([tag isKindOfClass:[NSString class]] &&
+            [(NSString *)tag rangeOfString:@"hidden" options:0].location != NSNotFound) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+static BOOL DXAppProxyIsHidden(LSApplicationProxy *proxy) {
+    NSArray *appTags = nil;
+    NSArray *recordAppTags = nil;
+    NSArray *sbAppTags = nil;
+    BOOL launchProhibited = NO;
+
+    @try {
+        if ([proxy respondsToSelector:@selector(correspondingApplicationRecord)]) {
+            id record = [proxy correspondingApplicationRecord];
+            if ([record respondsToSelector:@selector(appTags)]) recordAppTags = [record appTags];
+            if ([record respondsToSelector:@selector(isLaunchProhibited)]) launchProhibited = [record isLaunchProhibited];
+        }
+        if ([proxy respondsToSelector:@selector(appTags)]) appTags = [proxy appTags];
+        if (!launchProhibited && [proxy respondsToSelector:@selector(isLaunchProhibited)]) {
+            launchProhibited = [proxy isLaunchProhibited];
+        }
+
+        NSURL *bundleURL = [proxy respondsToSelector:@selector(bundleURL)] ? proxy.bundleURL : nil;
+        if (bundleURL && [bundleURL checkResourceIsReachableAndReturnError:nil]) {
+            NSBundle *bundle = [NSBundle bundleWithURL:bundleURL];
+            sbAppTags = [bundle objectForInfoDictionaryKey:@"SBAppTags"];
+        }
+    } @catch (NSException *exception) {
+        (void)exception;
+    }
+
+    NSString *identifier = [proxy respondsToSelector:@selector(applicationIdentifier)]
+        ? proxy.applicationIdentifier : nil;
+    BOOL isWebApplication = [identifier rangeOfString:@"com.apple.webapp"
+                                               options:NSCaseInsensitiveSearch].location != NSNotFound;
+
+    return DXAppTagsContainHidden(appTags)
+        || DXAppTagsContainHidden(recordAppTags)
+        || DXAppTagsContainHidden(sbAppTags)
+        || isWebApplication
+        || launchProhibited;
+}
 
 @implementation DXPAppShortcutItem
 @end
@@ -50,50 +117,56 @@
 }
 
 + (NSArray<LSApplicationProxy *> *)installedAppProxies {
+    NSMutableArray *enumerated = [NSMutableArray array];
+    BOOL completed = [self enumerateInstalledProxies:^(LSApplicationProxy *proxy, BOOL userApp) {
+        (void)userApp;
+        [enumerated addObject:proxy];
+    }];
+    if (completed && enumerated.count > 0) {
+        NSLog(@"[TypeX] shortcuts: enumerated %lu installed applications", (unsigned long)enumerated.count);
+        return enumerated;
+    }
+
+    NSLog(@"[TypeX] shortcuts: typed application enumeration returned no applications");
+    return @[];
+}
+
+// The two synchronous typed passes (0 = System, 1 = User) shared by the
+// synchronous and picker enumeration paths. Avoid allInstalledApplications:
+// it can block while LaunchServices is cold. The block runs synchronously,
+// so results are complete when the call returns; NO means LaunchServices
+// enumeration was unavailable or threw.
++ (BOOL)enumerateInstalledProxies:(void (^)(LSApplicationProxy *proxy, BOOL userApp))block {
     [self ensureLaunchServicesLoaded];
     Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
     if (!workspaceClass) {
         NSLog(@"[TypeX] shortcuts: LSApplicationWorkspace unavailable");
-        return @[];
+        return NO;
     }
     @try {
         id workspace = [workspaceClass performSelector:@selector(defaultWorkspace)];
         if (!workspace) {
             NSLog(@"[TypeX] shortcuts: default workspace unavailable");
-            return @[];
+            return NO;
         }
 
-        // Primary: enumerateApplicationsOfType:block:, asked once for system
-        // (0) and once for user (1) apps and merged — the same passes the
-        // reference tweaks run inside Settings. The block is invoked
-        // synchronously, so results are complete when the call returns.
         SEL enumerateSelector = @selector(enumerateApplicationsOfType:block:);
-        if ([workspace respondsToSelector:enumerateSelector]) {
-            Class proxyClass = [self appProxyClass];
-            NSMutableArray *enumerated = [NSMutableArray array];
-            BOOL threw = NO;
-            @try {
-                for (NSUInteger type = 0; type <= 1; type++) {
-                    ((void (*)(id, SEL, NSUInteger, void (^)(LSApplicationProxy *)))objc_msgSend)(
-                        workspace, enumerateSelector, type, ^(LSApplicationProxy *proxy) {
-                            if (!proxyClass || [proxy isKindOfClass:proxyClass]) [enumerated addObject:proxy];
-                        });
-                }
-            } @catch (NSException *exception) {
-                NSLog(@"[TypeX] shortcuts: enumerateApplicationsOfType failed (%@)", exception);
-                threw = YES;
-            }
-            if (!threw && enumerated.count > 0) {
-                NSLog(@"[TypeX] shortcuts: enumerated %lu installed applications", (unsigned long)enumerated.count);
-                return enumerated;
-            }
+        if (![workspace respondsToSelector:enumerateSelector]) {
+            NSLog(@"[TypeX] shortcuts: typed enumeration unavailable");
+            return NO;
         }
-
-        NSLog(@"[TypeX] shortcuts: typed application enumeration returned no applications");
-        return @[];
+        Class proxyClass = [self appProxyClass];
+        for (NSUInteger type = 0; type <= 1; type++) {
+            BOOL userApp = (type == 1);
+            ((void (*)(id, SEL, NSUInteger, void (^)(LSApplicationProxy *)))objc_msgSend)(
+                workspace, enumerateSelector, type, ^(LSApplicationProxy *proxy) {
+                    if (!proxyClass || [proxy isKindOfClass:proxyClass]) block(proxy, userApp);
+                });
+        }
+        return YES;
     } @catch (NSException *exception) {
         NSLog(@"[TypeX] shortcuts: application enumeration failed (%@)", exception);
-        return @[];
+        return NO;
     }
 }
 
@@ -148,6 +221,42 @@
         return [left.name localizedStandardCompare:right.name];
     }];
     return apps;
+}
+
++ (void)installedAppsWithCompletion:(void (^)(NSArray<DXPAppInfo *> *apps))completion {
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        Class proxyClass = [self appProxyClass];
+        NSMutableArray<DXPAppInfo *> *userApps = [NSMutableArray array];
+        NSMutableArray<DXPAppInfo *> *systemApps = [NSMutableArray array];
+        NSMutableSet<NSString *> *seen = [NSMutableSet set];
+
+        [self enumerateInstalledProxies:^(LSApplicationProxy *proxy, BOOL userApp) {
+            if (proxyClass && ![proxy isKindOfClass:proxyClass]) return;
+            NSString *bundleID = [self bundleIDForProxy:proxy];
+            if (bundleID.length == 0 || [seen containsObject:bundleID]) return;
+            if (DXAppProxyIsHidden(proxy)) return;
+            [seen addObject:bundleID];
+
+            DXPAppInfo *app = [[DXPAppInfo alloc] init];
+            app.bundleID = bundleID;
+            app.name = [self localizedNameForProxy:proxy] ?: bundleID;
+            app.userApp = userApp;
+            [(userApp ? userApps : systemApps) addObject:app];
+        }];
+
+        [userApps sortUsingComparator:^NSComparisonResult(DXPAppInfo *left, DXPAppInfo *right) {
+            return [left.name localizedStandardCompare:right.name];
+        }];
+        [systemApps sortUsingComparator:^NSComparisonResult(DXPAppInfo *left, DXPAppInfo *right) {
+            return [left.name localizedStandardCompare:right.name];
+        }];
+        NSMutableArray<DXPAppInfo *> *apps = [NSMutableArray arrayWithArray:userApps];
+        [apps addObjectsFromArray:systemApps];
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion([apps copy]);
+        });
+    });
 }
 
 // SpringBoard replaces the entire format-3 snapshot after reading each

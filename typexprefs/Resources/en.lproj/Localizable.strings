@@ -180,6 +180,9 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "OPEN_APP" = "Open App";
 "SELECT_APP" = "Select App";
 "SELECT_APP_REQUIRED" = "Please select an installed app before saving.";
+"SELECTED_APP_SECTION" = "Current App";
+"USER_APPS_SECTION" = "User Apps";
+"SYSTEM_APPS_SECTION" = "System Apps";
 "SELECT_SHORTCUT" = "Select Shortcut";
 "SEARCH_PLACEHOLDER" = "Search";
 "SELECTED" = "Selected";
