@@ -183,6 +183,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SELECTED_APP_SECTION" = "Current App";
 "USER_APPS_SECTION" = "User Apps";
 "SYSTEM_APPS_SECTION" = "System Apps";
+"ENABLED_NOT_LISTED_SECTION" = "Enabled (Not Listed)";
 "SELECT_SHORTCUT" = "Select Shortcut";
 "SEARCH_PLACEHOLDER" = "Search";
 "SELECTED" = "Selected";

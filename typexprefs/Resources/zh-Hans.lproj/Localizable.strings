@@ -184,6 +184,7 @@
 "SELECTED_APP_SECTION" = "当前应用";
 "USER_APPS_SECTION" = "用户应用";
 "SYSTEM_APPS_SECTION" = "系统应用";
+"ENABLED_NOT_LISTED_SECTION" = "已开启（未在列表）";
 "SELECT_SHORTCUT" = "选择快捷方式";
 "SEARCH_PLACEHOLDER" = "搜索";
 "SELECTED" = "已选择";
