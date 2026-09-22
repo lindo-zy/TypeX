@@ -7,3 +7,6 @@ obj
 .theos
 .DS_Store
 
+# 本地私有配置（Bark 推送 token 等），永不入库
+build-notify.local.conf
+
