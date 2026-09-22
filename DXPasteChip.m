@@ -165,9 +165,12 @@ static __weak UIResponder *DXPasteChipCapturedResponder = nil;
     if (!preferencesBool(kEnabledkey, YES) || !preferencesBool(kPasteImageChipKey, YES)) return NO;
     NSString *bundleID = [NSBundle mainBundle].bundleIdentifier;
     if (bundleID.length == 0) return NO;
-    NSDictionary *allowlist = [DXPrefsManager sharedInstance].prefs[kPasteImageChipAppsKey];
-    if (![allowlist isKindOfClass:[NSDictionary class]]) return NO;
-    return [allowlist[bundleID] boolValue];
+    // 生效应用 allowlist: an array of enabled bundle IDs (AltList multi-select
+    // page, 3.5.2+) — legacy format was a bundleID→@YES dictionary; both count.
+    id allowlist = [DXPrefsManager sharedInstance].prefs[kPasteImageChipAppsKey];
+    if ([allowlist isKindOfClass:[NSArray class]]) return [allowlist containsObject:bundleID];
+    if ([allowlist isKindOfClass:[NSDictionary class]]) return [allowlist[bundleID] boolValue];
+    return NO;
 }
 
 - (BOOL)isFeatureEnabled {

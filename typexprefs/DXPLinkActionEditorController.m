@@ -648,14 +648,10 @@ static NSInteger const DXLegacyRowLink = 2;
 
     if (self.isOpenAppEntry) {
         NSString *selectedBundleIdentifier = [self trimmedValue:self.linkField.text];
-        for (DXPAppInfo *app in [DXPAppInfo installedApps]) {
-            if (![app.bundleID isEqualToString:selectedBundleIdentifier]) continue;
-            self.selectedAppName = app.name.length ? app.name : app.bundleID;
-            break;
-        }
-        if (self.selectedAppName.length == 0 && selectedBundleIdentifier.length > 0) {
-            self.selectedAppName = selectedBundleIdentifier;
-        }
+        // Direct LaunchServices resolution (no enumeration), so a configured
+        // app that the AltList pickers filter out still shows its real name.
+        NSString *displayName = [DXPAppInfo displayNameForBundleID:selectedBundleIdentifier];
+        self.selectedAppName = displayName.length > 0 ? displayName : selectedBundleIdentifier;
     }
 
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];

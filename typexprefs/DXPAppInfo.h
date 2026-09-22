@@ -17,29 +17,22 @@ typedef NS_ENUM(NSInteger, DXPAppShortcutSource) {
 @property (nonatomic, assign) DXPAppShortcutSource source;
 @end
 
-// Installed-app lookups for the custom-action editor's pickers: the app list
-// and each app's static/dynamic home-screen quick actions. Settings enumerates
-// apps through LaunchServices; SpringBoard resolves the actual shortcut items
-// and replaces one complete shared snapshot.
+// Value object and lookups for the custom-action editor: the bundleID/name
+// pairs handed back by the AltList app pickers (生效应用 multi-select page,
+// 打开应用 single-select picker), each app's static/dynamic home-screen quick
+// actions, and display-name/icon resolution for an already-configured bundle
+// identifier. Application enumeration itself lives in the vendored AltList
+// controllers; SpringBoard resolves the actual shortcut items and replaces one
+// complete shared snapshot.
 @interface DXPAppInfo : NSObject
 @property (nonatomic, copy) NSString *bundleID;
 @property (nonatomic, copy) NSString *name;
-// NO when the proxy came from the System pass of the typed enumeration.
-// Only meaningful for lists produced by installedAppsWithCompletion:.
-@property (nonatomic, assign, getter=isUserApp) BOOL userApp;
 
-// All installed apps, deduplicated by bundle identifier and sorted by
-// localized name. Unfiltered (web clips and hidden entries included): the
-// editor resolves already-configured bundle IDs through it and must not
-// lose a match. The shortcut catalogue does not enumerate here.
-+ (NSArray<DXPAppInfo *> *)installedApps;
-
-// Picker variant of installedApps: same two-pass enumeration run on a
-// background queue, minus web clips, hidden and launch-prohibited entries.
-// User apps first, then system apps, each sorted by localized name. The
-// completion runs on the main queue, receives a non-nil array and never
-// throws.
-+ (void)installedAppsWithCompletion:(void (^)(NSArray<DXPAppInfo *> *apps))completion;
+// Localized display name for a bundle identifier via LaunchServices; nil when
+// LaunchServices is unavailable (callers fall back to the raw identifier).
+// Works for filtered/unlisted apps too: it never enumerates, it resolves
+// directly.
++ (NSString *)displayNameForBundleID:(NSString *)bundleID;
 
 // Apps that declare at least one quick action. Each entry is
 // @{@"name": NSString, @"bundleID": NSString, @"items": NSArray<DXPAppShortcutItem *>}

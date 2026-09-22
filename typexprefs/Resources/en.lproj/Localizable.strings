@@ -180,12 +180,9 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "OPEN_APP" = "Open App";
 "SELECT_APP" = "Select App";
 "SELECT_APP_REQUIRED" = "Please select an installed app before saving.";
-"SELECTED_APP_SECTION" = "Current App";
-"USER_APPS_SECTION" = "User Apps";
-"SYSTEM_APPS_SECTION" = "System Apps";
-"ENABLED_NOT_LISTED_SECTION" = "Enabled (Not Listed)";
 "SELECT_SHORTCUT" = "Select Shortcut";
-"SEARCH_PLACEHOLDER" = "Search";
+"User Applications" = "User Applications";
+"System Applications" = "System Applications";
 "SELECTED" = "Selected";
 "UNSELECTED" = "Not Selected";
 "NO_APP_SHORTCUTS" = "No app shortcuts found. SpringBoard is refreshing the current static and dynamic shortcuts; reopen this page in a moment.";
@@ -322,9 +319,6 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "AI_HINT_CUSTOM" = "Custom engines need an OpenAI-compatible endpoint (with the /v1-style prefix). Comma-separate models. Fetch uses {endpoint}/models.";
 
 "PASTE_CHIP_ACTION" = "Paste";
-"PASTE_CHIP_APPS_SHOW_ENABLED" = "Enabled Only";
-"PASTE_CHIP_APPS_SHOW_ALL" = "Show All";
-"PASTE_CHIP_APPS_SEARCH" = "Search apps or bundle IDs";
 
 /* Screenshot */
 "SHELLX_SCREENSHOT_HIDE_KEYBOARD" = "Hide keyboard during screenshot";
@@ -337,7 +331,6 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "PASTE_CHIP" = "Paste Chip";
 "PASTE_CHIP_FOOTER" = "Shows a floating paste chip above the keyboard when the clipboard holds new content, and auto-answers the system paste-permission alert.";
 "PASTE_CHIP_APPS" = "Enabled Apps";
-"PASTE_CHIP_APPS_FOOTER" = "Enabled for %ld apps";
 "FOOTER_CREDITS" = "TypeX by lindo. Thanks for your support.";
 "SHORTCUTS_TINT_GROUP" = "Button Tint";
 "SHORTCUTS_TINT" = "Button Color";

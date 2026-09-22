@@ -109,12 +109,45 @@
 			<string>PASTE_CHIP</string>
 		</dict>
 		<dict>
+			<key>PostNotification</key>
+			<string>com.lindo.typex/prefschanged</string>
 			<key>cell</key>
-			<string>PSLinkCell</string>
+			<string>PSLinkListCell</string>
 			<key>detail</key>
-			<string>DXPPasteChipAppsController</string>
+			<string>ATLApplicationListMultiSelectionController</string>
+			<key>get</key>
+			<string>dxp_pasteChipAppsRead:</string>
+			<key>set</key>
+			<string>dxp_pasteChipAppsWrite:specifier:</string>
+			<key>defaults</key>
+			<string>com.lindo.typex</string>
+			<key>key</key>
+			<string>pasteimagechipapps</string>
+			<key>default</key>
+			<array/>
+			<key>defaultApplicationSwitchValue</key>
+			<false/>
 			<key>label</key>
 			<string>PASTE_CHIP_APPS</string>
+			<key>sections</key>
+			<array>
+				<dict>
+					<key>sectionType</key>
+					<string>User</string>
+				</dict>
+				<dict>
+					<key>sectionType</key>
+					<string>System</string>
+				</dict>
+			</array>
+			<key>useSearchBar</key>
+			<true/>
+			<key>hideSearchBarWhileScrolling</key>
+			<false/>
+			<key>includeIdentifiersInSearch</key>
+			<true/>
+			<key>showIdentifiersAsSubtitle</key>
+			<true/>
 		</dict>
 		<dict>
 			<key>cell</key>

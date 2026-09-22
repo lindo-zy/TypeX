@@ -1,12 +1,17 @@
-#import <Preferences/PSViewController.h>
+#import "AltList/ATLApplicationListSelectionController.h"
 
 @class DXPAppInfo;
 
-// Single-selection installed-app picker used by the Open App custom action.
-// Backed by DXPAppInfo's filtered background enumeration and split into
-// pinned-current / user / system sections with a navigation search bar.
-// The editor owns persistence; this controller only returns the chosen app.
-@interface DXPOpenAppPickerController : PSViewController
+// Single-app picker for the openapp custom action, on the vendored AltList
+// selection controller: User/System sections classified by
+// LSApplicationProxy.applicationType (PullOver-X acquisition method), stock
+// search bar and icons. Programmatic use — pushed from
+// DXPLinkActionEditorController without a specifier, so all configuration is
+// done in code; the editor owns persistence and receives the pick through
+// `completion`.
+@interface DXPOpenAppPickerController : ATLApplicationListSelectionController
+// Pre-selected app (checkmark anchor); set before pushing.
 @property (nonatomic, copy) NSString *selectedBundleIdentifier;
+// Fired once per row tap, before the controller pops itself.
 @property (nonatomic, copy) void (^completion)(DXPAppInfo *app);
 @end

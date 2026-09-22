@@ -181,12 +181,9 @@
 "OPEN_APP" = "打开应用";
 "SELECT_APP" = "选择应用";
 "SELECT_APP_REQUIRED" = "请先选择一个已安装的应用再保存。";
-"SELECTED_APP_SECTION" = "当前应用";
-"USER_APPS_SECTION" = "用户应用";
-"SYSTEM_APPS_SECTION" = "系统应用";
-"ENABLED_NOT_LISTED_SECTION" = "已开启（未在列表）";
 "SELECT_SHORTCUT" = "选择快捷方式";
-"SEARCH_PLACEHOLDER" = "搜索";
+"User Applications" = "用户应用";
+"System Applications" = "系统应用";
 "SELECTED" = "已选择";
 "UNSELECTED" = "未选择";
 "NO_APP_SHORTCUTS" = "没有找到应用快捷方式。系统桌面正在刷新当前静态与动态快捷项，请稍后重新打开此页。";
@@ -321,9 +318,6 @@
 "AI_HINT_CUSTOM" = "自定义引擎需填写 OpenAI 兼容接口地址（含 /v1 一类前缀），模型用逗号分隔，抓取走 {地址}/models。";
 
 "PASTE_CHIP_ACTION" = "粘贴";
-"PASTE_CHIP_APPS_SHOW_ENABLED" = "只看已开启";
-"PASTE_CHIP_APPS_SHOW_ALL" = "显示全部";
-"PASTE_CHIP_APPS_SEARCH" = "搜索应用名称或 Bundle ID";
 
 /* 截图 */
 "SHELLX_SCREENSHOT_HIDE_KEYBOARD" = "截图时隐藏键盘";
@@ -337,7 +331,6 @@
 "PASTE_CHIP" = "粘贴悬浮窗";
 "PASTE_CHIP_FOOTER" = "剪贴板有新内容时在键盘上方弹出悬浮粘贴窗，并自动放行系统「允许粘贴」弹窗。";
 "PASTE_CHIP_APPS" = "生效应用";
-"PASTE_CHIP_APPS_FOOTER" = "已为 %ld 个应用开启粘贴悬浮窗";
 "FOOTER_CREDITS" = "TypeX 由 lindo 开发，感谢使用与支持";
 "SHORTCUTS_TINT_GROUP" = "快捷按钮颜色";
 "SHORTCUTS_TINT" = "按钮颜色";

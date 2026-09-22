@@ -34,6 +34,39 @@ static NSBundle *tweakBundle;
     
     return _specifiers;
 }
+
+#pragma mark - 生效应用（AltList 多选页 get/set）
+
+// 历史版本把 pasteimagechipapps 存成 bundleID→@YES 字典，AltList 多选页存
+// 已开启 bundleID 数组。读取侧统一规整成数组（只在内存转换，不回写，首次
+// 拨动开关时自然落盘为新格式）；tweak 侧（DXPasteChip）两种格式都认。
+- (id)dxp_pasteChipAppsRead:(PSSpecifier *)specifier {
+    id value = [self readPreferenceValue:specifier];
+    if ([value isKindOfClass:[NSArray class]]) return value;
+    if (![value isKindOfClass:[NSDictionary class]]) return @[];
+
+    NSMutableArray<NSString *> *enabled = [NSMutableArray array];
+    for (NSString *bundleID in value) {
+        NSNumber *flag = value[bundleID];
+        if ([bundleID isKindOfClass:[NSString class]] &&
+            [flag isKindOfClass:[NSNumber class]] && flag.boolValue) {
+            [enabled addObject:bundleID];
+        }
+    }
+    return enabled;
+}
+
+// setPreferenceValue:specifier: 负责域写入；这里显式补发 prefschanged，
+// 保证键盘进程立刻感知（与各开关的 PostNotification 等效，双发无害）。
+- (void)dxp_pasteChipAppsWrite:(id)value specifier:(PSSpecifier *)specifier {
+    [self setPreferenceValue:value specifier:specifier];
+
+    CFStringRef notificationName = (__bridge CFStringRef)kPrefsChangedIdentifier;
+    if (notificationName) {
+        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), notificationName, NULL, NULL, YES);
+    }
+}
+
 -(void)viewDidLoad  {
     tweakBundle = [NSBundle bundleWithPath:bundlePath];
     [tweakBundle load];
