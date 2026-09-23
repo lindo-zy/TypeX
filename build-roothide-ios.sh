@@ -47,6 +47,48 @@ if (( NEXT_MINOR > 10 )); then
 fi
 NEXT_VERSION="${NEXT_MAJOR}.${NEXT_MINOR}.${NEXT_PATCH}"
 
+# Bark 推送：每次构建结束后推送"typex-版本-状态"；token 只存本地
+# build-notify.local.conf（已被 .gitignore 排除）。
+# 配置缺失、无 token 或推送失败都只告警，不影响构建结果与退出码。
+notify_bark() {
+    local message="$1"
+    local conf_file="$ROOT_DIR/build-notify.local.conf"
+
+    if [[ ! -f "$conf_file" ]]; then
+        echo "note: $conf_file not found, skip notification" >&2
+        return 0
+    fi
+    # shellcheck disable=SC1090
+    source "$conf_file"
+    if [[ -z "${BARK_TOKEN:-}" ]]; then
+        echo "note: no BARK_TOKEN in build-notify.local.conf, skip notification" >&2
+        return 0
+    fi
+    if curl -fsS --max-time 10 "https://api.day.app/${BARK_TOKEN}/${message}" >/dev/null 2>&1; then
+        echo "==> Bark notification sent: $message"
+    else
+        echo "warning: Bark notification failed (build result is unaffected)" >&2
+    fi
+    return 0
+}
+
+# 编译开始后才推送结果；脚本前置校验失败不推送
+BUILD_STARTED=false
+CONTROL_TMP=""
+finalize() {
+    local rc=$?
+    trap - EXIT
+    rm -f "${CONTROL_TMP:-}"
+    if [[ "$BUILD_STARTED" == true ]]; then
+        if [[ "$rc" -eq 0 ]]; then
+            notify_bark "typex-${NEXT_VERSION}-构建完成"
+        else
+            notify_bark "typex-${NEXT_VERSION}-构建失败"
+        fi
+    fi
+}
+trap finalize EXIT
+
 build_one() {
     local label="$1"
     local sdk_version="$2"
@@ -87,14 +129,16 @@ build_one() {
     echo "==> Output: $output_path"
 }
 
+BUILD_STARTED=true
+
 build_one ios16 16.5 16.0
 # Keep the iOS 17 build compatible with the reference package:
 # build against the iOS 16 SDK while retaining iOS 15+ ABI support.
 build_one ios17 16.5 15.0
 
 # Persist the version only after both platform builds have completed.
+# CONTROL_TMP 的清理由 finalize（EXIT trap）负责。
 CONTROL_TMP="$(mktemp "$ROOT_DIR/control.tmp.XXXXXX")"
-trap 'rm -f "$CONTROL_TMP"' EXIT
 
 awk -v next_version="$NEXT_VERSION" '
     BEGIN { updated = 0 }
@@ -109,23 +153,5 @@ awk -v next_version="$NEXT_VERSION" '
     }
 ' "$ROOT_DIR/control" > "$CONTROL_TMP"
 mv "$CONTROL_TMP" "$ROOT_DIR/control"
-trap - EXIT
 
 echo "==> Build completed successfully: $PACKAGE_VERSION -> $NEXT_VERSION"
-
-# Bark 推送：token 只存本地 build-notify.local.conf（已被 .gitignore 排除）。
-# 配置缺失、无 token 或推送失败都只告警，不影响构建结果。
-NOTIFY_CONF="$ROOT_DIR/build-notify.local.conf"
-if [[ -f "$NOTIFY_CONF" ]]; then
-    # shellcheck disable=SC1090
-    source "$NOTIFY_CONF"
-    if [[ -n "${BARK_TOKEN:-}" ]]; then
-        if curl -fsS --max-time 10 "https://api.day.app/${BARK_TOKEN}/typex改动完成" >/dev/null 2>&1; then
-            echo "==> Bark notification sent"
-        else
-            echo "warning: Bark notification failed (build result is unaffected)" >&2
-        fi
-    else
-        echo "note: no BARK_TOKEN in build-notify.local.conf, skip notification" >&2
-    fi
-fi
