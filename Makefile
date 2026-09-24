@@ -12,19 +12,13 @@ INSTALL_TARGET_PROCESSES = SpringBoard
 
 include $(THEOS)/makefiles/common.mk
 
-TWEAK_NAME = TypeX TypeXSB
+TWEAK_NAME = TypeX
 
-# TypeXSB.xm is the SpringBoard-only companion (open-request channel consumer)
-# and builds into its own dylib below; keep it out of the TypeX wildcard.
-TypeX_FILES = $(filter-out TypeXSB.xm,$(wildcard *.x) $(wildcard *.m) $(wildcard *.mm) $(wildcard *.xm))
+TypeX_FILES = $(wildcard *.x) $(wildcard *.m) $(wildcard *.mm) $(wildcard *.xm)
 TypeX_CFLAGS = -fobjc-arc
 TypeX_LIBRARIES =
 TypeX_FRAMEWORKS = UIKit CoreGraphics QuartzCore ImageIO SafariServices PhotosUI UniformTypeIdentifiers
 TypeX_PRIVATE_FRAMEWORKS = AppSupport Preferences FrontBoardServices SpringBoardServices
-
-TypeXSB_FILES = TypeXSB.xm
-TypeXSB_CFLAGS = -fobjc-arc
-TypeXSB_PRIVATE_FRAMEWORKS = SpringBoardServices
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 SUBPROJECTS += typexprefs
