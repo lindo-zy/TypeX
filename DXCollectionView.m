@@ -2163,45 +2163,40 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
                               kTypeXOpenRequestCreatedKey: @([NSDate date].timeIntervalSince1970),
                               kTypeXOpenRequestKindKey: kind,
                               payloadKey: payload ?: @""};
-    BOOL written = DXSetQuickActionSharedValue(request, TypeXOpenRequestKey);
+    // Device-proven surface (2026-09-24 syslog): a sandboxed host's cfprefsd
+    // write to the shared domain gets redirected into that host's own
+    // container ("Process 47097 (WeChat) wrote ... /Containers/Data/
+    // Application/.../com.lindo.typex.quickactions.plist") and SpringBoard --
+    // which reads the real domain -- never sees it. The same syslog run
+    // showed the SB-side consumer alive and the notification delivered, so
+    // the bare-file staging under /Library/TypeX is the transport: it is the
+    // write surface DXPrefsManager's shared.plist snapshot has always used
+    // from sandboxed toolbar processes (writeToFile + world-readable, no
+    // protection), and SB reads those files every day.
+    NSString *path = TypeXOpenRequestPath;
+    NSString *directory = [path stringByDeletingLastPathComponent];
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    if (![fileManager fileExistsAtPath:directory]) {
+        [fileManager createDirectoryAtPath:directory
+                withIntermediateDirectories:YES
+                                 attributes:@{NSFilePosixPermissions: @0777}
+                                      error:nil];
+    }
+    BOOL written = [request writeToFile:path atomically:YES];
+    if (written) {
+        [fileManager setAttributes:@{NSFilePosixPermissions: @0644,
+                                     NSFileProtectionKey: NSFileProtectionNone}
+                        ofItemAtPath:path
+                               error:nil];
+    }
     notify_post(kTypeXOpenRequestIdentifier.UTF8String);
     NSLog(@"[TypeX] TypeXSB publish kind=%@ written=%d", kind, written);
     [self finishCustomActionOpen:completion success:written];
-
-    // Publishing accepted the request, not the outcome -- the open runs inside
-    // SpringBoard and its failures used to be completely silent (the 3.5.6
-    // device report: scheme dead, no toast, nothing to act on). TypeXSB now
-    // reports every consume/drop outcome to the open-status key, plus a ctor
-    // heartbeat under open-alive. One delayed check separates every failure
-    // class without needing device logs:
-    //   no status, no heartbeat -> the companion is not injected into SB;
-    //   no status, heartbeat    -> injected, but the Darwin notification
-    //                              never reached it;
-    //   status code "unreadable"-> notification arrived, but SB could not see
-    //                              the request value (write-redirect signature);
-    //   status ours, ok=false   -> toast the failing stage code;
-    //   status ours, ok=true    -> silent (and on success the host resigns and
-    //                              this block never runs anyway).
-    if (!written) return;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        id rawStatus = DXQuickActionSharedValue(TypeXOpenStatusKey);
-        NSDictionary *status = [rawStatus isKindOfClass:[NSDictionary class]] ? rawStatus : nil;
-        NSString *statusCode = [status[@"code"] isKindOfClass:[NSString class]] ? status[@"code"] : nil;
-        if (!status) {
-            BOOL alive = [DXQuickActionSharedValue(TypeXOpenAliveKey) isKindOfClass:[NSDictionary class]];
-            NSLog(@"[TypeX] TypeXSB status missing, alive=%d", alive);
-            [self showCustomActionMessage:LOCALIZED(alive ? @"CUSTOM_ACTION_SB_NOTIFY"
-                                                          : @"CUSTOM_ACTION_SB_MISSING")];
-            return;
-        }
-        BOOL unreadable = [statusCode isEqualToString:@"unreadable"];
-        if (!unreadable && ![status[kTypeXOpenRequestIDKey] isEqualToString:requestID]) return;
-        if (!unreadable && [status[@"ok"] boolValue]) return;
-        NSString *code = statusCode ?: @"unknown";
-        NSLog(@"[TypeX] TypeXSB status failure code=%@", code);
-        [self showCustomActionMessage:[NSString stringWithFormat:LOCALIZED(@"CUSTOM_ACTION_OPEN_FAIL"), code]];
-    });
+    // No read-back here on purpose: the sandboxed reader sees its own host's
+    // redirected domain copy, never SpringBoard's writes, so a status check
+    // reported "companion not injected" for a consumer that was demonstrably
+    // alive. The open outcome lives in the [TypeXSB] syslogs (and the
+    // open-status key SB writes to the real domain).
 }
 
 // Compatibility ladder for systems without FBSOpenApplicationRequest (iOS 12):

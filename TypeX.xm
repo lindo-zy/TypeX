@@ -1467,24 +1467,30 @@ static void shortcutRefreshRequestCallback(CFNotificationCenterRef center,
 }
 
 //===========================================================================
-// TypeXSB open-request consumer (url scheme + openapp), inlined 3.5.9.
+// TypeXSB open-request consumer (url scheme + openapp): inlined 3.5.9,
+// bare-file transport 3.5.10.
 //
-// Originally a separate SpringBoard-only dylib (3.5.5-3.5.8): the deb
-// contained it and its filter plist was structurally identical to
-// PullOver-X's (an SB-only tweak that loads fine on this device), yet the
-// device never loaded it -- the ctor heartbeat written into the shared
-// domain stayed absent, so no request was ever consumed. With every offline
-// differentiator exhausted (deps a strict subset of this dylib's, same
-// signing pipeline, same install layout), the consumer moved in here: this
-// dylib provably injects into SpringBoard and already hosts the AI-channel
-// Darwin observer registered the same way at ctor time. The notification
-// name keeps a single owner (registered only in the isSpringBoard branch of
-// the ctor below). Channel contract (common.h) is unchanged: newest-wins
-// request key, TTL + requestID dedup, 1.2s throttle, an open is never
-// retried, and the notification is never posted back; the open runs as
-// SBSLaunch carrying __LaunchURL -- a launch option of a system-style
-// launch instead of an openURL event attributed to a source application,
-// which is what bypasses the interception.
+// The 2026-09-24 USB syslog run settled the whole chain on device: this
+// dylib runs in SpringBoard, the Darwin notification arrives, and this
+// consumer fired -- but the sandboxed publisher's cfprefsd write had been
+// redirected into its host's own container ("Process 47097 (WeChat) wrote
+// ... /Containers/Data/Application/.../com.lindo.typex.quickactions.plist"),
+// so the real-domain read here found nothing. The request therefore stages
+// as one raw plist under /Library/TypeX (the shared.plist surface, written
+// from sandboxed toolbar processes every day), and outcome reports go back
+// through the real domain, which SB can write and syslog/Settings can see.
+// Note for the record: the 3.5.8 "standalone dylib never loaded" verdict
+// came from a heartbeat the sandboxed reader could never have seen through
+// the same redirect, so that instrument was flawed -- the merge to this
+// dylib stands on its own (today's log proves this host runs the consumer),
+// and the standalone implementation remains in git history either way.
+// The notification name has a single owner: registered only in the
+// isSpringBoard branch of the ctor below. Contract: newest-wins file slot,
+// TTL + requestID dedup, 1.2s throttle, an open is never retried, and the
+// notification is never posted back; the open runs as SBSLaunch carrying
+// __LaunchURL -- a launch option of a system-style launch instead of an
+// openURL event attributed to a source application, which is what bypasses
+// the interception.
 //===========================================================================
 
 // A request older than this is treated as leftover state (respring, missed
@@ -1652,22 +1658,24 @@ static void TypeXSBOpenRequestCallback(CFNotificationCenterRef center,
                                        CFStringRef name,
                                        const void *object,
                                        CFDictionaryRef userInfo) {
-    // Same read pattern the AI channel consumer uses: Synchronize first so a
-    // just-written request is visible, then copy the single newest-wins key.
-    id rawRequest = DXQuickActionSharedValue(TypeXOpenRequestKey);
-    if (![rawRequest isKindOfClass:[NSDictionary class]]) {
+    // Bare-file slot (device-proven transport, 2026-09-24 syslog: the
+    // sandboxed publisher's cfprefsd writes are redirected into its host
+    // container, invisible here): the request stages as one raw plist under
+    // the shared directory -- the same surface shared.plist uses -- and is
+    // consumed newest-wins. SB cannot delete it, so TTL + requestID dedup
+    // below make replays inert.
+    NSDictionary *request = [NSDictionary dictionaryWithContentsOfFile:TypeXOpenRequestPath];
+    if (![request isKindOfClass:[NSDictionary class]]) {
         NSLog(@"[TypeXSB] request slot unreadable, dropped");
-        // Reported with an empty requestID so the publisher can tell this
-        // apart from "consumer never ran": the notification DID arrive, but
-        // the request value was not visible to SpringBoard (the signature of
-        // the write having been redirected away from the shared domain).
+        // Reported to the real cfprefsd domain (SB-side writes there are
+        // device-proven) for syslog/Settings diagnostics: the notification
+        // DID arrive, but the request file was not readable.
         DXSetQuickActionSharedValue(@{kTypeXOpenRequestIDKey: @"",
                                       @"ok": @NO,
                                       @"code": @"unreadable"},
                                     TypeXOpenStatusKey);
         return;
     }
-    NSDictionary *request = rawRequest;
 
     NSNumber *format = [request[kTypeXOpenRequestFormatKey] isKindOfClass:[NSNumber class]]
         ? request[kTypeXOpenRequestFormatKey] : nil;
@@ -1720,17 +1728,6 @@ static void TypeXSBOpenRequestCallback(CFNotificationCenterRef center,
     dispatch_async(dispatch_get_main_queue(), ^{
         TypeXSBPerformOpenRequest(request);
     });
-}
-
-// One-way heartbeat written once per SpringBoard launch so the publisher can
-// distinguish "consumer not running in SB" (no heartbeat) from "running but
-// the notification never arrived" (heartbeat present, no status). The
-// ctor-time write may land before cfprefsd fully serves SB, so it is
-// repeated once the main queue is up.
-static void TypeXSBWriteAliveHeartbeat(void) {
-    DXSetQuickActionSharedValue(@{@"pid": @(getpid()),
-                                  @"loaded": @([[NSDate date] timeIntervalSince1970])},
-                                TypeXOpenAliveKey);
 }
 
 %ctor {
@@ -1795,11 +1792,6 @@ static void TypeXSBWriteAliveHeartbeat(void) {
                         // Open-request channel consumer (see the TypeXSB
                         // block above): sole owner of this notification name.
                         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, TypeXSBOpenRequestCallback, (CFStringRef)kTypeXOpenRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
-                        TypeXSBWriteAliveHeartbeat();
-                        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)),
-                                       dispatch_get_main_queue(), ^{
-                            TypeXSBWriteAliveHeartbeat();
-                        });
                         uint32_t pullOverStatus = notify_register_check(kPullOverOpenRequestIdentifier.UTF8String,
                                                                        &gPullOverOpenStateToken);
                         if (pullOverStatus == NOTIFY_STATUS_OK) {

@@ -178,32 +178,32 @@
 // existing PullOverWindow -> controller -> pinAppWithBundleId: entry point.
 #define kPullOverOpenRequestIdentifier @"com.lindo.typex/pulloveropen"
 
-// TypeXSB open-request channel (url scheme + openapp). Transport is one key
-// in the isolated cfprefsd domain above plus one Darwin notification owned
-// solely by the TypeXSB companion -- exactly the surface the AI chat channel
-// already writes from this same toolbar/keyboard-extension process and that
-// works on device. The 3.5.5 variant staged a raw plist under /Library/TypeX
-// instead (on the theory that sandbox-host cfprefsd writes get redirected),
-// but bare-file writes from the keyboard extension have no working precedent
-// while the domain write does, so the domain is the transport. The single key
-// is newest-wins and the consumer never clears it: TTL + requestID dedup make
-// replays inert instead, and the consumer never retries an open. The open
-// itself runs in SpringBoard via SBSLaunch with __LaunchURL, which delivers
-// the URL as a launch option rather than an openURL event from a source
-// application (the path WeChat refuses).
-//
-// Outcome reporting (one-way, no notification back): after consuming, the
-// companion writes {requestID, ok, code} under TypeXOpenStatusKey in the same
-// domain (the quick-action channel's status-v3 already established that SB
-// may write this domain -- it still never touches the request key, the
-// /Library/TypeX files, or the notification name). The publisher reads it
-// back ~1.5s later and toasts the failing stage; a missing status means the
-// companion never ran at all. Without this the channel is fire-and-forget and
-// every SB-side failure is invisible (the 3.5.6 device report: scheme dead,
-// no toast, nothing to act on).
-#define TypeXOpenRequestKey @"open-request"
+// TypeXSB open-request channel (url scheme + openapp), settled on device
+// 2026-09-24 by USB syslog:
+//   * Request (sandboxed toolbar -> SpringBoard): one raw plist staged under
+//     the world-writable shared directory plus one Darwin notification owned
+//     solely by the SB-side consumer. A cfprefsd domain write does NOT work
+//     here -- the sandboxed host's cfprefsd redirects it into that host's
+//     own container (log-proven: "Process (WeChat) wrote ... /Containers/
+//     Data/Application/..."), invisible to SpringBoard -- while the bare-file
+//     write is the surface DXPrefsManager's shared.plist snapshot has always
+//     used from sandboxed toolbar processes. SB cannot write /Library/TypeX
+//     (its sandbox rejects it, the status-v3 lesson), so consumption-by-
+//     delete is impossible: the consumer guards with TTL + requestID dedup,
+//     and the slot is newest-wins (atomic write before the notification).
+//   * Outcome reports (SpringBoard -> real cfprefsd domain only): SB writes
+//     {requestID, ok, code} to the open-status key after every consume/drop.
+//     Readable by Settings and visible in syslog/cfprefsd debug logs; a
+//     sandboxed reader CANNOT see them (same redirect), which is why the
+//     keyboard side does no read-back -- the open outcome lives in the
+//     [TypeXSB] syslogs.
+//   * Protocol: TTL 10s, requestID dedup, 1.2s consume throttle, an open is
+//     never retried, the notification is never posted back. The open runs in
+//     SpringBoard via SBSLaunch with __LaunchURL, which delivers the URL as
+//     a launch option rather than an openURL event from a source
+//     application (the path WeChat refuses).
+#define TypeXOpenRequestPath DX_ROOT_PATH_NS(@"/Library/TypeX/openrequest.plist")
 #define TypeXOpenStatusKey @"open-status"
-#define TypeXOpenAliveKey @"open-alive"
 #define kTypeXOpenRequestIdentifier @"com.lindo.typex/openrequest"
 #define kTypeXOpenRequestFormatKey @"format"
 #define kTypeXOpenRequestIDKey @"requestID"
