@@ -1987,7 +1987,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     return [value stringByAddingPercentEncodingWithAllowedCharacters:allowed] ?: @"";
 }
 
--(void)showCustomActionLinkError {
+-(void)showCustomActionMessage:(NSString *)message {
+    if (message.length == 0) return;
     dispatch_async(dispatch_get_main_queue(), ^{
         UIView *container = self.window ?: DXKeyWindow();
         if (!container) return;
@@ -1995,8 +1996,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         [[container viewWithTag:DXCustomActionToastTag] removeFromSuperview];
         UILabel *toast = [[UILabel alloc] initWithFrame:CGRectZero];
         toast.tag = DXCustomActionToastTag;
-        toast.text = LOCALIZED(@"CUSTOM_ACTION_LINK_ERROR");
-        if (toast.text.length == 0) toast.text = @"动作链接设置错误";
+        toast.text = message;
         toast.textColor = UIColor.whiteColor;
         toast.backgroundColor = [UIColor colorWithWhite:0.08 alpha:0.88];
         toast.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
@@ -2026,6 +2026,11 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
             }];
         }];
     });
+}
+
+-(void)showCustomActionLinkError {
+    NSString *message = LOCALIZED(@"CUSTOM_ACTION_LINK_ERROR");
+    [self showCustomActionMessage:message.length > 0 ? message : @"动作链接设置错误"];
 }
 
 -(void)finishCustomActionOpen:(DXCustomActionOpenCompletion)completion success:(BOOL)success {
@@ -2152,8 +2157,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
                               payloadKey:(NSString *)payloadKey
                                   payload:(NSString *)payload
                                completion:(DXCustomActionOpenCompletion)completion {
+    NSString *requestID = [NSUUID UUID].UUIDString;
     NSDictionary *request = @{kTypeXOpenRequestFormatKey: @1,
-                              kTypeXOpenRequestIDKey: [NSUUID UUID].UUIDString,
+                              kTypeXOpenRequestIDKey: requestID,
                               kTypeXOpenRequestCreatedKey: @([NSDate date].timeIntervalSince1970),
                               kTypeXOpenRequestKindKey: kind,
                               payloadKey: payload ?: @""};
@@ -2161,6 +2167,35 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     notify_post(kTypeXOpenRequestIdentifier.UTF8String);
     NSLog(@"[TypeX] TypeXSB publish kind=%@ written=%d", kind, written);
     [self finishCustomActionOpen:completion success:written];
+
+    // Publishing accepted the request, not the outcome -- the open runs inside
+    // SpringBoard and its failures used to be completely silent (the 3.5.6
+    // device report: scheme dead, no toast, nothing to act on). TypeXSB now
+    // reports every consume/drop outcome to the open-status key; check it
+    // once, late enough for the SB-side chain to have finished:
+    //   no status at all      -> the companion never ran (not injected / no
+    //                            notification) -- the strongest signal here;
+    //   another requestID     -> a newer request already replaced ours, the
+    //                            outcome is unknowable, stay silent;
+    //   ours with ok=false    -> toast the failing stage code.
+    // On success the target app comes to the foreground, the host resigns and
+    // this delayed block never runs -- which is fine, success stays silent.
+    if (!written) return;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        id rawStatus = DXQuickActionSharedValue(TypeXOpenStatusKey);
+        NSDictionary *status = [rawStatus isKindOfClass:[NSDictionary class]] ? rawStatus : nil;
+        if (!status) {
+            NSLog(@"[TypeX] TypeXSB status missing after publish");
+            [self showCustomActionMessage:LOCALIZED(@"CUSTOM_ACTION_SB_QUIET")];
+            return;
+        }
+        if (![status[kTypeXOpenRequestIDKey] isEqualToString:requestID]) return;
+        if ([status[@"ok"] boolValue]) return;
+        NSString *code = [status[@"code"] isKindOfClass:[NSString class]] ? status[@"code"] : @"unknown";
+        NSLog(@"[TypeX] TypeXSB status failure code=%@", code);
+        [self showCustomActionMessage:[NSString stringWithFormat:LOCALIZED(@"CUSTOM_ACTION_OPEN_FAIL"), code]];
+    });
 }
 
 // Compatibility ladder for systems without FBSOpenApplicationRequest (iOS 12):

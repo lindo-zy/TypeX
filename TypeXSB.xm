@@ -17,7 +17,10 @@
 //   * the consumer never clears the key, so requests cannot be deleted on
 //     consumption -- TTL + requestID dedup make replays inert instead;
 //   * one notification name, owned exclusively by this consumer;
-//   * an open is never retried, and this dylib never re-posts the request.
+//   * an open is never retried, and this dylib never re-posts the request;
+//   * every consume/drop outcome is reported under the open-status key in the
+//     same domain (quick-action status-v3 precedent for SB writing it); no
+//     notification is ever posted back -- the publisher polls after a delay.
 
 #import "common.h"
 #import <SpringBoardServices/SpringBoardServices.h>
@@ -95,6 +98,17 @@ static NSString *TypeXSBHandlerForScheme(NSString *scheme) {
     return nil;
 }
 
+// One-way outcome report for the publisher's delayed read-back (see
+// common.h): newest-wins status key, never posted as a notification. Reached
+// from the callback thread or the main queue; cfprefsd serializes writers.
+static void TypeXSBReportStatus(NSString *requestID, BOOL ok, NSString *code) {
+    if (![requestID isKindOfClass:[NSString class]] || requestID.length == 0) return;
+    DXSetQuickActionSharedValue(@{kTypeXOpenRequestIDKey: requestID,
+                                  @"ok": @(ok),
+                                  @"code": code ?: @"unknown"},
+                                TypeXOpenStatusKey);
+}
+
 // One launch attempt, zero retries. Primary form is the four-argument
 // SBSLaunch with the URL carried in the launchOptions dictionary under
 // __LaunchURL; if SpringBoard rejects it, the dedicated URL-carrying variant
@@ -122,11 +136,13 @@ static int TypeXSBSLaunchApplication(NSString *bundleIdentifier, NSURL *launchUR
 // Runs on the main queue. One request -> at most one launch call chain.
 static void TypeXSBPerformOpenRequest(NSDictionary *request) {
     NSString *kind = request[kTypeXOpenRequestKindKey];
+    NSString *requestID = request[kTypeXOpenRequestIDKey];
 
     if ([kind isEqualToString:kTypeXOpenKindURL]) {
         NSURL *url = [NSURL URLWithString:request[kTypeXOpenRequestURLKey]];
         if (![url.scheme isKindOfClass:[NSString class]] || url.scheme.length == 0) {
             NSLog(@"[TypeXSB] url request without usable scheme, dropped");
+            TypeXSBReportStatus(requestID, NO, @"url-noscheme");
             return;
         }
 
@@ -135,6 +151,7 @@ static void TypeXSBPerformOpenRequest(NSDictionary *request) {
         if (TypeXSBIsSensitiveScheme(url.scheme)) {
             if (SBSOpenSensitiveURLAndUnlock((__bridge CFURLRef)url, 0)) {
                 NSLog(@"[TypeXSB] sensitive open scheme=%@ result=1", url.scheme);
+                TypeXSBReportStatus(requestID, YES, @"sensitive");
                 return;
             }
             NSLog(@"[TypeXSB] sensitive open scheme=%@ failed, falling back to launch", url.scheme);
@@ -143,9 +160,12 @@ static void TypeXSBPerformOpenRequest(NSDictionary *request) {
         NSString *handler = TypeXSBHandlerForScheme(url.scheme);
         if (handler.length == 0) {
             NSLog(@"[TypeXSB] no handler for scheme %@, dropped", url.scheme);
+            TypeXSBReportStatus(requestID, NO, @"nohandler");
             return;
         }
-        TypeXSBSLaunchApplication(handler, url);
+        int result = TypeXSBSLaunchApplication(handler, url);
+        TypeXSBReportStatus(requestID, result == 0,
+                            [NSString stringWithFormat:@"launch:%d", result]);
         return;
     }
 
@@ -153,13 +173,17 @@ static void TypeXSBPerformOpenRequest(NSDictionary *request) {
         NSString *bundleIdentifier = request[kTypeXOpenRequestBundleIDKey];
         if (!DXIsValidBundleIdentifier(bundleIdentifier)) {
             NSLog(@"[TypeXSB] openapp request with invalid bundle ID, dropped");
+            TypeXSBReportStatus(requestID, NO, @"badbundle");
             return;
         }
-        TypeXSBSLaunchApplication(bundleIdentifier, nil);
+        int result = TypeXSBSLaunchApplication(bundleIdentifier, nil);
+        TypeXSBReportStatus(requestID, result == 0,
+                            [NSString stringWithFormat:@"app:%d", result]);
         return;
     }
 
     NSLog(@"[TypeXSB] unknown kind %@, dropped", kind);
+    TypeXSBReportStatus(requestID, NO, @"unknown-kind");
 }
 
 static void TypeXSBOpenRequestCallback(CFNotificationCenterRef center,
@@ -191,28 +215,33 @@ static void TypeXSBOpenRequestCallback(CFNotificationCenterRef center,
     if (format.integerValue != 1 || requestID.length == 0 || kind.length == 0 || payload.length == 0) {
         NSLog(@"[TypeXSB] malformed request (format=%@ id=%@ kind=%@), dropped",
               format, requestID.length > 0 ? @"set" : @"missing", kind);
+        TypeXSBReportStatus(requestID, NO, @"malformed");
         return;
     }
     if (payload.length > ([kind isEqualToString:kTypeXOpenKindURL] ? TypeXSBMaxURLLength
                                                                    : TypeXSBMaxBundleIDLength)) {
         NSLog(@"[TypeXSB] request payload over limit, dropped");
+        TypeXSBReportStatus(requestID, NO, @"payload-limit");
         return;
     }
 
     NSTimeInterval age = created ? [NSDate date].timeIntervalSince1970 - created.doubleValue : NAN;
     if (!(age >= 0 && age <= TypeXSBRequestTTL)) {
         NSLog(@"[TypeXSB] stale request (age=%.1fs), dropped", age);
+        TypeXSBReportStatus(requestID, NO, @"stale");
         return;
     }
     if ([requestID isEqualToString:gLastConsumedRequestID]) {
         // Replay of the notification for a slot already consumed. The slot is
-        // never cleared, so dedup lives on the request identity.
+        // never cleared, so dedup lives on the request identity. Its outcome
+        // was already reported under this requestID.
         return;
     }
 
     CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
     if (gLastExecuteTime > 0 && now - gLastExecuteTime < TypeXSBExecuteThrottle) {
         NSLog(@"[TypeXSB] throttled burst, dropped id=%@", requestID);
+        TypeXSBReportStatus(requestID, NO, @"throttled");
         return;
     }
 

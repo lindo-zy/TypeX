@@ -191,7 +191,18 @@
 // itself runs in SpringBoard via SBSLaunch with __LaunchURL, which delivers
 // the URL as a launch option rather than an openURL event from a source
 // application (the path WeChat refuses).
+//
+// Outcome reporting (one-way, no notification back): after consuming, the
+// companion writes {requestID, ok, code} under TypeXOpenStatusKey in the same
+// domain (the quick-action channel's status-v3 already established that SB
+// may write this domain -- it still never touches the request key, the
+// /Library/TypeX files, or the notification name). The publisher reads it
+// back ~1.5s later and toasts the failing stage; a missing status means the
+// companion never ran at all. Without this the channel is fire-and-forget and
+// every SB-side failure is invisible (the 3.5.6 device report: scheme dead,
+// no toast, nothing to act on).
 #define TypeXOpenRequestKey @"open-request"
+#define TypeXOpenStatusKey @"open-status"
 #define kTypeXOpenRequestIdentifier @"com.lindo.typex/openrequest"
 #define kTypeXOpenRequestFormatKey @"format"
 #define kTypeXOpenRequestIDKey @"requestID"
