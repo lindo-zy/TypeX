@@ -158,7 +158,8 @@
 "CUSTOM_LINK_ACTION_FOOTER" = "图标请填写 SF Symbols 名称或应用 Bundle ID（如 com.apple.Preferences）。\n网址填写方式：以 http://、https:// 或 www. 开头，如 https://apple.com\nURL Scheme 填写方式：如 example://open\nBundle ID 填写方式：如 com.apple.Preferences\n使用 @@@ 可传入当前输入框的内容。开启「剪切替换」后，@@@ 传入内容的同时清空输入框；关闭则保留输入框内容。";
 "CUSTOM_ACTION_LINK_ERROR" = "动作链接设置错误";
 "CUSTOM_ACTION_OPEN_FAIL" = "打开失败：%@";
-"CUSTOM_ACTION_SB_QUIET" = "SB伴生插件未响应";
+"CUSTOM_ACTION_SB_MISSING" = "TypeXSB 未注入 SB";
+"CUSTOM_ACTION_SB_NOTIFY" = "通知未达 SB";
 "TEXT" = "文本";
 
 //=====================CUSTOM ACTION TYPES=====================

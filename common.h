@@ -203,6 +203,7 @@
 // no toast, nothing to act on).
 #define TypeXOpenRequestKey @"open-request"
 #define TypeXOpenStatusKey @"open-status"
+#define TypeXOpenAliveKey @"open-alive"
 #define kTypeXOpenRequestIdentifier @"com.lindo.typex/openrequest"
 #define kTypeXOpenRequestFormatKey @"format"
 #define kTypeXOpenRequestIDKey @"requestID"

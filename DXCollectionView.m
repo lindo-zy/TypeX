@@ -2171,28 +2171,34 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     // Publishing accepted the request, not the outcome -- the open runs inside
     // SpringBoard and its failures used to be completely silent (the 3.5.6
     // device report: scheme dead, no toast, nothing to act on). TypeXSB now
-    // reports every consume/drop outcome to the open-status key; check it
-    // once, late enough for the SB-side chain to have finished:
-    //   no status at all      -> the companion never ran (not injected / no
-    //                            notification) -- the strongest signal here;
-    //   another requestID     -> a newer request already replaced ours, the
-    //                            outcome is unknowable, stay silent;
-    //   ours with ok=false    -> toast the failing stage code.
-    // On success the target app comes to the foreground, the host resigns and
-    // this delayed block never runs -- which is fine, success stays silent.
+    // reports every consume/drop outcome to the open-status key, plus a ctor
+    // heartbeat under open-alive. One delayed check separates every failure
+    // class without needing device logs:
+    //   no status, no heartbeat -> the companion is not injected into SB;
+    //   no status, heartbeat    -> injected, but the Darwin notification
+    //                              never reached it;
+    //   status code "unreadable"-> notification arrived, but SB could not see
+    //                              the request value (write-redirect signature);
+    //   status ours, ok=false   -> toast the failing stage code;
+    //   status ours, ok=true    -> silent (and on success the host resigns and
+    //                              this block never runs anyway).
     if (!written) return;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         id rawStatus = DXQuickActionSharedValue(TypeXOpenStatusKey);
         NSDictionary *status = [rawStatus isKindOfClass:[NSDictionary class]] ? rawStatus : nil;
+        NSString *statusCode = [status[@"code"] isKindOfClass:[NSString class]] ? status[@"code"] : nil;
         if (!status) {
-            NSLog(@"[TypeX] TypeXSB status missing after publish");
-            [self showCustomActionMessage:LOCALIZED(@"CUSTOM_ACTION_SB_QUIET")];
+            BOOL alive = [DXQuickActionSharedValue(TypeXOpenAliveKey) isKindOfClass:[NSDictionary class]];
+            NSLog(@"[TypeX] TypeXSB status missing, alive=%d", alive);
+            [self showCustomActionMessage:LOCALIZED(alive ? @"CUSTOM_ACTION_SB_NOTIFY"
+                                                          : @"CUSTOM_ACTION_SB_MISSING")];
             return;
         }
-        if (![status[kTypeXOpenRequestIDKey] isEqualToString:requestID]) return;
-        if ([status[@"ok"] boolValue]) return;
-        NSString *code = [status[@"code"] isKindOfClass:[NSString class]] ? status[@"code"] : @"unknown";
+        BOOL unreadable = [statusCode isEqualToString:@"unreadable"];
+        if (!unreadable && ![status[kTypeXOpenRequestIDKey] isEqualToString:requestID]) return;
+        if (!unreadable && [status[@"ok"] boolValue]) return;
+        NSString *code = statusCode ?: @"unknown";
         NSLog(@"[TypeX] TypeXSB status failure code=%@", code);
         [self showCustomActionMessage:[NSString stringWithFormat:LOCALIZED(@"CUSTOM_ACTION_OPEN_FAIL"), code]];
     });

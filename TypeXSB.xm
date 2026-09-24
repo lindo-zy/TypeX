@@ -25,6 +25,7 @@
 #import "common.h"
 #import <SpringBoardServices/SpringBoardServices.h>
 #import <objc/message.h>
+#import <unistd.h>
 
 // A request older than this is treated as leftover state (respring, missed
 // notification) and dropped, never opened.
@@ -196,6 +197,14 @@ static void TypeXSBOpenRequestCallback(CFNotificationCenterRef center,
     id rawRequest = DXQuickActionSharedValue(TypeXOpenRequestKey);
     if (![rawRequest isKindOfClass:[NSDictionary class]]) {
         NSLog(@"[TypeXSB] request slot unreadable, dropped");
+        // Reported with an empty requestID so the publisher can tell this
+        // apart from "companion never ran": the notification DID arrive, but
+        // the request value was not visible to SpringBoard (the signature of
+        // the write having been redirected away from the shared domain).
+        DXSetQuickActionSharedValue(@{kTypeXOpenRequestIDKey: @"",
+                                      @"ok": @NO,
+                                      @"code": @"unreadable"},
+                                    TypeXOpenStatusKey);
         return;
     }
     NSDictionary *request = rawRequest;
@@ -253,12 +262,28 @@ static void TypeXSBOpenRequestCallback(CFNotificationCenterRef center,
     });
 }
 
+// One-way heartbeat written once per SpringBoard launch so the publisher can
+// distinguish "companion not injected" (no heartbeat) from "injected but the
+// notification never arrived" (heartbeat present, no status). The ctor-time
+// write may land before cfprefsd fully serves SB, so it is repeated once the
+// main queue is up.
+static void TypeXSBWriteAliveHeartbeat(void) {
+    DXSetQuickActionSharedValue(@{@"pid": @(getpid()),
+                                  @"loaded": @([[NSDate date] timeIntervalSince1970])},
+                                TypeXOpenAliveKey);
+}
+
 %ctor {
     @autoreleasepool {
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
                                         NULL, &TypeXSBOpenRequestCallback,
                                         (CFStringRef)kTypeXOpenRequestIdentifier, NULL,
                                         CFNotificationSuspensionBehaviorDeliverImmediately);
-        NSLog(@"[TypeXSB] open-request channel ready");
+        TypeXSBWriteAliveHeartbeat();
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            TypeXSBWriteAliveHeartbeat();
+        });
+        NSLog(@"[TypeXSB] open-request channel ready (pid=%d)", getpid());
     }
 }
