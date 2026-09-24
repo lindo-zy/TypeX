@@ -178,6 +178,28 @@
 // existing PullOverWindow -> controller -> pinAppWithBundleId: entry point.
 #define kPullOverOpenRequestIdentifier @"com.lindo.typex/pulloveropen"
 
+// TypeXSB open-request channel (url scheme + openapp). Sandbox-host cfprefsd
+// writes are redirected into the host App's container, so the writer stages
+// one raw plist under the world-writable shared directory (the same surface
+// the dock toggle snapshot uses) and fires one Darwin notification owned
+// solely by the TypeXSB companion. SpringBoard cannot write there, so
+// consumption-by-delete is impossible: the consumer guards with TTL +
+// requestID dedup instead. The slot is newest-wins -- a second write atomically
+// replaces the first before it is read -- and the consumer never retries an
+// open. The open itself runs in SpringBoard via SBSLaunch with __LaunchURL,
+// which delivers the URL as a launch option rather than an openURL event from
+// a source application (the path WeChat refuses).
+#define TypeXOpenRequestPath DX_ROOT_PATH_NS(@"/Library/TypeX/openrequest.plist")
+#define kTypeXOpenRequestIdentifier @"com.lindo.typex/openrequest"
+#define kTypeXOpenRequestFormatKey @"format"
+#define kTypeXOpenRequestIDKey @"requestID"
+#define kTypeXOpenRequestCreatedKey @"created"
+#define kTypeXOpenRequestKindKey @"kind"
+#define kTypeXOpenRequestURLKey @"url"
+#define kTypeXOpenRequestBundleIDKey @"bundleID"
+#define kTypeXOpenKindURL @"url"
+#define kTypeXOpenKindOpenApp @"openapp"
+
 // Complete SpringBoard-authored snapshot of each app's current static and
 // dynamic UIApplicationShortcutItems. The value is replaced as one generation,
 // so removed apps and actions cannot survive an incremental merge:
