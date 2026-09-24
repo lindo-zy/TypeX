@@ -3,14 +3,15 @@
 #import "DXCollectionView.h"
 #import "DXHelper.h"
 #import "DXAIPanel.h"
+#import "DXSystemOpenBroker.h"
 
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <notify.h>
-#import <SpringBoardServices/SpringBoardServices.h>
 #import <SafariServices/SafariServices.h>
 
 static const NSInteger DXCustomActionToastTag = 0x54584341;
+static char DXCustomOpenGenerationKey;
 static const NSInteger DXSubActionPanelOverlayTag = 0x54585341;
 static __weak DXCollectionView *DXActiveSubActionPanelOwner;
 // Strong handle on the dedicated panel window (iOS 17+ presentation path);
@@ -2040,298 +2041,72 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     });
 }
 
-// Apple locks prefs:/App-Prefs:/itms-services: behind a process-origin check:
-// from inside a third-party app, UIApplication can report success while
-// SpringBoard silently drops the open later. That is why scheme links worked
-// on SpringBoard (no UIApplication there, the SpringBoardServices route ran
-// directly) but not in every app. These schemes are only ever handled by
-// SpringBoard itself, so they never go through UIApplication.
--(BOOL)isSensitiveSystemURLScheme:(NSString *)scheme {
-    static NSSet *sensitiveSchemes;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        sensitiveSchemes = [NSSet setWithArray:@[@"prefs", @"app-prefs", @"itms-services"]];
-    });
-    if (scheme.length == 0) return NO;
-    return [sensitiveSchemes containsObject:scheme.lowercaseString];
-}
-
-// Resolves the application owning a URL scheme so the FrontBoard path can carry
-// the URL as a __LaunchURL option. The static table covers Apple schemes that
-// LaunchServices may refuse to answer for inside an injected process.
--(NSString *)handlerBundleIdentifierForURLScheme:(NSString *)scheme {
-    static NSDictionary *knownHandlers;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        knownHandlers = @{@"prefs": @"com.apple.Preferences",
-                          @"app-prefs": @"com.apple.Preferences"};
-    });
-
-    if (scheme.length == 0) return nil;
-    NSString *known = knownHandlers[scheme.lowercaseString];
-    if (known.length > 0) return known;
-
-    Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
-    if (!workspaceClass) return nil;
-    id workspace = [workspaceClass performSelector:@selector(defaultWorkspace)];
-    SEL schemeSelector = @selector(applicationsAvailableForHandlingURLScheme:);
-    if (!workspace || ![workspace respondsToSelector:schemeSelector]) return nil;
-
-    @try {
-        NSArray *identifiers = ((NSArray *(*)(id, SEL, id))objc_msgSend)(workspace, schemeSelector, scheme);
-        if ([identifiers isKindOfClass:[NSArray class]]) {
-            for (NSString *identifier in identifiers) {
-                if ([identifier isKindOfClass:[NSString class]] && identifier.length > 0) return identifier;
-            }
-        }
-    } @catch (__unused NSException *exception) {
-    }
-    return nil;
-}
-
--(id)frontBoardOpenApplicationOptionsWithLaunchURL:(NSURL *)launchURL {
-    NSDictionary *dictionary = launchURL ? @{ @"__LaunchURL": launchURL } : @{};
-    Class optionsClass = NSClassFromString(@"FBSOpenApplicationOptions");
-    if (optionsClass && [optionsClass respondsToSelector:@selector(optionsWithDictionary:)]) {
-        return [optionsClass optionsWithDictionary:dictionary];
-    }
-    return dictionary;
-}
-
-// Single FrontBoard open request with explicit launch options. Returns NO
-// when the FrontBoard route is unavailable on this system (handler left
-// untouched); when YES, the handler fires exactly once on the main queue
-// with the final outcome.
--(BOOL)frontBoardOpenApplication:(NSString *)bundleIdentifier
-                         options:(NSDictionary *)launchOptions
-                         handler:(void (^)(BOOL success))handler {
-    Class requestClass = NSClassFromString(@"FBSOpenApplicationRequest");
-    if (!requestClass || ![requestClass respondsToSelector:@selector(requestWithBundleIdentifier:)]) return NO;
-    Class serviceClass = NSClassFromString(@"FBSOpenApplicationService");
-    if (!serviceClass) return NO;
-
-    id request = [requestClass requestWithBundleIdentifier:bundleIdentifier];
-    if (!request) return NO;
-
-    id service = [serviceClass respondsToSelector:@selector(sharedService)]
-        ? [serviceClass sharedService]
-        : [[serviceClass alloc] init];
-    SEL openSelector = @selector(openApplication:options:withResultHandler:);
-    if (!service || ![service respondsToSelector:openSelector]) return NO;
-
-    id options = launchOptions ?: @{};
-    @try {
-        [service openApplication:request options:options withResultHandler:^(NSError *error) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                handler(!error);
-            });
-        }];
-        return YES;
-    } @catch (__unused NSException *exception) {
-        return NO;
-    }
-}
-
--(BOOL)frontBoardOpenApplication:(NSString *)bundleIdentifier
-                       launchURL:(NSURL *)launchURL
-                         handler:(void (^)(BOOL success))handler {
-    return [self frontBoardOpenApplication:bundleIdentifier
-                                   options:[self frontBoardOpenApplicationOptionsWithLaunchURL:launchURL]
-                                   handler:handler];
-}
-
-// TypeXSB hand-off: the ONLY open route for processes that are not
-// SpringBoard. One request dictionary staged under one key of the isolated
-// cfprefsd domain (the transport the AI chat channel already writes from this
-// same process and that is verified working on device -- the 3.5.5 bare-file
-// staging under /Library/TypeX had no precedent for the keyboard-extension
-// writer) plus one Darwin notification owned solely by the TypeXSB companion.
-// TypeXSB consumes it inside SpringBoard with TTL + requestID dedup and
-// performs SBSLaunch carrying __LaunchURL: the URL arrives as a launch option
-// of a system-style launch instead of an openURL event attributed to a
-// third-party source application -- the delivery that FrontBoard may
-// entitlement-reject from the sandbox and that WeChat intercepts. Publishing
-// is fire-and-forget: success means the request was staged, not that the
-// target opened (the open outcome lives in [TypeXSB] syslogs).
--(void)publishTypeXSBOpenRequestWithKind:(NSString *)kind
-                              payloadKey:(NSString *)payloadKey
-                                  payload:(NSString *)payload
-                               completion:(DXCustomActionOpenCompletion)completion {
-    NSString *requestID = [NSUUID UUID].UUIDString;
-    NSDictionary *request = @{kTypeXOpenRequestFormatKey: @1,
-                              kTypeXOpenRequestIDKey: requestID,
-                              kTypeXOpenRequestCreatedKey: @([NSDate date].timeIntervalSince1970),
-                              kTypeXOpenRequestKindKey: kind,
-                              payloadKey: payload ?: @""};
-    // Device-proven surface (2026-09-24 syslog): a sandboxed host's cfprefsd
-    // write to the shared domain gets redirected into that host's own
-    // container ("Process 47097 (WeChat) wrote ... /Containers/Data/
-    // Application/.../com.lindo.typex.quickactions.plist") and SpringBoard --
-    // which reads the real domain -- never sees it. The same syslog run
-    // showed the SB-side consumer alive and the notification delivered, so
-    // the bare-file staging under /Library/TypeX is the transport: it is the
-    // write surface DXPrefsManager's shared.plist snapshot has always used
-    // from sandboxed toolbar processes (writeToFile + world-readable, no
-    // protection), and SB reads those files every day.
-    NSString *path = TypeXOpenRequestPath;
-    NSString *directory = [path stringByDeletingLastPathComponent];
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    if (![fileManager fileExistsAtPath:directory]) {
-        [fileManager createDirectoryAtPath:directory
-                withIntermediateDirectories:YES
-                                 attributes:@{NSFilePosixPermissions: @0777}
-                                      error:nil];
-    }
-    BOOL written = [request writeToFile:path atomically:YES];
-    if (written) {
-        [fileManager setAttributes:@{NSFilePosixPermissions: @0644,
-                                     NSFileProtectionKey: NSFileProtectionNone}
-                        ofItemAtPath:path
-                               error:nil];
-    }
-    notify_post(kTypeXOpenRequestIdentifier.UTF8String);
-    NSLog(@"[TypeX] TypeXSB publish kind=%@ written=%d", kind, written);
-    [self finishCustomActionOpen:completion success:written];
-    // No read-back here on purpose: the sandboxed reader sees its own host's
-    // redirected domain copy, never SpringBoard's writes, so a status check
-    // reported "companion not injected" for a consumer that was demonstrably
-    // alive. The open outcome lives in the [TypeXSB] syslogs (and the
-    // open-status key SB writes to the real domain).
-}
-
-// Compatibility ladder for systems without FBSOpenApplicationRequest (iOS 12):
-// FBSSystemService still accepted a plain bundle identifier there, and below it
-// the SpringBoardServices launch needs the com.apple.springboard
-// .launchapplications entitlement that injected processes do not carry.
--(void)openApplicationThroughSystemService:(NSString *)bundleIdentifier
-                                completion:(DXCustomActionOpenCompletion)completion {
-    void (^openThroughSpringBoard)(void) = ^{
-        int result = SBSLaunchApplicationWithIdentifierAndLaunchOptions(bundleIdentifier, @{}, @{}, NO);
-        [self finishCustomActionOpen:completion success:(result == 0)];
+// Privileged actions execute in SpringBoard and complete from its reply, not
+// from the success of publishing bytes. Ordinary URLs retain UIApplication's
+// existing host route (including PullOver's interception/completion behavior).
+-(DXCustomActionOpenCompletion)guardedCustomOpenCompletion:(DXCustomActionOpenCompletion)completion {
+    NSUInteger generation = [objc_getAssociatedObject(self, &DXCustomOpenGenerationKey) unsignedIntegerValue] + 1;
+    objc_setAssociatedObject(self, &DXCustomOpenGenerationKey, @(generation), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    __weak DXCollectionView *weakSelf = self;
+    __weak UIWindow *originWindow = self.window;
+    NSTimeInterval started = [NSDate date].timeIntervalSince1970;
+    return ^(BOOL success) {
+        DXCollectionView *view = weakSelf;
+        if (!view || [objc_getAssociatedObject(view, &DXCustomOpenGenerationKey) unsignedIntegerValue] != generation) return;
+        // A late error belongs to the toolbar/session that submitted it.
+        if (!success && ([NSDate date].timeIntervalSince1970 - started > 15.0 ||
+            !originWindow || view.window != originWindow || originWindow.hidden || view.hidden ||
+            (!isSpringBoard && UIApplication.sharedApplication.applicationState != UIApplicationStateActive))) return;
+        if (completion) completion(success);
     };
-
-    FBSSystemService *service = [FBSSystemService sharedService];
-    SEL openSelector = @selector(openApplication:options:withResult:);
-    if (service && [service respondsToSelector:openSelector]) {
-        @try {
-            [service openApplication:bundleIdentifier options:@{} withResult:^(NSError *error) {
-                if (!error) {
-                    [self finishCustomActionOpen:completion success:YES];
-                    return;
-                }
-
-                openThroughSpringBoard();
-            }];
-            return;
-        } @catch (__unused NSException *exception) {
-        }
-    }
-
-    openThroughSpringBoard();
 }
 
-// FBSOpenApplicationService with a request object is the only FrontBoard entry
-// that accepts a plain bundle identifier on current iOS. Non-SpringBoard
-// processes hand off to the TypeXSB channel instead (see the publisher above);
-// the ladder below runs only inside SpringBoard itself.
 -(void)openApplicationWithBundleIdentifier:(NSString *)bundleIdentifier
                                  completion:(DXCustomActionOpenCompletion)completion {
-    if (!isSpringBoard) {
-        [self publishTypeXSBOpenRequestWithKind:kTypeXOpenKindOpenApp
-                                     payloadKey:kTypeXOpenRequestBundleIDKey
-                                        payload:bundleIdentifier
-                                     completion:completion];
-        return;
-    }
-
-    void (^openThroughLegacy)(void) = ^{
-        [self openApplicationThroughSystemService:bundleIdentifier completion:completion];
-    };
-
-    BOOL scheduled = [self frontBoardOpenApplication:bundleIdentifier launchURL:nil handler:^(BOOL success) {
-        if (success) {
-            [self finishCustomActionOpen:completion success:YES];
-            return;
-        }
-        openThroughLegacy();
-    }];
-    if (!scheduled) openThroughLegacy();
+    completion = [self guardedCustomOpenCompletion:completion];
+    DXOpenSystemApplication(bundleIdentifier, ^(DXSystemOpenResult result) {
+        [self finishCustomActionOpen:completion success:result == DXSystemOpenSucceeded];
+    });
 }
 
-// Direct routes for when this code already runs inside SpringBoard: sensitive
-// Apple schemes through the privileged SpringBoardServices call (they are
-// only ever handled by SpringBoard itself and never go through UIApplication
-// because of the process-origin check), ordinary schemes as one single-shot
-// UIApplication request. PullOver-X intercepts this call for whitelisted
-// targets, changes the request to ActivateSuspended and may intentionally
-// absorb the completion handler. A missing completion is therefore not a
-// failure signal and must never cause a watchdog or SpringBoard retry: that
-// retry was the second request which opened the same app full-screen
-// behind/on top of PullOver's card.
-//
-// openURL:options:completionHandler: returns void. Reading an invented BOOL
-// return from objc_msgSend is undefined and previously caused an immediate
-// second open whenever the garbage return register happened to be zero.
--(void)openURLInsideSpringBoardProcess:(NSURL *)url completion:(DXCustomActionOpenCompletion)completion {
-    if ([self isSensitiveSystemURLScheme:url.scheme]) {
-        // No UIApplication request is sent on this route, so it remains the
-        // single dispatch owner for sensitive schemes.
-        if (SBSOpenSensitiveURLAndUnlock((__bridge CFURLRef)url, 0)) {
-            [self finishCustomActionOpen:completion success:YES];
-            return;
-        }
-        NSString *bundleIdentifier = [self handlerBundleIdentifierForURLScheme:url.scheme];
-        BOOL scheduled = bundleIdentifier.length > 0 &&
-            [self frontBoardOpenApplication:bundleIdentifier launchURL:url handler:^(BOOL success) {
-                [self finishCustomActionOpen:completion success:success];
-            }];
-        if (!scheduled) [self finishCustomActionOpen:completion success:NO];
+-(void)openCustomActionURL:(NSURL *)url completion:(DXCustomActionOpenCompletion)completion {
+    completion = [self guardedCustomOpenCompletion:completion];
+    if (!url.scheme.length) {
+        [self finishCustomActionOpen:completion success:NO];
+        return;
+    }
+    if (DXIsSensitiveOpenScheme(url.scheme)) {
+        DXOpenSensitiveSystemURL(url, ^(DXSystemOpenResult result) {
+            [self finishCustomActionOpen:completion success:result == DXSystemOpenSucceeded];
+        });
         return;
     }
 
-    UIApplication *application = [UIApplication sharedApplication];
+    UIApplication *application = UIApplication.sharedApplication;
     SEL openSelector = @selector(openURL:options:completionHandler:);
     if (!application || ![application respondsToSelector:openSelector]) {
         [self finishCustomActionOpen:completion success:NO];
         return;
     }
-
+    // UIApplication's method returns void. A swallowed completion (for example
+    // PullOver hosting the target) never triggers another open or a timeout toast.
     __block BOOL completionDelivered = NO;
-    NSString *scheme = url.scheme.lowercaseString ?: @"";
-    NSLog(@"[TypeX] URL scheme single-shot dispatch (SB): scheme=%@", scheme);
-
-    @try {
-        ((void (*)(id, SEL, id, id, id))objc_msgSend)(application, openSelector, url, @{}, ^(BOOL success) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (completionDelivered) return;
-                completionDelivered = YES;
-                NSLog(@"[TypeX] URL scheme single-shot completion (SB): scheme=%@ success=%d",
-                      scheme, success);
-                [self finishCustomActionOpen:completion success:success];
-            });
+    NSString *scheme = url.scheme.lowercaseString;
+    NSLog(@"[TypeX] URL scheme single-shot dispatch: scheme=%@ sb=%d", scheme, isSpringBoard);
+    void (^finish)(BOOL) = ^(BOOL success) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completionDelivered) return;
+            completionDelivered = YES;
+            NSLog(@"[TypeX] URL scheme single-shot completion: scheme=%@ success=%d", scheme, success);
+            [self finishCustomActionOpen:completion success:success];
         });
+    };
+    @try {
+        ((void (*)(id, SEL, id, id, id))objc_msgSend)(application, openSelector, url, @{}, finish);
     } @catch (NSException *exception) {
-        // The message was attempted, so fail closed instead of risking a
-        // duplicate system open after a hook performed work and then threw.
-        NSLog(@"[TypeX] URL scheme single-shot exception (SB): scheme=%@ exception=%@",
-              scheme, exception.name);
-        [self finishCustomActionOpen:completion success:NO];
+        NSLog(@"[TypeX] URL scheme single-shot exception: scheme=%@ exception=%@", scheme, exception.name);
+        finish(NO);
     }
-}
-
-// Every URL-scheme open from a non-SpringBoard process (host app or keyboard
-// extension) goes through the TypeXSB channel: FrontBoard XPC from the
-// sandbox is entitlement-rejected, and a UIApplication openURL event carries
-// this host as the source application -- the attribution WeChat intercepts.
--(void)openCustomActionURL:(NSURL *)url completion:(DXCustomActionOpenCompletion)completion {
-    if (isSpringBoard) {
-        [self openURLInsideSpringBoardProcess:url completion:completion];
-        return;
-    }
-    [self publishTypeXSBOpenRequestWithKind:kTypeXOpenKindURL
-                                 payloadKey:kTypeXOpenRequestURLKey
-                                    payload:url.absoluteString
-                                 completion:completion];
 }
 
 // The @@@ placeholder receives the active input control's complete text,

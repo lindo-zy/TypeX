@@ -178,42 +178,6 @@
 // existing PullOverWindow -> controller -> pinAppWithBundleId: entry point.
 #define kPullOverOpenRequestIdentifier @"com.lindo.typex/pulloveropen"
 
-// TypeXSB open-request channel (url scheme + openapp), settled on device
-// 2026-09-24 by USB syslog:
-//   * Request (sandboxed toolbar -> SpringBoard): one raw plist staged under
-//     the world-writable shared directory plus one Darwin notification owned
-//     solely by the SB-side consumer. A cfprefsd domain write does NOT work
-//     here -- the sandboxed host's cfprefsd redirects it into that host's
-//     own container (log-proven: "Process (WeChat) wrote ... /Containers/
-//     Data/Application/..."), invisible to SpringBoard -- while the bare-file
-//     write is the surface DXPrefsManager's shared.plist snapshot has always
-//     used from sandboxed toolbar processes. SB cannot write /Library/TypeX
-//     (its sandbox rejects it, the status-v3 lesson), so consumption-by-
-//     delete is impossible: the consumer guards with TTL + requestID dedup,
-//     and the slot is newest-wins (atomic write before the notification).
-//   * Outcome reports (SpringBoard -> real cfprefsd domain only): SB writes
-//     {requestID, ok, code} to the open-status key after every consume/drop.
-//     Readable by Settings and visible in syslog/cfprefsd debug logs; a
-//     sandboxed reader CANNOT see them (same redirect), which is why the
-//     keyboard side does no read-back -- the open outcome lives in the
-//     [TypeXSB] syslogs.
-//   * Protocol: TTL 10s, requestID dedup, 1.2s consume throttle, an open is
-//     never retried, the notification is never posted back. The open runs in
-//     SpringBoard via SBSLaunch with __LaunchURL, which delivers the URL as
-//     a launch option rather than an openURL event from a source
-//     application (the path WeChat refuses).
-#define TypeXOpenRequestPath DX_ROOT_PATH_NS(@"/Library/TypeX/openrequest.plist")
-#define TypeXOpenStatusKey @"open-status"
-#define kTypeXOpenRequestIdentifier @"com.lindo.typex/openrequest"
-#define kTypeXOpenRequestFormatKey @"format"
-#define kTypeXOpenRequestIDKey @"requestID"
-#define kTypeXOpenRequestCreatedKey @"created"
-#define kTypeXOpenRequestKindKey @"kind"
-#define kTypeXOpenRequestURLKey @"url"
-#define kTypeXOpenRequestBundleIDKey @"bundleID"
-#define kTypeXOpenKindURL @"url"
-#define kTypeXOpenKindOpenApp @"openapp"
-
 // Complete SpringBoard-authored snapshot of each app's current static and
 // dynamic UIApplicationShortcutItems. The value is replaced as one generation,
 // so removed apps and actions cannot survive an incremental merge:
