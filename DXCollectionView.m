@@ -2136,17 +2136,18 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 // TypeXSB hand-off: the ONLY open route for processes that are not
-// SpringBoard. One single-slot plist staged under the world-writable shared
-// directory (the same write surface the dock toggle snapshot already writes
-// from sandboxed hosts) plus one Darwin notification owned solely by the
-// TypeXSB companion. TypeXSB consumes it inside SpringBoard with TTL +
-// requestID dedup and performs SBSLaunch carrying __LaunchURL: the URL
-// arrives as a launch option of a system-style launch instead of an openURL
-// event attributed to a third-party source application -- the delivery that
-// FrontBoard may entitlement-reject from the sandbox and that WeChat
-// intercepts. Publishing is fire-and-forget: success means the request was
-// staged, not that the target opened (the open outcome lives in [TypeXSB]
-// syslogs).
+// SpringBoard. One request dictionary staged under one key of the isolated
+// cfprefsd domain (the transport the AI chat channel already writes from this
+// same process and that is verified working on device -- the 3.5.5 bare-file
+// staging under /Library/TypeX had no precedent for the keyboard-extension
+// writer) plus one Darwin notification owned solely by the TypeXSB companion.
+// TypeXSB consumes it inside SpringBoard with TTL + requestID dedup and
+// performs SBSLaunch carrying __LaunchURL: the URL arrives as a launch option
+// of a system-style launch instead of an openURL event attributed to a
+// third-party source application -- the delivery that FrontBoard may
+// entitlement-reject from the sandbox and that WeChat intercepts. Publishing
+// is fire-and-forget: success means the request was staged, not that the
+// target opened (the open outcome lives in [TypeXSB] syslogs).
 -(void)publishTypeXSBOpenRequestWithKind:(NSString *)kind
                               payloadKey:(NSString *)payloadKey
                                   payload:(NSString *)payload
@@ -2156,24 +2157,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
                               kTypeXOpenRequestCreatedKey: @([NSDate date].timeIntervalSince1970),
                               kTypeXOpenRequestKindKey: kind,
                               payloadKey: payload ?: @""};
-    NSString *path = TypeXOpenRequestPath;
-    NSString *directory = [path stringByDeletingLastPathComponent];
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    if (![fileManager fileExistsAtPath:directory]) {
-        [fileManager createDirectoryAtPath:directory
-                withIntermediateDirectories:YES
-                                 attributes:@{NSFilePosixPermissions: @0777}
-                                      error:nil];
-    }
-    BOOL written = [request writeToFile:path atomically:YES];
-    if (written) {
-        // SpringBoard reads the slot as mobile and possibly before first
-        // unlock; keep it world-readable and unprotected, like shared.plist.
-        [fileManager setAttributes:@{NSFilePosixPermissions: @0644,
-                                     NSFileProtectionKey: NSFileProtectionNone}
-                        ofItemAtPath:path
-                               error:nil];
-    }
+    BOOL written = DXSetQuickActionSharedValue(request, TypeXOpenRequestKey);
     notify_post(kTypeXOpenRequestIdentifier.UTF8String);
     NSLog(@"[TypeX] TypeXSB publish kind=%@ written=%d", kind, written);
     [self finishCustomActionOpen:completion success:written];

@@ -3,16 +3,19 @@
 // app or keyboard extension cannot open URL schemes through FrontBoard XPC
 // (entitlement-rejected), and UIApplication openURL events from a third-party
 // source app are exactly what WeChat refuses. Both request kinds therefore
-// travel here as one raw plist staged in the shared directory plus one Darwin
-// notification, and the open executes inside SpringBoard with
+// travel here as one dictionary under one key of the isolated cfprefsd domain
+// (the transport the AI chat channel already writes from the same toolbar
+// process and that works on device; the 3.5.5 bare-file staging under
+// /Library/TypeX had no working precedent for the keyboard-extension writer)
+// plus one Darwin notification, and the open executes inside SpringBoard with
 // SBSLaunchApplicationWithIdentifierAndLaunchOptions carrying the URL as a
 // __LaunchURL launch option -- a system-style launch instead of an openURL
 // event, which is what bypasses the interception.
 //
 // Channel contract (fixed 2026-09-24):
-//   * single slot, newest-wins: the file is atomically replaced per request;
-//   * SpringBoard never writes /Library/TypeX, so requests cannot be deleted
-//     on consumption -- TTL + requestID dedup make replays inert instead;
+//   * single key, newest-wins: each request replaces the previous value;
+//   * the consumer never clears the key, so requests cannot be deleted on
+//     consumption -- TTL + requestID dedup make replays inert instead;
 //   * one notification name, owned exclusively by this consumer;
 //   * an open is never retried, and this dylib never re-posts the request.
 
@@ -164,11 +167,14 @@ static void TypeXSBOpenRequestCallback(CFNotificationCenterRef center,
                                        CFStringRef name,
                                        const void *object,
                                        CFDictionaryRef userInfo) {
-    NSDictionary *request = [NSDictionary dictionaryWithContentsOfFile:TypeXOpenRequestPath];
-    if (![request isKindOfClass:[NSDictionary class]]) {
+    // Same read pattern the AI channel consumer uses: Synchronize first so a
+    // just-written request is visible, then copy the single newest-wins key.
+    id rawRequest = DXQuickActionSharedValue(TypeXOpenRequestKey);
+    if (![rawRequest isKindOfClass:[NSDictionary class]]) {
         NSLog(@"[TypeXSB] request slot unreadable, dropped");
         return;
     }
+    NSDictionary *request = rawRequest;
 
     NSNumber *format = [request[kTypeXOpenRequestFormatKey] isKindOfClass:[NSNumber class]]
         ? request[kTypeXOpenRequestFormatKey] : nil;

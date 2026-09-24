@@ -178,18 +178,20 @@
 // existing PullOverWindow -> controller -> pinAppWithBundleId: entry point.
 #define kPullOverOpenRequestIdentifier @"com.lindo.typex/pulloveropen"
 
-// TypeXSB open-request channel (url scheme + openapp). Sandbox-host cfprefsd
-// writes are redirected into the host App's container, so the writer stages
-// one raw plist under the world-writable shared directory (the same surface
-// the dock toggle snapshot uses) and fires one Darwin notification owned
-// solely by the TypeXSB companion. SpringBoard cannot write there, so
-// consumption-by-delete is impossible: the consumer guards with TTL +
-// requestID dedup instead. The slot is newest-wins -- a second write atomically
-// replaces the first before it is read -- and the consumer never retries an
-// open. The open itself runs in SpringBoard via SBSLaunch with __LaunchURL,
-// which delivers the URL as a launch option rather than an openURL event from
-// a source application (the path WeChat refuses).
-#define TypeXOpenRequestPath DX_ROOT_PATH_NS(@"/Library/TypeX/openrequest.plist")
+// TypeXSB open-request channel (url scheme + openapp). Transport is one key
+// in the isolated cfprefsd domain above plus one Darwin notification owned
+// solely by the TypeXSB companion -- exactly the surface the AI chat channel
+// already writes from this same toolbar/keyboard-extension process and that
+// works on device. The 3.5.5 variant staged a raw plist under /Library/TypeX
+// instead (on the theory that sandbox-host cfprefsd writes get redirected),
+// but bare-file writes from the keyboard extension have no working precedent
+// while the domain write does, so the domain is the transport. The single key
+// is newest-wins and the consumer never clears it: TTL + requestID dedup make
+// replays inert instead, and the consumer never retries an open. The open
+// itself runs in SpringBoard via SBSLaunch with __LaunchURL, which delivers
+// the URL as a launch option rather than an openURL event from a source
+// application (the path WeChat refuses).
+#define TypeXOpenRequestKey @"open-request"
 #define kTypeXOpenRequestIdentifier @"com.lindo.typex/openrequest"
 #define kTypeXOpenRequestFormatKey @"format"
 #define kTypeXOpenRequestIDKey @"requestID"
