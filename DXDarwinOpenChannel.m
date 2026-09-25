@@ -10,7 +10,7 @@
 // times out without resending. Registrations pin the words until reply/timeout.
 static const char *DXOpenDoorbell = "com.lindo.typex.open.v2";
 static const NSUInteger DXOpenMaxPacketBytes = 8192;
-static const NSTimeInterval DXOpenRequestTTL = 8.0;
+NSTimeInterval const DXSystemOpenRequestTTL = 8.0;
 static const NSTimeInterval DXOpenReplyTimeout = 10.0;
 static const NSUInteger DXOpenMaxPending = 4;
 static const uint64_t DXOpenWireMagic = 0x5458020000000000ULL;
@@ -200,13 +200,13 @@ BOOL DXStartDarwinOpenServer(DXSystemOpenHandler handler) {
         if (!request) { DXOpenSendReply(requestID, DXSystemOpenInvalid); return; }
         NSTimeInterval created = [request[@"created"] doubleValue];
         NSTimeInterval age = now - created;
-        if (!(age >= 0 && age <= DXOpenRequestTTL)) { DXOpenSendReply(requestID, DXSystemOpenExpired); return; }
+        if (!(age >= 0 && age <= DXSystemOpenRequestTTL)) { DXOpenSendReply(requestID, DXSystemOpenExpired); return; }
         NSLog(@"[TypeXSB] consumed id=%016llx kind=%@", (unsigned long long)requestID, request[@"kind"]);
         dispatch_async(dispatch_get_main_queue(), ^{
             // Main-queue congestion must not turn a timed-out action into a
             // surprise launch later. Validate freshness at the execution point.
             NSTimeInterval executionAge = [NSDate date].timeIntervalSince1970 - created;
-            if (!(executionAge >= 0 && executionAge <= DXOpenRequestTTL)) {
+            if (!(executionAge >= 0 && executionAge <= DXSystemOpenRequestTTL)) {
                 DXOpenSendReply(requestID, DXSystemOpenExpired);
                 return;
             }

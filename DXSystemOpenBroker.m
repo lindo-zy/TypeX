@@ -1,4 +1,5 @@
 #import "DXSystemOpenBroker.h"
+#import "DXSensitiveURLExecutor.h"
 #import "common.h"
 #import <objc/message.h>
 #import <dlfcn.h>
@@ -11,6 +12,35 @@ BOOL DXIsSensitiveOpenScheme(NSString *scheme) {
 
 static BOOL DXIsSystemOpenServerProcess(void) {
     return [NSProcessInfo.processInfo.processName isEqualToString:@"SpringBoard"];
+}
+
+// Accessed on the main queue; NSProgress cancellation can be read by the RPC
+// worker. A newer system action invalidates an older pending foreground step.
+static NSProgress *DXCurrentSystemOpenRequest;
+
+static NSProgress *DXBeginSystemOpenOperation(void) {
+    [DXCurrentSystemOpenRequest cancel];
+    DXCurrentSystemOpenRequest = [NSProgress discreteProgressWithTotalUnitCount:1];
+    return DXCurrentSystemOpenRequest;
+}
+
+static DXSystemOpenResult DXActivateSystemApplication(NSString *bundleIdentifier) {
+    // Activate inside SpringBoard through the same native selector used by
+    // local PullOver-X. No URL event is sent through WeChat and no invented
+    // __LaunchURL option is involved. Check the runtime BOOL return ABI;
+    // historical headers disagree about this method's return type.
+    UIApplication *application = UIApplication.sharedApplication;
+    SEL launch = NSSelectorFromString(@"launchApplicationWithIdentifier:suspended:");
+    NSMethodSignature *signature = [application methodSignatureForSelector:launch];
+    const char *returnType = signature.methodReturnType;
+    if (!application || ![application respondsToSelector:launch] || signature.numberOfArguments != 4 || !returnType ||
+        (strcmp(returnType, @encode(BOOL)) != 0 && strcmp(returnType, "c") != 0)) {
+        return DXSystemOpenUnavailable;
+    }
+    NSLog(@"[TypeXSB] native application dispatch bundleID=%@", bundleIdentifier);
+    BOOL opened = ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(application, launch, bundleIdentifier, NO);
+    NSLog(@"[TypeXSB] native application bundleID=%@ result=%d", bundleIdentifier, opened);
+    return opened ? DXSystemOpenSucceeded : DXSystemOpenFailed;
 }
 
 // Runs only in SpringBoard, on the main queue. The requester never supplies
@@ -32,9 +62,15 @@ static void DXPerformSystemOpen(NSDictionary *request, DXSystemOpenReply reply) 
         typedef bool (*DXSensitiveOpen)(CFURLRef, char);
         DXSensitiveOpen openSensitive = (DXSensitiveOpen)dlsym(RTLD_DEFAULT, "SBSOpenSensitiveURLAndUnlock");
         if (!openSensitive) { reply(DXSystemOpenUnavailable); return; }
-        BOOL opened = openSensitive((__bridge CFURLRef)url, NO);
-        NSLog(@"[TypeXSB] sensitive scheme=%@ result=%d", url.scheme.lowercaseString, opened);
-        reply(opened ? DXSystemOpenSucceeded : DXSystemOpenFailed);
+        // Preserve the original deadline across the worker queue. A queued RPC
+        // cannot become a surprise open after the caller's request expired.
+        NSNumber *created = request[@"created"];
+        NSDate *deadline = [NSDate dateWithTimeIntervalSince1970:created.doubleValue + DXSystemOpenRequestTTL];
+        DXExecuteSensitiveURL(url, deadline, DXBeginSystemOpenOperation(), ^BOOL(NSURL *sensitiveURL) {
+            return openSensitive((__bridge CFURLRef)sensitiveURL, 0);
+        }, ^DXSystemOpenResult(NSString *bundleIdentifier) {
+            return DXActivateSystemApplication(bundleIdentifier);
+        }, reply);
         return;
     }
     if (![kind isEqualToString:@"application"] || payload.length > 256 || !DXIsValidBundleIdentifier(payload)) {
@@ -42,27 +78,14 @@ static void DXPerformSystemOpen(NSDictionary *request, DXSystemOpenReply reply) 
         return;
     }
 
-    // Activate inside SpringBoard through the same native selector used by
-    // local PullOver-X. No URL event is sent through WeChat and no invented
-    // __LaunchURL option is involved. Check the runtime BOOL return ABI;
-    // historical headers disagree about this method's return type.
-    UIApplication *application = UIApplication.sharedApplication;
-    SEL launch = NSSelectorFromString(@"launchApplicationWithIdentifier:suspended:");
-    NSMethodSignature *signature = [application methodSignatureForSelector:launch];
-    const char *returnType = signature.methodReturnType;
-    if (!application || ![application respondsToSelector:launch] || signature.numberOfArguments != 4 || !returnType ||
-        (strcmp(returnType, @encode(BOOL)) != 0 && strcmp(returnType, "c") != 0)) {
-        reply(DXSystemOpenUnavailable);
-        return;
-    }
-    NSLog(@"[TypeXSB] native application dispatch bundleID=%@", payload);
-    BOOL opened = ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(application, launch, payload, NO);
-    NSLog(@"[TypeXSB] native application bundleID=%@ result=%d", payload, opened);
-    reply(opened ? DXSystemOpenSucceeded : DXSystemOpenFailed);
+    DXBeginSystemOpenOperation();
+    reply(DXActivateSystemApplication(payload));
 }
 
 static void DXSubmitSystemOpen(NSString *kind, NSString *payload, DXSystemOpenReply reply) {
     if (DXIsSystemOpenServerProcess()) {
+        NSDictionary *request = @{@"kind": kind, @"payload": payload ?: @"",
+                                   @"created": @([NSDate date].timeIntervalSince1970)};
         dispatch_async(dispatch_get_main_queue(), ^{
             __block BOOL completed = NO;
             DXSystemOpenReply finish = ^(DXSystemOpenResult result) {
@@ -72,7 +95,7 @@ static void DXSubmitSystemOpen(NSString *kind, NSString *payload, DXSystemOpenRe
                     if (reply) reply(result);
                 });
             };
-            @try { DXPerformSystemOpen(@{@"kind": kind, @"payload": payload ?: @""}, finish); }
+            @try { DXPerformSystemOpen(request, finish); }
             @catch (NSException *exception) {
                 NSLog(@"[TypeXSB] direct exception=%@", exception.name);
                 finish(DXSystemOpenFailed);
