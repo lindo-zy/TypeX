@@ -1,6 +1,7 @@
 #import "DXPLinkActionEditorController.h"
 #import "DXPAppInfo.h"
 #import "DXPOpenAppPickerController.h"
+#import "DXPAppShortcutPickerController.h"
 #import "../DXHelper.h"
 #import "../common.h"
 
@@ -120,6 +121,7 @@ static NSInteger const DXLegacyRowLink = 2;
     if ([type isEqualToString:kCustomActionTypeText]) return LOCALIZED(@"ACTION_TYPE_TEXT");
     if ([type isEqualToString:kCustomActionTypeURL]) return LOCALIZED(@"ACTION_TYPE_URL");
     if ([type isEqualToString:kCustomActionTypeOpenApp]) return LOCALIZED(@"ACTION_TYPE_OPEN_APP");
+    if ([type isEqualToString:kCustomActionTypeShortcut]) return LOCALIZED(@"ACTION_TYPE_SHORTCUT");
     return type;
 }
 
@@ -127,6 +129,7 @@ static NSInteger const DXLegacyRowLink = 2;
     if ([type isEqualToString:kCustomActionTypeText]) return @"doc.text";
     if ([type isEqualToString:kCustomActionTypeURL]) return @"globe";
     if ([type isEqualToString:kCustomActionTypeOpenApp]) return @"app";
+    if ([type isEqualToString:kCustomActionTypeShortcut]) return @"bolt.fill";
     return @"link";
 }
 
@@ -145,6 +148,7 @@ static NSInteger const DXLegacyRowLink = 2;
         kCustomActionTypeText,
         kCustomActionTypeURL,
         kCustomActionTypeOpenApp,
+        kCustomActionTypeShortcut,
     ];
     for (NSString *type in types) {
         [alert addAction:[UIAlertAction actionWithTitle:[self displayNameForType:type]
@@ -167,6 +171,10 @@ static NSInteger const DXLegacyRowLink = 2;
 
 - (BOOL)isOpenAppEntry {
     return [_displayedType isEqualToString:kCustomActionTypeOpenApp];
+}
+
+- (BOOL)isShortcutEntry {
+    return [_displayedType isEqualToString:kCustomActionTypeShortcut];
 }
 
 - (BOOL)isPullOverXInstalled {
@@ -207,6 +215,7 @@ static NSInteger const DXLegacyRowLink = 2;
     if ([_displayedType isEqualToString:kCustomActionTypeText]) return LOCALIZED(@"TYPE_FOOTER_TEXT");
     if ([_displayedType isEqualToString:kCustomActionTypeURL]) return LOCALIZED(@"TYPE_FOOTER_URL");
     if (self.isOpenAppEntry) return LOCALIZED(@"TYPE_FOOTER_OPEN_APP");
+    if (self.isShortcutEntry) return LOCALIZED(@"TYPE_FOOTER_SHORTCUT");
     return nil;
 }
 
@@ -219,7 +228,7 @@ static NSInteger const DXLegacyRowLink = 2;
     }
     if (row == DXActionRowName) return self.nameField;
     if (row == DXActionRowIcon) return self.iconField;
-    if (row == DXActionRowPayload && !self.isOpenAppEntry) return self.linkField;
+    if (row == DXActionRowPayload && !self.isOpenAppEntry && !self.isShortcutEntry) return self.linkField;
     return nil;
 }
 
@@ -237,6 +246,7 @@ static NSInteger const DXLegacyRowLink = 2;
         if ([_displayedType isEqualToString:kCustomActionTypeText]) return LOCALIZED(@"TEXT_SETTINGS");
         if ([_displayedType isEqualToString:kCustomActionTypeURL]) return LOCALIZED(@"URL_SETTINGS");
         if (self.isOpenAppEntry) return LOCALIZED(@"SELECT_APP");
+        if (self.isShortcutEntry) return LOCALIZED(@"SELECT_SHORTCUT");
     }
     if (row == DXActionRowInApp) {
         return self.isOpenAppEntry ? LOCALIZED(@"OPEN_WITH_PULLOVER") : LOCALIZED(@"OPEN_IN_APP");
@@ -376,13 +386,21 @@ static NSInteger const DXLegacyRowLink = 2;
         cell.accessoryType = UITableViewCellAccessoryNone;
         return cell;
     }
-    if (row == DXActionRowPayload && self.isOpenAppEntry) {
+    if (row == DXActionRowPayload && (self.isOpenAppEntry || self.isShortcutEntry)) {
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPLinkActionValueCell" forIndexPath:indexPath];
         NSString *bundleIdentifier = [self trimmedValue:self.linkField.text];
         cell.selectionStyle = UITableViewCellSelectionStyleDefault;
         cell.textLabel.text = [self labelForRow:row];
         cell.textLabel.font = [UIFont systemFontOfSize:16];
-        cell.detailTextLabel.text = self.selectedAppName.length ? self.selectedAppName : LOCALIZED(@"UNSELECTED");
+        NSString *selection = self.selectedAppName;
+        if (self.isShortcutEntry) {
+            NSString *title = [self.entry[kCustomActionShortcutTitleKey] isKindOfClass:NSString.class]
+                ? self.entry[kCustomActionShortcutTitleKey] : self.entry[kCustomActionShortcutTypeKey];
+            if ([title isKindOfClass:NSString.class] && title.length) {
+                selection = [NSString stringWithFormat:@"%@ · %@", selection ?: bundleIdentifier, title];
+            } else selection = nil;
+        }
+        cell.detailTextLabel.text = selection.length ? selection : LOCALIZED(@"UNSELECTED");
         cell.imageView.image = bundleIdentifier.length ? [DXPAppInfo iconForBundleID:bundleIdentifier] : nil;
         cell.accessoryView = nil;
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
@@ -409,6 +427,33 @@ static NSInteger const DXLegacyRowLink = 2;
 
     // The payload box row handles its own taps (the text view takes focus).
     if ([self usesLargePayloadBox] && indexPath.section == 1) return;
+    if (self.isShortcutEntry && indexPath.row == DXActionRowPayload) {
+        [self.view endEditing:YES];
+        DXPAppShortcutPickerController *picker = [DXPAppShortcutPickerController new];
+        picker.selectedBundleIdentifier = [self trimmedValue:self.linkField.text];
+        picker.selectedShortcutType = self.entry[kCustomActionShortcutTypeKey];
+        __weak typeof(self) weakSelf = self;
+        picker.completion = ^(NSString *bundleIdentifier, NSString *appName, DXPAppShortcutItem *item) {
+            typeof(self) view = weakSelf;
+            if (!view) return;
+            NSString *currentName = [view trimmedValue:view.nameField.text];
+            NSString *oldTitle = view.entry[kCustomActionShortcutTitleKey];
+            BOOL replaceName = !currentName.length || [currentName isEqualToString:LOCALIZED(@"DEFAULT_BUTTON_NAME")] ||
+                [currentName isEqualToString:LOCALIZED(@"ACTION_TYPE_SHORTCUT")] || [currentName isEqualToString:oldTitle];
+            view.linkField.text = bundleIdentifier;
+            view.selectedAppName = appName;
+            view.entry[kCustomActionShortcutTypeKey] = item.type;
+            view.entry[kCustomActionShortcutTitleKey] = item.title;
+            view.iconField.text = bundleIdentifier;
+            if (replaceName) view.nameField.text = item.title;
+            [view refreshIconPreview];
+            [view.tableView reloadData];
+        };
+        [picker setRootController:[self rootController]];
+        [picker setParentController:[self parentController]];
+        [self pushController:picker];
+        return;
+    }
     if (self.isOpenAppEntry && indexPath.row == DXActionRowPayload) {
         DXPOpenAppPickerController *picker = [[DXPOpenAppPickerController alloc] init];
         picker.selectedBundleIdentifier = [self trimmedValue:self.linkField.text];
@@ -498,6 +543,14 @@ static NSInteger const DXLegacyRowLink = 2;
     NSString *name = [self trimmedValue:self.nameField.text];
     NSString *icon = [self trimmedValue:self.iconField.text];
     NSString *link = [self payloadCurrentValue];
+    if (self.isShortcutEntry && (!DXIsValidBundleIdentifier(link) || link.length > 256 ||
+        !DXIsValidAppShortcutType(self.entry[kCustomActionShortcutTypeKey]))) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:LOCALIZED(@"SELECT_SHORTCUT")
+            message:LOCALIZED(@"SELECT_SHORTCUT_REQUIRED") preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK") style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+        return;
+    }
     if (self.isOpenAppEntry && !DXIsValidBundleIdentifier(link)) {
         [self showSelectAppRequiredAlert];
         return;
@@ -522,6 +575,10 @@ static NSInteger const DXLegacyRowLink = 2;
     updated[@"name"] = name;
     updated[@"icon"] = icon;
     updated[@"link"] = link;
+    if (!self.isShortcutEntry) {
+        [updated removeObjectForKey:kCustomActionShortcutTypeKey];
+        [updated removeObjectForKey:kCustomActionShortcutTitleKey];
+    }
     if (self.isLegacyEntry) {
         [updated removeObjectForKey:kCustomActionTypeKey];
         [updated removeObjectForKey:kCustomActionInAppKey];
@@ -618,7 +675,8 @@ static NSInteger const DXLegacyRowLink = 2;
                       ([storedType isEqualToString:kCustomActionTypeURLScheme] ||
                        [storedType isEqualToString:kCustomActionTypeText] ||
                        [storedType isEqualToString:kCustomActionTypeURL] ||
-                       [storedType isEqualToString:kCustomActionTypeOpenApp])) ? storedType : @"";
+                       [storedType isEqualToString:kCustomActionTypeOpenApp] ||
+                       [storedType isEqualToString:kCustomActionTypeShortcut])) ? storedType : @"";
 
     NSString *defaultName = ([self trimmedValue:self.entry[@"name"]].length && [self.entry[@"name"] isKindOfClass:[NSString class]])
         ? self.entry[@"name"] : LOCALIZED(@"DEFAULT_BUTTON_NAME");
@@ -646,7 +704,7 @@ static NSInteger const DXLegacyRowLink = 2;
     self.cutReplaceSwitch.on = [self.entry[kCustomActionCutReplaceKey] boolValue];
     [self.cutReplaceSwitch addTarget:self action:@selector(inAppSwitchChanged:) forControlEvents:UIControlEventValueChanged];
 
-    if (self.isOpenAppEntry) {
+    if (self.isOpenAppEntry || self.isShortcutEntry) {
         NSString *selectedBundleIdentifier = [self trimmedValue:self.linkField.text];
         // Direct LaunchServices resolution (no enumeration), so a configured
         // app that the AltList pickers filter out still shows its real name.

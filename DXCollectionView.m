@@ -2353,6 +2353,16 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     NSString *link = [entry[@"link"] isKindOfClass:[NSString class]] ? entry[@"link"] : @"";
     link = [link stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
 
+    if ([type isEqualToString:kCustomActionTypeShortcut]) {
+        DXCustomActionOpenCompletion completion = [self guardedCustomOpenCompletion:^(BOOL success) {
+            if (!success) [self showCustomActionMessage:LOCALIZED(@"CUSTOM_ACTION_SHORTCUT_ERROR")];
+        }];
+        DXOpenSystemShortcut(link, entry[kCustomActionShortcutTypeKey], ^(DXSystemOpenResult result) {
+            [self finishCustomActionOpen:completion success:result == DXSystemOpenSucceeded];
+        });
+        return YES;
+    }
+
     if ([type isEqualToString:kCustomActionTypeOpenApp]) {
         if (!DXIsValidBundleIdentifier(link)) {
             [self showCustomActionLinkError];

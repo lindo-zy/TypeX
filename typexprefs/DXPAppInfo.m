@@ -2,25 +2,10 @@
 #import "../common.h"
 #import <dlfcn.h>
 #import <objc/message.h>
+#import "AltList/CoreServices.h"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-
-@interface LSApplicationRecord : NSObject
-@property (nonatomic, readonly) NSArray *appTags;
-@property (getter=isLaunchProhibited, readonly) BOOL launchProhibited;
-@end
-
-@interface LSApplicationProxy : NSObject
-@property (nonatomic, readonly, copy) NSString *applicationIdentifier;
-@property (nonatomic, readonly, copy) NSString *bundleIdentifier;
-@property (nonatomic, readonly, copy) NSString *localizedName;
-@property (nonatomic, readonly) NSArray *appTags;
-@property (nonatomic, readonly) NSURL *bundleURL;
-@property (getter=isLaunchProhibited, nonatomic, readonly) BOOL launchProhibited;
-+ (instancetype)applicationProxyForIdentifier:(NSString *)identifier;
-- (LSApplicationRecord *)correspondingApplicationRecord;
-@end
 
 @interface UIImage (TypeXAppIcon)
 + (UIImage *)_applicationIconImageForBundleIdentifier:(NSString *)bundleIdentifier format:(NSInteger)format;
@@ -78,7 +63,7 @@
 
         NSMutableArray<NSDictionary *> *groups = [NSMutableArray array];
         for (NSString *bundleID in apps) {
-            if (![bundleID isKindOfClass:[NSString class]] || bundleID.length == 0) continue;
+            if (!DXIsValidBundleIdentifier(bundleID) || bundleID.length > 256) continue;
             NSDictionary *entry = [apps[bundleID] isKindOfClass:[NSDictionary class]] ? apps[bundleID] : nil;
             NSArray *rawItems = [entry[@"items"] isKindOfClass:[NSArray class]] ? entry[@"items"] : nil;
             if (rawItems.count == 0) continue;
@@ -88,12 +73,13 @@
             for (NSDictionary *raw in rawItems) {
                 if (![raw isKindOfClass:[NSDictionary class]]) continue;
                 NSString *type = [raw[@"type"] isKindOfClass:[NSString class]] ? raw[@"type"] : nil;
-                if (type.length == 0 || [seenTypes containsObject:type]) continue;
+                if (!DXIsValidAppShortcutType(type) || [seenTypes containsObject:type]) continue;
                 [seenTypes addObject:type];
 
                 DXPAppShortcutItem *item = [[DXPAppShortcutItem alloc] init];
                 item.type = type;
-                item.title = [raw[@"title"] isKindOfClass:[NSString class]] ? raw[@"title"] : type;
+                NSString *title = [raw[@"title"] isKindOfClass:[NSString class]] ? raw[@"title"] : nil;
+                item.title = title.length ? title : type;
                 item.subtitle = [raw[@"subtitle"] isKindOfClass:[NSString class]] ? raw[@"subtitle"] : nil;
                 NSString *source = [raw[@"source"] isKindOfClass:[NSString class]] ? raw[@"source"] : nil;
                 item.source = [source isEqualToString:@"dynamic"]
@@ -115,6 +101,35 @@
         NSLog(@"[TypeX] shortcuts: shared catalogue unreadable (%@)", exception);
         return @[];
     }
+}
+
++ (BOOL)requestShortcutSnapshotRefresh {
+    [self ensureLaunchServicesLoaded];
+    NSMutableOrderedSet<NSString *> *identifiers = [NSMutableOrderedSet orderedSet];
+    @try {
+        Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
+        LSApplicationWorkspace *workspace = [workspaceClass respondsToSelector:@selector(defaultWorkspace)]
+            ? [workspaceClass defaultWorkspace] : nil;
+        void (^collect)(LSApplicationProxy *) = ^(LSApplicationProxy *proxy) {
+            if (![proxy respondsToSelector:@selector(applicationIdentifier)]) return;
+            NSString *identifier = proxy.applicationIdentifier;
+            if (DXIsValidBundleIdentifier(identifier) && identifiers.count < 2048) [identifiers addObject:identifier];
+        };
+        if ([workspace respondsToSelector:@selector(enumerateApplicationsOfType:block:)]) {
+            [workspace enumerateApplicationsOfType:0 block:collect];
+            [workspace enumerateApplicationsOfType:1 block:collect];
+        } else if ([workspace respondsToSelector:@selector(allApplications)]) {
+            for (LSApplicationProxy *proxy in [workspace allApplications]) collect(proxy);
+        }
+    } @catch (NSException *exception) {
+        NSLog(@"[TypeX] quickaction catalogue enumeration exception=%@", exception.name);
+    }
+    // An empty list asks the existing provider to use SpringBoard's registry.
+    NSDictionary *request = @{@"requestID": NSUUID.UUID.UUIDString, @"bundles": identifiers.array};
+    if (!DXSetQuickActionSharedValue(request, TypeXQuickActionRequestKey)) return NO;
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+        (__bridge CFStringRef)kShortcutRefreshRequestIdentifier, NULL, NULL, YES);
+    return YES;
 }
 
 + (UIImage *)iconForBundleID:(NSString *)bundleID {

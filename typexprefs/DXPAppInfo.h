@@ -40,6 +40,10 @@ typedef NS_ENUM(NSInteger, DXPAppShortcutSource) {
 // Never throws and never returns nil.
 + (NSArray<NSDictionary *> *)appShortcutGroups;
 
+// Call off the main thread. Enumerates bundle IDs and asks SpringBoard to
+// replace the shared catalogue; the snapshot-change notification follows.
++ (BOOL)requestShortcutSnapshotRefresh;
+
 // 44x44 rounded home-screen icon for a bundle identifier; falls back to a
 // generic symbol when the private icon service returns nothing.
 + (UIImage *)iconForBundleID:(NSString *)bundleID;

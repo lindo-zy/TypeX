@@ -61,6 +61,10 @@
 #define kCustomActionTypeText @"text"
 #define kCustomActionTypeURL @"url"
 #define kCustomActionTypeOpenApp @"openapp"
+#define kCustomActionTypeShortcut @"shortcut"
+// Quick actions persist the owning bundle in "link" and the stable item type.
+#define kCustomActionShortcutTypeKey @"shortcuttype"
+#define kCustomActionShortcutTitleKey @"shortcuttitle"
 // Per-entry field on a shortcut dictionary: set to @YES when the button's tap
 // should run its sub-action chain (long-press behavior) instead of the tap
 // action configured for it.
@@ -211,6 +215,12 @@ static inline BOOL DXIsValidBundleIdentifier(NSString *value) {
                                                                                 options:0
                                                                                   error:nil];
     return [expression firstMatchInString:value options:0 range:NSMakeRange(0, value.length)] != nil;
+}
+
+static inline BOOL DXIsValidAppShortcutType(NSString *value) {
+    return [value isKindOfClass:NSString.class] && value.length > 0 && value.length <= 512 &&
+        ![value hasPrefix:@"com.apple.springboard."] &&
+        [value rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location == NSNotFound;
 }
 
 static inline uint64_t DXPullOverOpenStateForBundleIdentifier(NSString *bundleIdentifier) {

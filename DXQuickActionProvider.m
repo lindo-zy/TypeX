@@ -212,32 +212,36 @@ static id DXQACurrentItem(id application, NSString *shortcutType) {
     });
 }
 
-+ (void)activateShortcutWithBundleIdentifier:(NSString *)bundleIdentifier
-                                        type:(NSString *)shortcutType {
-    if (!DXIsValidBundleIdentifier(bundleIdentifier) || shortcutType.length == 0) return;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        id application = DXQAApplication(DXQAApplicationController(), bundleIdentifier);
-        id item = DXQACurrentItem(application, shortcutType);
-        if (!item) {
-            NSLog(@"[TypeX] quickactions: current item missing for %@/%@", bundleIdentifier, shortcutType);
-            return;
-        }
-
-        Class iconViewClass = NSClassFromString(@"SBIconView");
-        SEL activateSelector = NSSelectorFromString(@"activateShortcut:withBundleIdentifier:forIconView:");
-        if (!iconViewClass || ![iconViewClass respondsToSelector:activateSelector]) {
-            NSLog(@"[TypeX] quickactions: SBIconView activation entry unavailable for %@/%@",
-                  bundleIdentifier, shortcutType);
-            return;
-        }
-        @try {
-            ((void (*)(id, SEL, id, id, id))objc_msgSend)(
-                iconViewClass, activateSelector, item, bundleIdentifier, nil);
-        } @catch (NSException *exception) {
-            NSLog(@"[TypeX] quickactions: activation failed for %@/%@ (%@)",
-                  bundleIdentifier, shortcutType, exception);
-        }
-    });
+// Synchronous dispatch on SpringBoard's main queue so the broker's freshness
+// check covers the actual invocation. Success means dispatched, not app completion.
++ (DXSystemOpenResult)activateShortcutWithBundleIdentifier:(NSString *)bundleIdentifier
+                                                    type:(NSString *)shortcutType {
+    if (!NSThread.isMainThread || ![NSProcessInfo.processInfo.processName isEqualToString:@"SpringBoard"]) {
+        return DXSystemOpenUnavailable;
+    }
+    if (!DXIsValidBundleIdentifier(bundleIdentifier) || bundleIdentifier.length > 256 ||
+        !DXIsValidAppShortcutType(shortcutType)) return DXSystemOpenInvalid;
+    id application = DXQAApplication(DXQAApplicationController(), bundleIdentifier);
+    id item = DXQACurrentItem(application, shortcutType);
+    if (!item) {
+        NSLog(@"[TypeXSB] quickaction current item missing bundleID=%@", bundleIdentifier);
+        return DXSystemOpenFailed;
+    }
+    Class iconViewClass = NSClassFromString(@"SBIconView");
+    SEL activate = NSSelectorFromString(@"activateShortcut:withBundleIdentifier:forIconView:");
+    NSMethodSignature *signature = [iconViewClass methodSignatureForSelector:activate];
+    if (![iconViewClass respondsToSelector:activate] || signature.numberOfArguments != 5 ||
+        !signature.methodReturnType || strcmp(signature.methodReturnType, @encode(void)) != 0) {
+        return DXSystemOpenUnavailable;
+    }
+    @try {
+        ((void (*)(id, SEL, id, id, id))objc_msgSend)(iconViewClass, activate, item, bundleIdentifier, nil);
+        NSLog(@"[TypeXSB] quickaction dispatched bundleID=%@", bundleIdentifier);
+        return DXSystemOpenSucceeded;
+    } @catch (NSException *exception) {
+        NSLog(@"[TypeXSB] quickaction exception=%@", exception.name);
+        return DXSystemOpenFailed;
+    }
 }
 
 @end

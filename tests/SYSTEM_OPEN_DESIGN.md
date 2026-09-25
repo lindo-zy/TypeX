@@ -7,6 +7,7 @@
 | Ordinary scheme or external HTTP(S) URL | One `UIApplication openURL:options:completionHandler:` call in the original host. No timeout, fallback, handler lookup, or automatic retry. |
 | `prefs:`, `app-prefs:` (case insensitive) | Send the full expanded URL to SpringBoard; call `SBSOpenSensitiveURLAndUnlock` once on a serial worker, then activate `com.apple.Preferences` on the main queue after successful delivery. |
 | `itms-services:` (case insensitive) | Use the same worker for the sensitive URL RPC; do not assume a foreground application for the system installation flow. |
+| App shortcut | Send JSON containing `bundleID` and `shortcutType` through the same transport. SpringBoard resolves the current static/dynamic item and calls `+[SBIconView activateShortcut:withBundleIdentifier:forIconView:]` once on its main queue. |
 | Native Bundle ID action | Send the identifier to SpringBoard; call its `launchApplicationWithIdentifier:suspended:NO` once. Check selector availability and the actual BOOL return ABI. |
 | App action with PullOver enabled | Preserve the existing fingerprint bridge and installed receiver API. |
 | In-app web browser | Preserve the existing Safari presentation. |
@@ -36,7 +37,7 @@ local precedent in PullOver-X's `POExternalActivationCoordinator.m` and
    Sensitive requests keep that same deadline on the worker and before any
    follow-up foreground activation. A newer valid system action cancels the
    earlier request's pending foreground step.
-4. The executor accepts only the two action kinds and validated payloads. Its
+4. The executor accepts only the three action kinds and validated payloads. Its
    result goes into a per-ID notification state and notification. For Settings,
    successful URL delivery is followed by one native foreground activation;
    this step does not resend the URL. No URL retry is performed.
@@ -102,3 +103,38 @@ under this directory are not included by the tweak's root-level source wildcard.
 These checks establish source, transport and package behavior. They do not
 exercise iOS private launch APIs or WeChat UI behavior. Device connection and
 device analysis were explicitly excluded from this change by the user.
+
+## App shortcut custom actions
+
+The custom-action chooser and management page expose **App Shortcut**. The editor
+opens a searchable, app-grouped picker backed by `DXPAppInfo`'s format-3
+CFPreferences catalogue. Opening the picker or pulling to refresh enumerates
+LaunchServices types 0/1 and requests a SpringBoard snapshot. Notification tokens
+are cancelled on disappearance/deallocation; generation checks discard stale
+reader completions. Back/cancel does not save a new action.
+
+The saved entry uses `type=shortcut`, `link=<bundleID>`, `shortcuttype=<type>` and
+`shortcuttitle=<display title>`, plus the existing name/icon/selector fields.
+Execution preserves the current real item's runtime payload. Missing/deleted
+items fail without launching the plain application. A success reply indicates
+that the void system activation entry was invoked, not that the target app has
+completed its action. Quick-action requests share existing replay, expiry and
+one-reply rules. A newer shortcut request cancels an older sensitive URL's pending
+foreground step.
+
+Host transport coverage includes a quick-action JSON payload containing Unicode
+and quotes, plus replay and duplicate-reply suppression. It does not exercise
+SpringBoard's private activation entry or the iOS selection UI.
+
+Device acceptance (not run; no device connection authorized):
+1. On both iOS 16 and 17, open custom actions → App Shortcut → Select Shortcut.
+   Check cached/initially empty lists, refreshed lists, app/action search and
+   current selection; rapidly leave/reopen during refresh.
+2. Select, save, reopen and change a shortcut. Cancel a new editor and confirm
+   no incomplete action is persisted. Bind the saved action to a toolbar gesture.
+3. From WeChat and another app, invoke static and dynamic shortcuts with the
+   target terminated and already running. Expect the same action as the Home
+   Screen menu, with a single `quickaction dispatched` syslog entry per request.
+4. Remove a dynamic item or uninstall the target; expect an error and no plain
+   application launch. Repeat quickly and inspect for duplicate execution.
+5. Recheck normal app, ordinary URL and Settings deep-link actions.

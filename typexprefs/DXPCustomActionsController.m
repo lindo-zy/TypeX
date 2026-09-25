@@ -106,7 +106,7 @@ static NSInteger const DXSectionAddType = 1;
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == DXSectionSelected) return MAX(1, (NSInteger)self.linkActions.count);
-    return 4;
+    return 5;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -137,7 +137,11 @@ static NSInteger const DXSectionAddType = 1;
     NSString *icon = [entry[@"icon"] isKindOfClass:[NSString class]] ? entry[@"icon"] : @"";
 
     cell.textLabel.text = name.length ? name : LOCALIZED(@"DEFAULT_BUTTON_NAME");
-    cell.detailTextLabel.text = link.length ? link : [DXPLinkActionEditorController displayNameForType:type];
+    NSString *shortcutTitle = [entry[kCustomActionShortcutTitleKey] isKindOfClass:NSString.class]
+        ? entry[kCustomActionShortcutTitleKey] : @"";
+    cell.detailTextLabel.text = [type isEqualToString:kCustomActionTypeShortcut] && shortcutTitle.length
+        ? [NSString stringWithFormat:@"%@ · %@", link, shortcutTitle]
+        : (link.length ? link : [DXPLinkActionEditorController displayNameForType:type]);
     cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
     cell.imageView.image = [DXHelper imageForIconConfig:icon defaultSymbolName:[DXPLinkActionEditorController defaultIconForType:type]]
         ?: [UIImage systemImageNamed:[DXPLinkActionEditorController defaultIconForType:type]];
@@ -169,6 +173,7 @@ static NSInteger const DXSectionAddType = 1;
         kCustomActionTypeText,
         kCustomActionTypeURL,
         kCustomActionTypeOpenApp,
+        kCustomActionTypeShortcut,
     ];
     return types[row];
 }

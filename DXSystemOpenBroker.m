@@ -1,5 +1,6 @@
 #import "DXSystemOpenBroker.h"
 #import "DXSensitiveURLExecutor.h"
+#import "DXQuickActionProvider.h"
 #import "common.h"
 #import <objc/message.h>
 #import <dlfcn.h>
@@ -54,6 +55,21 @@ static void DXPerformSystemOpen(NSDictionary *request, DXSystemOpenReply reply) 
     NSString *payload = request[@"payload"];
     if (![kind isKindOfClass:NSString.class] || ![payload isKindOfClass:NSString.class] || !payload.length) {
         reply(DXSystemOpenInvalid);
+        return;
+    }
+    if ([kind isEqualToString:@"quick-action"]) {
+        NSData *data = [payload dataUsingEncoding:NSUTF8StringEncoding];
+        if (!data.length || data.length > 4096) { reply(DXSystemOpenInvalid); return; }
+        id fields = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        if (![fields isKindOfClass:NSDictionary.class]) { reply(DXSystemOpenInvalid); return; }
+        NSString *bundleIdentifier = fields[@"bundleID"];
+        NSString *shortcutType = fields[@"shortcutType"];
+        if (!DXIsValidBundleIdentifier(bundleIdentifier) || bundleIdentifier.length > 256 ||
+            !DXIsValidAppShortcutType(shortcutType)) { reply(DXSystemOpenInvalid); return; }
+        NSTimeInterval age = [NSDate date].timeIntervalSince1970 - [request[@"created"] doubleValue];
+        if (!(age >= 0 && age <= DXSystemOpenRequestTTL)) { reply(DXSystemOpenExpired); return; }
+        DXBeginSystemOpenOperation();
+        reply([DXQuickActionProvider activateShortcutWithBundleIdentifier:bundleIdentifier type:shortcutType]);
         return;
     }
     if ([kind isEqualToString:@"sensitive-url"]) {
@@ -119,4 +135,19 @@ BOOL DXStartSystemOpenBroker(void) {
     return DXStartDarwinOpenServer(^(NSDictionary *request, DXSystemOpenReply reply) {
         DXPerformSystemOpen(request, reply);
     });
+}
+
+void DXOpenSystemShortcut(NSString *bundleIdentifier, NSString *shortcutType, DXSystemOpenReply reply) {
+    if (!DXIsValidBundleIdentifier(bundleIdentifier) || bundleIdentifier.length > 256 ||
+        !DXIsValidAppShortcutType(shortcutType)) {
+        if (reply) dispatch_async(dispatch_get_main_queue(), ^{ reply(DXSystemOpenInvalid); });
+        return;
+    }
+    NSData *data = [NSJSONSerialization dataWithJSONObject:@{@"bundleID": bundleIdentifier, @"shortcutType": shortcutType}
+                                                 options:0 error:nil];
+    if (!data.length || data.length > 4096) {
+        if (reply) dispatch_async(dispatch_get_main_queue(), ^{ reply(DXSystemOpenInvalid); });
+        return;
+    }
+    DXSubmitSystemOpen(@"quick-action", [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding], reply);
 }

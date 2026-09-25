@@ -343,3 +343,13 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SHORTCUTS_BACKGROUND_TINT" = "Button Background";
 "TOP_TOOLBAR_BACKGROUND_TINT" = "Top Toolbar Background";
 "TOP_TOOLBAR_PREVIEW" = "Top Toolbar Preview";
+
+// App quick actions
+"ACTION_TYPE_SHORTCUT" = "App Shortcut";
+"TYPE_FOOTER_SHORTCUT" = "Choose a quick action from an app’s Home Screen menu. If the app no longer provides it, choose another shortcut.";
+"SELECT_SHORTCUT_REQUIRED" = "Choose an app shortcut before saving.";
+"SHORTCUTS_LOADING" = "Loading app shortcuts…";
+"SHORTCUTS_NO_MATCHES" = "No matching shortcuts";
+"SHORTCUTS_REFRESH_FAILED" = "Could not refresh. Pull down to try again.";
+"CUSTOM_ACTION_SHORTCUT_ERROR" = "Could not run this shortcut. Refresh the list and choose it again.";
+"SEARCH" = "Search apps or shortcuts";

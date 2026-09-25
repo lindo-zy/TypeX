@@ -342,3 +342,13 @@
 "SHORTCUTS_BACKGROUND_TINT" = "按钮背景颜色";
 "TOP_TOOLBAR_BACKGROUND_TINT" = "顶部工具栏背景颜色";
 "TOP_TOOLBAR_PREVIEW" = "顶部工具栏预览";
+
+// App quick actions
+"ACTION_TYPE_SHORTCUT" = "快捷方式";
+"TYPE_FOOTER_SHORTCUT" = "选择应用图标长按菜单中的快捷项。执行时使用应用当前的快捷项；若该项已失效，请重新选择。";
+"SELECT_SHORTCUT_REQUIRED" = "请先选择要执行的应用快捷方式。";
+"SHORTCUTS_LOADING" = "正在加载快捷方式…";
+"SHORTCUTS_NO_MATCHES" = "没有匹配的快捷方式";
+"SHORTCUTS_REFRESH_FAILED" = "刷新失败，请下拉重试。";
+"CUSTOM_ACTION_SHORTCUT_ERROR" = "快捷方式无法执行，请刷新列表后重新选择。";
+"SEARCH" = "搜索应用或快捷方式";

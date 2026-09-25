@@ -7,6 +7,10 @@ static NSString *TestPayload(void) {
     return [@"prefs:root=TypeX&path=中文/%25?x=1&y=" stringByPaddingToLength:2048 withString:@"a" startingAtIndex:0];
 }
 
+static NSDictionary *TestQuickAction(void) {
+    return @{@"bundleID": @"com.example.shortcuts", @"shortcutType": @"item.中文/\"quoted\""};
+}
+
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
         if (argc < 2) return 64;
@@ -18,6 +22,10 @@ int main(int argc, const char *argv[]) {
                 executions++;
                 printf("EXEC %lu\n", (unsigned long)executions); fflush(stdout);
                 BOOL equal = [request[@"payload"] isEqualToString:TestPayload()];
+                if ([request[@"kind"] isEqualToString:@"quick-action"]) {
+                    NSData *data = [request[@"payload"] dataUsingEncoding:NSUTF8StringEncoding];
+                    equal = [[NSJSONSerialization JSONObjectWithData:data options:0 error:nil] isEqual:TestQuickAction()];
+                }
                 if ([mode isEqualToString:@"server-silent-reply"]) {
                     DXOpenPending *staged = [DXOpenPending new];
                     staged.tokens = [NSMutableArray array];
@@ -35,12 +43,15 @@ int main(int argc, const char *argv[]) {
             puts("READY"); fflush(stdout);
             dispatch_main();
         }
-        if ([mode isEqualToString:@"send"] || [mode isEqualToString:@"absent"] ||
+        if ([mode isEqualToString:@"send"] || [mode isEqualToString:@"send-quick"] || [mode isEqualToString:@"absent"] ||
             [mode isEqualToString:@"oversize"] || [mode isEqualToString:@"expired"]) {
             BOOL absent = [mode isEqualToString:@"absent"];
             BOOL oversize = [mode isEqualToString:@"oversize"];
             NSString *payload = oversize ? [@"x" stringByPaddingToLength:10000 withString:@"x" startingAtIndex:0] : TestPayload();
-            DXSendDarwinOpenRequest(@"sensitive-url", payload, ^(DXSystemOpenResult result) {
+            BOOL quick = [mode isEqualToString:@"send-quick"];
+            if (quick) payload = [[NSString alloc] initWithData:[NSJSONSerialization dataWithJSONObject:TestQuickAction() options:0 error:nil]
+                                                     encoding:NSUTF8StringEncoding];
+            DXSendDarwinOpenRequest(quick ? @"quick-action" : @"sensitive-url", payload, ^(DXSystemOpenResult result) {
                 DXSystemOpenResult expected = absent ? DXSystemOpenTimedOut : (oversize ? DXSystemOpenInvalid :
                     ([mode isEqualToString:@"expired"] ? DXSystemOpenExpired : DXSystemOpenSucceeded));
                 // Repost the consumed doorbell; the server must not execute twice.

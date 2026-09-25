@@ -107,7 +107,7 @@ static NSBundle *tweakBundle;
     NSMutableDictionary *entry = [@{
         @"selector": [kLinkActionSelectorPrefix stringByAppendingString:NSUUID.UUID.UUIDString],
         @"name": opensApplication ? LOCALIZED(@"OPEN_APP") : LOCALIZED(@"DEFAULT_BUTTON_NAME"),
-        @"icon": opensApplication ? @"app" : @"link",
+        @"icon": opensApplication ? @"app" : ([type isEqualToString:kCustomActionTypeShortcut] ? @"bolt.fill" : @"link"),
         @"link": @"",
         kCustomActionTypeKey: type,
     } mutableCopy];

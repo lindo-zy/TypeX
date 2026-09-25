@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import "DXDarwinOpenChannel.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -13,8 +14,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 // Re-resolves the current shortcut object immediately before activation so
 // userInfo and other runtime payload stay intact. No synthetic item is created
-// when the configured type no longer exists.
-+ (void)activateShortcutWithBundleIdentifier:(NSString *)bundleIdentifier
+// when the configured type no longer exists. Call on SpringBoard main queue;
+// success reports invocation of the system entry, not completion inside the app.
++ (DXSystemOpenResult)activateShortcutWithBundleIdentifier:(NSString *)bundleIdentifier
                                         type:(NSString *)shortcutType;
 
 @end

@@ -20,9 +20,10 @@ with tempfile.TemporaryDirectory(prefix="typex-open-tests-") as tmp:
         assert server.stdout.readline().strip() == "READY"
         for _ in range(3):
             subprocess.run([binary, "send"], check=True, timeout=15)
+        subprocess.run([binary, "send-quick"], check=True, timeout=15)
         server.terminate()
         output, _ = server.communicate(timeout=5)
-        assert output.count("EXEC ") == 3, output
+        assert output.count("EXEC ") == 4, output
     finally:
         if server.poll() is None:
             server.terminate()
