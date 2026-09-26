@@ -166,19 +166,10 @@ static CGFloat const DXSubActionContentLeading = 40.0;
     [self pushController:picker];
 }
 
-- (void)infoTapped:(UIButton *)sender {
-    // Walk up from the button to its cell to recover the row.
-    UIView *view = sender;
-    while (view && ![view isKindOfClass:[UITableViewCell class]]) view = view.superview;
-    NSIndexPath *indexPath = [self.tableView indexPathForCell:(UITableViewCell *)view];
-    if (!indexPath || indexPath.row >= (NSInteger)self.entries.count) return;
-    [self pushEditorForRow:indexPath.row];
-}
-
-// The info button opens the sub-action's own configuration page — the same
-// editor the custom-actions management page uses. Built-in actions have no
-// configuration and carry no info button; tapping the row keeps swapping the
-// action instead.
+// Tapping a row edits that sub-action: user-defined actions open their own
+// configuration page — the same editor the custom-actions management page
+// uses — while built-in actions have no configuration, so editing them means
+// swapping which action the row holds.
 - (void)pushEditorForRow:(NSInteger)row {
     if (row < 0 || row >= (NSInteger)self.entries.count) return;
     NSString *selector = self.entries[row][@"selector"];
@@ -285,22 +276,7 @@ static CGFloat const DXSubActionContentLeading = 40.0;
 
     DXPSubActionCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPSubActionCell" forIndexPath:indexPath];
 
-    // The info button lives in the editing accessory slot because the table is
-    // permanently in edit mode (the minus and the drag handle come from there).
-    // Only user-defined actions have a configuration page, so the button is
-    // attached per row and explicitly cleared on reuse.
     NSString *selector = self.entries[indexPath.row][@"selector"];
-    if ([selector isKindOfClass:[NSString class]] && [self linkActionForSelector:selector]) {
-        UIButton *infoButton = [UIButton buttonWithType:UIButtonTypeSystem];
-        infoButton.tintColor = [UIColor systemOrangeColor];
-        [infoButton setImage:[UIImage systemImageNamed:@"info.circle"] forState:UIControlStateNormal];
-        infoButton.frame = CGRectMake(0, 0, 30, 30);
-        [infoButton addTarget:self action:@selector(infoTapped:) forControlEvents:UIControlEventTouchUpInside];
-        cell.editingAccessoryView = infoButton;
-    } else {
-        cell.editingAccessoryView = nil;
-    }
-
     cell.textLabel.text = [selector isKindOfClass:[NSString class]] && selector.length > 0
         ? [self displayNameForSelector:selector]
         : LOCALIZED(@"SUB_ACTION");
@@ -328,7 +304,12 @@ static CGFloat const DXSubActionContentLeading = 40.0;
         return;
     }
 
-    [self pushPickerForRow:indexPath.row];
+    NSString *selector = self.entries[indexPath.row][@"selector"];
+    if ([selector isKindOfClass:[NSString class]] && [self linkActionForSelector:selector]) {
+        [self pushEditorForRow:indexPath.row];
+    } else {
+        [self pushPickerForRow:indexPath.row];
+    }
 }
 
 #pragma mark - Editing (delete + reorder)
