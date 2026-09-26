@@ -1,5 +1,6 @@
 #import "DXPSubActionsController.h"
 #import "DXPSubActionPickerController.h"
+#import "DXPLinkActionEditorController.h"
 #import "../DXHelper.h"
 #import "../common.h"
 
@@ -170,8 +171,52 @@ static CGFloat const DXSubActionContentLeading = 40.0;
     UIView *view = sender;
     while (view && ![view isKindOfClass:[UITableViewCell class]]) view = view.superview;
     NSIndexPath *indexPath = [self.tableView indexPathForCell:(UITableViewCell *)view];
-    if (!indexPath) return;
-    [self pushPickerForRow:indexPath.row];
+    if (!indexPath || indexPath.row >= (NSInteger)self.entries.count) return;
+    [self pushEditorForRow:indexPath.row];
+}
+
+// The info button opens the sub-action's own configuration page — the same
+// editor the custom-actions management page uses. Built-in actions have no
+// configuration and carry no info button; tapping the row keeps swapping the
+// action instead.
+- (void)pushEditorForRow:(NSInteger)row {
+    if (row < 0 || row >= (NSInteger)self.entries.count) return;
+    NSString *selector = self.entries[row][@"selector"];
+    if (![selector isKindOfClass:[NSString class]]) return;
+    NSDictionary *linkAction = [self linkActionForSelector:selector];
+    if (!linkAction) return;
+
+    DXPLinkActionEditorController *editor = [[DXPLinkActionEditorController alloc] init];
+    editor.entry = [linkAction mutableCopy];
+
+    __weak typeof(self) weakSelf = self;
+    editor.completion = ^(NSDictionary *savedEntry) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf || ![savedEntry isKindOfClass:[NSDictionary class]]) return;
+        // The editor only reports the normalized entry; write it back into the
+        // shared custom-action store matched by the immutable selector. The
+        // full domain is rewritten so other keys survive the replace-style
+        // writePrefs of this unsandboxed process.
+        NSMutableDictionary *prefs = [[[DXPrefsManager sharedInstance] readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
+        NSMutableArray *linkActions = [NSMutableArray array];
+        for (NSDictionary *entry in prefs[kLinkActionskey]) {
+            if (![entry isKindOfClass:[NSDictionary class]]) continue;
+            if ([entry[@"selector"] isEqual:savedEntry[@"selector"]]) {
+                [linkActions addObject:[savedEntry mutableCopy]];
+            } else {
+                [linkActions addObject:[entry mutableCopy]];
+            }
+        }
+        prefs[kLinkActionskey] = linkActions;
+        [[DXPrefsManager sharedInstance] writePrefs:prefs];
+        // Name and icon may have changed; viewWillAppear also reloads, this
+        // covers the already-visible table right away.
+        [strongSelf.tableView reloadData];
+    };
+
+    [editor setRootController:[self rootController]];
+    [editor setParentController:[self parentController]];
+    [self pushController:editor];
 }
 
 - (NSDictionary *)linkActionForSelector:(NSString *)selector {
@@ -242,14 +287,20 @@ static CGFloat const DXSubActionContentLeading = 40.0;
 
     // The info button lives in the editing accessory slot because the table is
     // permanently in edit mode (the minus and the drag handle come from there).
-    UIButton *infoButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    infoButton.tintColor = [UIColor systemOrangeColor];
-    [infoButton setImage:[UIImage systemImageNamed:@"info.circle"] forState:UIControlStateNormal];
-    infoButton.frame = CGRectMake(0, 0, 30, 30);
-    [infoButton addTarget:self action:@selector(infoTapped:) forControlEvents:UIControlEventTouchUpInside];
-    cell.editingAccessoryView = infoButton;
-
+    // Only user-defined actions have a configuration page, so the button is
+    // attached per row and explicitly cleared on reuse.
     NSString *selector = self.entries[indexPath.row][@"selector"];
+    if ([selector isKindOfClass:[NSString class]] && [self linkActionForSelector:selector]) {
+        UIButton *infoButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        infoButton.tintColor = [UIColor systemOrangeColor];
+        [infoButton setImage:[UIImage systemImageNamed:@"info.circle"] forState:UIControlStateNormal];
+        infoButton.frame = CGRectMake(0, 0, 30, 30);
+        [infoButton addTarget:self action:@selector(infoTapped:) forControlEvents:UIControlEventTouchUpInside];
+        cell.editingAccessoryView = infoButton;
+    } else {
+        cell.editingAccessoryView = nil;
+    }
+
     cell.textLabel.text = [selector isKindOfClass:[NSString class]] && selector.length > 0
         ? [self displayNameForSelector:selector]
         : LOCALIZED(@"SUB_ACTION");
