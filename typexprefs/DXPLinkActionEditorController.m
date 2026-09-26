@@ -2,6 +2,7 @@
 #import "DXPAppInfo.h"
 #import "DXPOpenAppPickerController.h"
 #import "DXPAppShortcutPickerController.h"
+#import "DXPJavaScriptTestController.h"
 #import "../DXHelper.h"
 #import "../common.h"
 
@@ -100,6 +101,8 @@ static NSInteger const DXLegacyRowLink = 2;
 // The one payload box cell for the box types (url scheme / text); kept as a
 // property so its text survives cell reuse while scrolling.
 @property (nonatomic, strong) DXPLinkActionTextCell *payloadBoxCell;
+@property (nonatomic, strong) UISegmentedControl *jsInputControl;
+@property (nonatomic, strong) UISegmentedControl *jsOutputControl;
 @end
 
 @implementation DXPLinkActionEditorController {
@@ -117,6 +120,7 @@ static NSInteger const DXLegacyRowLink = 2;
 
 + (NSString *)displayNameForType:(NSString *)type {
     [self loadTweakBundle];
+    if ([type isEqualToString:kCustomActionTypeJavaScript]) return @"JavaScript";
     if ([type isEqualToString:kCustomActionTypeURLScheme]) return LOCALIZED(@"ACTION_TYPE_URL_SCHEME");
     if ([type isEqualToString:kCustomActionTypeText]) return LOCALIZED(@"ACTION_TYPE_TEXT");
     if ([type isEqualToString:kCustomActionTypeURL]) return LOCALIZED(@"ACTION_TYPE_URL");
@@ -126,6 +130,7 @@ static NSInteger const DXLegacyRowLink = 2;
 }
 
 + (NSString *)defaultIconForType:(NSString *)type {
+    if ([type isEqualToString:kCustomActionTypeJavaScript]) return @"curlybraces";
     if ([type isEqualToString:kCustomActionTypeText]) return @"doc.text";
     if ([type isEqualToString:kCustomActionTypeURL]) return @"globe";
     if ([type isEqualToString:kCustomActionTypeOpenApp]) return @"app";
@@ -149,6 +154,7 @@ static NSInteger const DXLegacyRowLink = 2;
         kCustomActionTypeURL,
         kCustomActionTypeOpenApp,
         kCustomActionTypeShortcut,
+        kCustomActionTypeJavaScript,
     ];
     for (NSString *type in types) {
         [alert addAction:[UIAlertAction actionWithTitle:[self displayNameForType:type]
@@ -168,6 +174,8 @@ static NSInteger const DXLegacyRowLink = 2;
 - (BOOL)isLegacyEntry {
     return _displayedType.length == 0;
 }
+
+- (BOOL)isJavaScriptEntry { return [_displayedType isEqualToString:kCustomActionTypeJavaScript]; }
 
 - (BOOL)isOpenAppEntry {
     return [_displayedType isEqualToString:kCustomActionTypeOpenApp];
@@ -210,6 +218,7 @@ static NSInteger const DXLegacyRowLink = 2;
 }
 
 - (NSString *)typeFooter {
+    if (self.isJavaScriptEntry) return LOCALIZED(@"JS_HELP");
     if (self.isLegacyEntry) return LOCALIZED(@"CUSTOM_LINK_ACTION_FOOTER");
     if ([_displayedType isEqualToString:kCustomActionTypeURLScheme]) return LOCALIZED(@"TYPE_FOOTER_URL_SCHEME");
     if ([_displayedType isEqualToString:kCustomActionTypeText]) return LOCALIZED(@"TYPE_FOOTER_TEXT");
@@ -271,13 +280,14 @@ static NSInteger const DXLegacyRowLink = 2;
 // (two-section layout) instead of a small accessory field.
 - (BOOL)usesLargePayloadBox {
     return !self.isLegacyEntry &&
-        ([_displayedType isEqualToString:kCustomActionTypeURLScheme] ||
+        (self.isJavaScriptEntry || [_displayedType isEqualToString:kCustomActionTypeURLScheme] ||
          [_displayedType isEqualToString:kCustomActionTypeText]);
 }
 
 // The payload value lives in the box for box types, in the small field
 // elsewhere; both trim the same way on save.
 - (NSString *)payloadCurrentValue {
+    if (self.isJavaScriptEntry) return self.payloadBoxCell.textView.text ?: self.entry[@"script"] ?: @"";
     if (self.usesLargePayloadBox) return [self trimmedValue:self.payloadBoxCell.textView.text];
     return [self trimmedValue:self.linkField.text];
 }
@@ -292,10 +302,12 @@ static NSInteger const DXLegacyRowLink = 2;
 #pragma mark - Table view
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    if (self.isJavaScriptEntry) return 3;
     return [self usesLargePayloadBox] ? 2 : 1;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    if (self.isJavaScriptEntry && section == 2) return 3;
     if (![self usesLargePayloadBox]) return [self rowCount];
     // Box layout: section 0 holds the shared rows (类型/名称/图标), section 1
     // the payload box followed by the 剪切替换 switch when the type supports @@@.
@@ -303,6 +315,8 @@ static NSInteger const DXLegacyRowLink = 2;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    if (self.isJavaScriptEntry && section == 1) return LOCALIZED(@"JS_SOURCE");
+    if (self.isJavaScriptEntry && section == 2) return LOCALIZED(@"JS_BEHAVIOR");
     if (![self usesLargePayloadBox] || section == 0) return nil;
     return [_displayedType isEqualToString:kCustomActionTypeURLScheme]
         ? LOCALIZED(@"URL_SCHEME_SETTINGS") : LOCALIZED(@"TEXT_SETTINGS");
@@ -318,6 +332,7 @@ static NSInteger const DXLegacyRowLink = 2;
 // Only the payload box gets a custom height; every other row (including the
 // 剪切替换 row that follows it) keeps the system self-sizing it used before.
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (self.isJavaScriptEntry && indexPath.section == 1) return 260;
     if ([self usesLargePayloadBox] && indexPath.section == 1 && indexPath.row == 0) return 120.0;
     return UITableViewAutomaticDimension;
 }
@@ -342,7 +357,17 @@ static NSInteger const DXLegacyRowLink = 2;
     if (!self.payloadBoxCell) {
         self.payloadBoxCell = [self.tableView dequeueReusableCellWithIdentifier:@"DXPLinkActionTextCell" forIndexPath:indexPath];
         self.payloadBoxCell.textView.delegate = self;
-        self.payloadBoxCell.textView.text = [self.entry[@"link"] isKindOfClass:[NSString class]] ? self.entry[@"link"] : @"";
+        NSString *key = self.isJavaScriptEntry ? @"script" : @"link";
+        self.payloadBoxCell.textView.text = [self.entry[key] isKindOfClass:[NSString class]] ? self.entry[key] : @"";
+        if (self.isJavaScriptEntry) {
+            UITextView *text = self.payloadBoxCell.textView;
+            text.font = [UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightRegular];
+            text.autocorrectionType = UITextAutocorrectionTypeNo;
+            text.autocapitalizationType = UITextAutocapitalizationTypeNone;
+            text.smartQuotesType = UITextSmartQuotesTypeNo;
+            text.smartDashesType = UITextSmartDashesTypeNo;
+            text.smartInsertDeleteType = UITextSmartInsertDeleteTypeNo;
+        }
     }
     NSString *placeholder = [self payloadBoxPlaceholder];
     self.payloadBoxCell.placeholderLabel.text = placeholder;
@@ -351,6 +376,13 @@ static NSInteger const DXLegacyRowLink = 2;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (self.isJavaScriptEntry && indexPath.section == 2) {
+        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+        cell.textLabel.text = LOCALIZED(indexPath.row == 0 ? @"JS_INPUT" : indexPath.row == 1 ? @"JS_OUTPUT" : @"JS_TEST");
+        cell.accessoryView = indexPath.row == 0 ? self.jsInputControl : indexPath.row == 1 ? self.jsOutputControl : nil;
+        cell.accessoryType = indexPath.row == 2 ? UITableViewCellAccessoryDisclosureIndicator : UITableViewCellAccessoryNone;
+        return cell;
+    }
     // The 剪切替换 row shares section 1 with the payload box on box types, so
     // it must be intercepted before the box cell short-circuit below.
     if ([self isCutReplaceRow:indexPath]) {
@@ -424,6 +456,15 @@ static NSInteger const DXLegacyRowLink = 2;
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
+
+    if (self.isJavaScriptEntry && indexPath.section == 2) {
+        if (indexPath.row == 2) {
+            DXPJavaScriptTestController *test = [DXPJavaScriptTestController new];
+            test.source = [self payloadCurrentValue];
+            [self.navigationController pushViewController:test animated:YES];
+        }
+        return;
+    }
 
     // The payload box row handles its own taps (the text view takes focus).
     if ([self usesLargePayloadBox] && indexPath.section == 1) return;
@@ -511,7 +552,7 @@ static NSInteger const DXLegacyRowLink = 2;
 }
 
 - (void)textViewDidBeginEditing:(UITextView *)textView {
-    DXPlaceCaretAtEnd(textView);
+    if (!self.isJavaScriptEntry) DXPlaceCaretAtEnd(textView);
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
@@ -543,6 +584,11 @@ static NSInteger const DXLegacyRowLink = 2;
     NSString *name = [self trimmedValue:self.nameField.text];
     NSString *icon = [self trimmedValue:self.iconField.text];
     NSString *link = [self payloadCurrentValue];
+    if (self.isJavaScriptEntry && (link.length == 0 || link.length > 131072)) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"JavaScript" message:LOCALIZED(@"JS_SOURCE_INVALID") preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK") style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil]; return;
+    }
     if (self.isShortcutEntry && (!DXIsValidBundleIdentifier(link) || link.length > 256 ||
         !DXIsValidAppShortcutType(self.entry[kCustomActionShortcutTypeKey]))) {
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:LOCALIZED(@"SELECT_SHORTCUT")
@@ -575,6 +621,12 @@ static NSInteger const DXLegacyRowLink = 2;
     updated[@"name"] = name;
     updated[@"icon"] = icon;
     updated[@"link"] = link;
+    if (self.isJavaScriptEntry) {
+        updated[@"link"] = @"";
+        updated[@"script"] = link;
+        updated[@"jsInput"] = @[@"auto", @"all", @"clipboard"][MAX(0, self.jsInputControl.selectedSegmentIndex)];
+        updated[@"jsOutput"] = @[@"replace", @"insert", @"copy"][MAX(0, self.jsOutputControl.selectedSegmentIndex)];
+    }
     if (!self.isShortcutEntry) {
         [updated removeObjectForKey:kCustomActionShortcutTypeKey];
         [updated removeObjectForKey:kCustomActionShortcutTitleKey];
@@ -676,7 +728,19 @@ static NSInteger const DXLegacyRowLink = 2;
                        [storedType isEqualToString:kCustomActionTypeText] ||
                        [storedType isEqualToString:kCustomActionTypeURL] ||
                        [storedType isEqualToString:kCustomActionTypeOpenApp] ||
-                       [storedType isEqualToString:kCustomActionTypeShortcut])) ? storedType : @"";
+                       [storedType isEqualToString:kCustomActionTypeShortcut] ||
+                       [storedType isEqualToString:kCustomActionTypeJavaScript])) ? storedType : @"";
+
+    if (self.isJavaScriptEntry) {
+        self.jsInputControl = [[UISegmentedControl alloc] initWithItems:@[LOCALIZED(@"JS_AUTO"), LOCALIZED(@"JS_ALL"), LOCALIZED(@"JS_CLIPBOARD")]];
+        self.jsOutputControl = [[UISegmentedControl alloc] initWithItems:@[LOCALIZED(@"JS_REPLACE"), LOCALIZED(@"JS_INSERT"), LOCALIZED(@"JS_COPY")]];
+        [self.jsInputControl sizeToFit];
+        [self.jsOutputControl sizeToFit];
+        NSUInteger input = [@[@"auto", @"all", @"clipboard"] indexOfObject:self.entry[@"jsInput"] ?: @"auto"];
+        NSUInteger output = [@[@"replace", @"insert", @"copy"] indexOfObject:self.entry[@"jsOutput"] ?: @"replace"];
+        self.jsInputControl.selectedSegmentIndex = input == NSNotFound ? 0 : (NSInteger)input;
+        self.jsOutputControl.selectedSegmentIndex = output == NSNotFound ? 0 : (NSInteger)output;
+    }
 
     NSString *defaultName = ([self trimmedValue:self.entry[@"name"]].length && [self.entry[@"name"] isKindOfClass:[NSString class]])
         ? self.entry[@"name"] : LOCALIZED(@"DEFAULT_BUTTON_NAME");

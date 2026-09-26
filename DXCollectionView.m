@@ -4,6 +4,7 @@
 #import "DXHelper.h"
 #import "DXAIPanel.h"
 #import "DXSystemOpenBroker.h"
+#import "DXJavaScriptHost.h"
 
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -1936,6 +1937,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 // sub-action fires directly, several open a chooser, none keeps the gesture
 // inert. The dedicated long-press action store is no longer consulted.
 -(void)runSubActionsForButton:(UIButton *)button {
+    [DXJavaScriptHost cancelActive];
     [self autoPaginationControl];
     NSArray<NSString *> *subActions = preferencesSubActionSelectorsForIdentifier(button.accessibilityIdentifier, self.configuration);
     if (subActions.count == 0) return;
@@ -2350,6 +2352,35 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
 
+    if ([type isEqualToString:kCustomActionTypeJavaScript]) {
+        __weak DXCollectionView *weakSelf = self;
+        [DXJavaScriptHost startEntry:entry sourceView:self inputProvider:^id{
+            Class cls = objc_getClass("UIKeyboardImpl");
+            if (![cls respondsToSelector:@selector(activeInstance)]) return nil;
+            @try { return DXKeyboardInputDelegate([cls activeInstance]); }
+            @catch (__unused NSException *exception) { return nil; }
+        } open:^(NSString *kind, NSString *content) {
+            DXCollectionView *view = weakSelf;
+            if (!view) return;
+            if ([kind isEqualToString:@"app"]) {
+                [view openApplicationWithBundleIdentifier:content completion:^(BOOL success) {
+                    if (!success) [weakSelf showCustomActionLinkError];
+                }];
+            } else {
+                NSURL *url = [NSURL URLWithString:content];
+                BOOL web = [@[@"http", @"https"] containsObject:url.scheme.lowercaseString];
+                if ([kind isEqualToString:@"urlInApp"] && web) {
+                    [view dispatchWebURLCustomAction:content inApp:YES cutInputField:NO];
+                } else {
+                    [view openCustomActionURL:url completion:^(BOOL success) {
+                        if (!success) [weakSelf showCustomActionLinkError];
+                    }];
+                }
+            }
+        } error:^(NSString *message) { [weakSelf showCustomActionMessage:message]; }];
+        return YES;
+    }
+
     NSString *link = [entry[@"link"] isKindOfClass:[NSString class]] ? entry[@"link"] : @"";
     link = [link stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
 
@@ -2472,6 +2503,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 // Dispatches either one built-in selector or one user-defined custom action.
 -(void)dispatchConfiguredActionSelector:(NSString *)selectorName sender:(UIButton *)sender {
+    [DXJavaScriptHost cancelActive];
     if ([self dispatchLinkActionSelector:selectorName sender:sender]) return;
     if (![DXShortcutsGenerator isVisibleShortcutSelector:selectorName]) {
         return;

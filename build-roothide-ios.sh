@@ -52,6 +52,8 @@ NEXT_VERSION="${NEXT_MAJOR}.${NEXT_MINOR}.${NEXT_PATCH}"
 # 配置缺失、无 token 或推送失败都只告警，不影响构建结果与退出码。
 notify_bark() {
     local message="$1"
+    # Local validation can opt out without touching the user's notification config.
+    if [[ "${TYPEX_SKIP_BUILD_NOTIFICATION:-0}" == "1" ]]; then return 0; fi
     local conf_file="$ROOT_DIR/build-notify.local.conf"
 
     if [[ ! -f "$conf_file" ]]; then

@@ -353,3 +353,22 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SHORTCUTS_REFRESH_FAILED" = "Could not refresh. Pull down to try again.";
 "CUSTOM_ACTION_SHORTCUT_ERROR" = "Could not run this shortcut. Refresh the list and choose it again.";
 "SEARCH" = "Search apps or shortcuts";
+
+// JavaScript custom actions
+"JS_SOURCE" = "Script source";
+"JS_BEHAVIOR" = "Input and result";
+"JS_INPUT" = "Input";
+"JS_OUTPUT" = "Output";
+"JS_AUTO" = "Selection";
+"JS_ALL" = "All text";
+"JS_CLIPBOARD" = "Clipboard";
+"JS_REPLACE" = "Replace";
+"JS_INSERT" = "Insert";
+"JS_COPY" = "Copy";
+"JS_TEST" = "Test script";
+"JS_RUN" = "Run test";
+"JS_RESULT" = "Script result";
+"JS_SOURCE_INVALID" = "Enter a script of at most 131072 characters.";
+"JS_INPUT_UNAVAILABLE" = "This input is unavailable for scripting. Finish composing text first; secure fields are not supported.";
+"JS_TEST_HINT" = "Enter test input. HTTP requests are real; text and navigation actions are previewed. Logs stay on this page.";
+"JS_HELP" = "Entry: async function main(str). Selection uses the full text when nothing is selected. Replace changes the input selection/full text; clipboard input replaces the current selection. Insert writes at the caret/selection. Copy writes to the clipboard.\n$http.get/post/put/patch/delete({url, headers, body}) returns UTF-8 text; use JSON.parse for JSON and a string body. $url.open, $url.openInApp, $app.open and console.log are supported.\nReturn text or {type, content, title?, args?}; types: txt/url/urlInApp/app/function. Multiple results show a menu; null does not insert. Navigation ends the session. Stale input/network results are discarded.\nImages, files, $pb, $kb, legacy js actions and browser/Node APIs are not supported.";

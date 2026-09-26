@@ -352,3 +352,22 @@
 "SHORTCUTS_REFRESH_FAILED" = "刷新失败，请下拉重试。";
 "CUSTOM_ACTION_SHORTCUT_ERROR" = "快捷方式无法执行，请刷新列表后重新选择。";
 "SEARCH" = "搜索应用或快捷方式";
+
+// JavaScript custom actions
+"JS_SOURCE" = "脚本源码";
+"JS_BEHAVIOR" = "输入与结果";
+"JS_INPUT" = "输入";
+"JS_OUTPUT" = "输出";
+"JS_AUTO" = "选区优先";
+"JS_ALL" = "全文";
+"JS_CLIPBOARD" = "剪贴板";
+"JS_REPLACE" = "替换";
+"JS_INSERT" = "插入";
+"JS_COPY" = "复制";
+"JS_TEST" = "测试脚本";
+"JS_RUN" = "运行测试";
+"JS_RESULT" = "脚本结果";
+"JS_SOURCE_INVALID" = "请输入脚本，长度不能超过 131072 个字符。";
+"JS_INPUT_UNAVAILABLE" = "当前输入框无法用于脚本，请先结束拼音输入；密码框不支持。";
+"JS_TEST_HINT" = "填写测试文本后运行。网络请求会真实发送；文本与跳转动作只预览。日志仅保留在本页。";
+"JS_HELP" = "入口：async function main(str)。选区优先：无选区时读取全文。替换：替换读取的选区或全文；剪贴板输入则替换当前选区。插入：在当前光标或选区写入；复制：写入剪贴板。\n支持 $http.get/post/put/patch/delete({url, headers, body})，返回 UTF-8 字符串，JSON 用 JSON.parse 解析；body 请传字符串。支持 $url.open、$url.openInApp、$app.open 和 console.log。\n返回字符串，或 {type, content, title?, args?}；type 支持 txt/url/urlInApp/app/function。数组多项显示菜单，null 不写入。跳转后结束当前脚本会话。网络或输入状态失效时不回写。\n暂不支持图片、文件、$pb、$kb、旧式 js 类型或完整浏览器/Node 环境。";

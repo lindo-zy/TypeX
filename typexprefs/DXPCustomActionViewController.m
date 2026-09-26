@@ -113,6 +113,12 @@ static NSBundle *tweakBundle;
     } mutableCopy];
     if ([type isEqualToString:kCustomActionTypeURL]) entry[kCustomActionInAppKey] = @YES;
     if (opensApplication) entry[kCustomActionUsePullOverKey] = @NO;
+    if ([type isEqualToString:kCustomActionTypeJavaScript]) {
+        entry[@"icon"] = @"curlybraces";
+        entry[@"script"] = @"async function main(str) {\n    return str.toUpperCase();\n}\n";
+        entry[@"jsInput"] = @"auto";
+        entry[@"jsOutput"] = @"replace";
+    }
 
     DXPLinkActionEditorController *editor = [[DXPLinkActionEditorController alloc] init];
     editor.entry = entry;

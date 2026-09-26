@@ -106,7 +106,7 @@ static NSInteger const DXSectionAddType = 1;
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == DXSectionSelected) return MAX(1, (NSInteger)self.linkActions.count);
-    return 5;
+    return 6;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -174,6 +174,7 @@ static NSInteger const DXSectionAddType = 1;
         kCustomActionTypeURL,
         kCustomActionTypeOpenApp,
         kCustomActionTypeShortcut,
+        kCustomActionTypeJavaScript,
     ];
     return types[row];
 }

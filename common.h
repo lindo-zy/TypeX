@@ -62,6 +62,7 @@
 #define kCustomActionTypeURL @"url"
 #define kCustomActionTypeOpenApp @"openapp"
 #define kCustomActionTypeShortcut @"shortcut"
+#define kCustomActionTypeJavaScript @"javascript"
 // Quick actions persist the owning bundle in "link" and the stable item type.
 #define kCustomActionShortcutTypeKey @"shortcuttype"
 #define kCustomActionShortcutTitleKey @"shortcuttitle"
