@@ -32,6 +32,10 @@
 
 static DXJavaScriptHost *DXActiveJavaScriptHost;
 
+// Menu rows snap to whole heights so the panel edge never cuts through a
+// label; the cap keeps large menus scrollable instead of covering the screen.
+static const CGFloat DXJSChoiceRowHeight = 44.0;
+
 @implementation DXJavaScriptHost
 + (void)cancelActive { [DXActiveJavaScriptHost cancel]; }
 - (void)cancel {
@@ -204,13 +208,15 @@ static DXJavaScriptHost *DXActiveJavaScriptHost;
     scroll.backgroundColor = UIColor.secondarySystemBackgroundColor;
     scroll.layer.cornerRadius = 14;
     CGFloat width = MIN(360, CGRectGetWidth(window.bounds) - 32);
-    CGFloat height = MIN((choices.count + 1) * 50.0, CGRectGetHeight(window.bounds) * 0.48);
+    CGFloat rows = (choices.count + 1) * DXJSChoiceRowHeight;
+    CGFloat cap = MAX(DXJSChoiceRowHeight, floor(CGRectGetHeight(window.bounds) * 0.66 / DXJSChoiceRowHeight) * DXJSChoiceRowHeight);
+    CGFloat height = MIN(rows, cap);
     scroll.frame = CGRectMake((CGRectGetWidth(window.bounds) - width) / 2, MAX(50, (CGRectGetHeight(window.bounds) - height) / 3), width, height);
     [backdrop addSubview:scroll];
     NSBundle *bundle = [NSBundle bundleWithPath:bundlePath];
     for (NSUInteger index = 0; index <= choices.count; index++) {
         UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
-        button.frame = CGRectMake(12, index * 50, width - 24, 50);
+        button.frame = CGRectMake(12, index * DXJSChoiceRowHeight, width - 24, DXJSChoiceRowHeight);
         button.tag = (NSInteger)index;
         button.titleLabel.numberOfLines = 2;
         button.titleLabel.font = [UIFont systemFontOfSize:15];
@@ -219,7 +225,7 @@ static DXJavaScriptHost *DXActiveJavaScriptHost;
         [button addTarget:self action:index == choices.count ? @selector(cancel) : @selector(choiceTapped:) forControlEvents:UIControlEventTouchUpInside];
         [scroll addSubview:button];
     }
-    scroll.contentSize = CGSizeMake(width, (choices.count + 1) * 50);
+    scroll.contentSize = CGSizeMake(width, (choices.count + 1) * DXJSChoiceRowHeight);
     self.menuWindow = window;
     window.hidden = NO; // Never make key or resign the input responder.
 }
