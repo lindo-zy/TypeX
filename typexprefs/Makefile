@@ -14,6 +14,8 @@ TypeXPrefs_INSTALL_PATH = /Library/PreferenceBundles
 TypeXPrefs_FRAMEWORKS = UIKit CoreGraphics SwiftUI MobileCoreServices JavaScriptCore UniformTypeIdentifiers
 TypeXPrefs_PRIVATE_FRAMEWORKS = Preferences AppSupport
 TypeXPrefs_CFLAGS = -fobjc-arc -Wno-tautological-pointer-compare
+# Use the build's version override so the header matches the generated DEB.
+TypeXPrefs_CFLAGS += -DTYPEX_PACKAGE_VERSION=\"$(or $(PACKAGE_VERSION),$(THEOS_PACKAGE_BASE_VERSION))\"
 # sparkcolourpicker is no longer needed — using system UIColorPickerViewController
 # TypeXPrefs_LIBRARIES = sparkcolourpicker
 

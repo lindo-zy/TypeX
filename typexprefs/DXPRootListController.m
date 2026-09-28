@@ -148,8 +148,17 @@ static NSBundle *tweakBundle;
     headerLabel.minimumScaleFactor = 0.7;
     [headerLabel setAutoresizingMask:UIViewAutoresizingFlexibleWidth];
     [headerView addSubview:headerLabel];
-    
-    
+
+    UILabel *versionLabel = [[UILabel alloc] initWithFrame:CGRectMake(16, CGRectGetMaxY(labelFrame) + 2, MAX(0, headerWidth - 32), 20)];
+    versionLabel.text = [@"v" stringByAppendingString:@TYPEX_PACKAGE_VERSION];
+    versionLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightRegular];
+    versionLabel.textColor = UIColor.secondaryLabelColor;
+    versionLabel.textAlignment = NSTextAlignmentCenter;
+    versionLabel.adjustsFontSizeToFitWidth = YES;
+    versionLabel.minimumScaleFactor = 0.7;
+    versionLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    [headerView addSubview:versionLabel];
+
     self.table.tableHeaderView = headerView;
     
     self.respringBtn = [[UIBarButtonItem alloc] initWithTitle:LOCALIZED(@"RESPRING") style:UIBarButtonItemStylePlain target:self action:@selector(respring)];
