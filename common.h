@@ -59,6 +59,8 @@
 #define kCustomActionCutReplaceKey @"cutreplace"
 #define kCustomActionTypeURLScheme @"urlscheme"
 #define kCustomActionTypeText @"text"
+// Ordered literal text records; text actions never read the old link payload.
+#define kCustomActionTextRecordsKey @"textrecords"
 #define kCustomActionTypeURL @"url"
 #define kCustomActionTypeOpenApp @"openapp"
 #define kCustomActionTypeShortcut @"shortcut"

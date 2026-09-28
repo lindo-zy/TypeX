@@ -142,6 +142,11 @@ static NSInteger const DXSectionAddType = 1;
     cell.detailTextLabel.text = [type isEqualToString:kCustomActionTypeShortcut] && shortcutTitle.length
         ? [NSString stringWithFormat:@"%@ · %@", link, shortcutTitle]
         : (link.length ? link : [DXPLinkActionEditorController displayNameForType:type]);
+    if ([type isEqualToString:kCustomActionTypeText]) {
+        id records = entry[kCustomActionTextRecordsKey];
+        NSUInteger count = [records isKindOfClass:NSArray.class] ? [records count] : 0;
+        cell.detailTextLabel.text = [NSString stringWithFormat:LOCALIZED(@"TEXT_RECORD_COUNT"), (unsigned long)count];
+    }
     cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
     cell.imageView.image = [DXHelper imageForIconConfig:icon defaultSymbolName:[DXPLinkActionEditorController defaultIconForType:type]]
         ?: [UIImage systemImageNamed:[DXPLinkActionEditorController defaultIconForType:type]];

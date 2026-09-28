@@ -121,6 +121,11 @@ static NSBundle *tweakBundle;
         @"link": @"",
         kCustomActionTypeKey: type,
     } mutableCopy];
+    if ([type isEqualToString:kCustomActionTypeText]) {
+        entry[@"icon"] = @"doc.text";
+        entry[kCustomActionTextRecordsKey] = @[@""];
+        [entry removeObjectForKey:@"link"];
+    }
     if ([type isEqualToString:kCustomActionTypeURL]) entry[kCustomActionInAppKey] = @YES;
     if (opensApplication) entry[kCustomActionUsePullOverKey] = @NO;
     if ([type isEqualToString:kCustomActionTypeJavaScript]) {

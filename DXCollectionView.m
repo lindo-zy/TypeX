@@ -88,6 +88,15 @@ typedef void (^DXCustomActionOpenCompletion)(BOOL success);
 
 @end
 
+@interface DXTextActionPanelItem : UIButton
+@property (nonatomic, copy) NSString *recordText;
+@end
+@implementation DXTextActionPanelItem
+- (CGRect)titleRectForContentRect:(CGRect)contentRect {
+    return UIEdgeInsetsInsetRect(contentRect, UIEdgeInsetsMake(8, 12, 8, 12));
+}
+@end
+
 static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     return ![DXShortcutsGenerator isVisibleShortcutSelector:selector];
 }
@@ -100,6 +109,10 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 @property (nonatomic, assign, readwrite) CGFloat rowSpacing;
 @property (nonatomic, strong) UIControl *subActionPanelOverlay;
 @property (nonatomic, strong) UIButton *subActionPanelSourceButton;
+@property (nonatomic, weak) id textPanelInput;
+@property (nonatomic, weak) UIWindow *textPanelSourceWindow;
+- (void)presentActionChooserForButton:(UIButton *)button selectors:(NSArray<NSString *> *)selectors
+                         textRecords:(NSArray<NSString *> *)textRecords;
 @end
 
 // Shortcut order is a user-authored, physical left-to-right order. Keyboard
@@ -359,6 +372,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(typeXLayoutChanged:) name:@"typeXLayoutChanged" object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardRotated:) name:UIDeviceOrientationDidChangeNotification object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHideForSubActionPanel:) name:UIKeyboardWillHideNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHideForSubActionPanel:) name:UIApplicationWillResignActiveNotification object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(scrollBackward:) name:@"scrollBackward" object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(scrollForward:) name:@"scrollForward" object:nil];
         
@@ -378,12 +392,24 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    if (!self.window) [self dismissSubActionPanelAnimated:NO completion:nil];
+}
+
 - (void)dealloc {
+    UIWindow *panelWindow = self.subActionPanelOverlay.window;
     [self.subActionPanelOverlay removeFromSuperview];
+    if (panelWindow == DXSubActionPanelFloatingHostWindow &&
+        ![panelWindow viewWithTag:DXSubActionPanelOverlayTag]) {
+        panelWindow.hidden = YES;
+        DXSubActionPanelFloatingHostWindow = nil;
+    }
     if (DXActiveSubActionPanelOwner == self) DXActiveSubActionPanelOwner = nil;
     [[NSNotificationCenter defaultCenter] removeObserver:self name:@"typeXLayoutChanged" object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:UIDeviceOrientationDidChangeNotification object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:UIKeyboardWillHideNotification object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationWillResignActiveNotification object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:@"scrollBackward" object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:@"scrollForward" object:nil];
     //[[NSNotificationCenter defaultCenter] removeObserver:self name:UITextFieldTextDidBeginEditingNotification object:nil];
@@ -939,7 +965,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 -(void)beginUpdateDelegate{
-    kbImpl = [objc_getClass("UIKeyboardImpl") activeInstance];
+    Class implClass = objc_getClass("UIKeyboardImpl");
+    kbImpl = [implClass respondsToSelector:@selector(activeInstance)] ? [implClass activeInstance] : nil;
     delegate = DXKeyboardInputDelegate(kbImpl);
 }
 
@@ -2114,8 +2141,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 // The @@@ placeholder receives the active input control's complete text,
 // percent-encoded. URL-ish payloads only (url / url scheme / legacy /
-// shortcut name) — text actions carry their own {{...}} templates and no
-// longer expand @@@.
+// shortcut name). Text records are always literal.
 -(NSString *)expandedCustomActionPayload:(NSString *)payload escaped:(BOOL)escaped {
     if (payload.length == 0 || ![payload containsString:@"@@@"]) return payload;
     NSString *parameter = [self currentInputTextForCustomAction];
@@ -2140,99 +2166,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     [self clearHostInputText];
 }
 
-// Date/time piece for a text-action template. en_US_POSIX pins the digits and
-// separators so the user's 12-hour switch or calendar override cannot bend
-// the fixed formats.
--(NSString *)formattedDateTimeForTemplate:(NSString *)format {
-    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-    formatter.locale = [[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"];
-    formatter.dateFormat = format;
-    return [formatter stringFromDate:[NSDate date]] ?: @"";
-}
-
-// Text-action templates: {{clipboard}} {{selection}} {{date1}} {{date2}}
-// {{date3}} {{now1}} {{now2}} {{time}}, freely combinable. {{clipboard}} only expands
-// for textual clipboard content — an image on the pasteboard leaves the
-// placeholder untouched. Substitution runs in a single left-to-right pass so
-// a value pulled out of the clipboard or the field is never rescanned for
-// further placeholders; unknown {{...}} text passes through as-is.
-// {{selection}} folds the field's own content into the output, which the
-// caller learns through replacesField: the result must swap the whole
-// content, not append at the caret.
--(NSString *)expandedTextTemplate:(NSString *)template replacesField:(BOOL *)replacesField {
-    if (template.length == 0 || ![template containsString:@"{{"]) return template;
-    if (replacesField) *replacesField = [template containsString:@"{{selection}}"];
-
-    NSString *clipboardText = nil;
-    if ([template containsString:@"{{clipboard}}"]) {
-        UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
-        clipboardText = pasteboard.hasStrings ? pasteboard.string : nil;
-    }
-
-    NSDictionary<NSString *, NSString *> *values = @{
-        @"{{clipboard}}": clipboardText ?: @"{{clipboard}}",
-        @"{{selection}}": [self currentInputTextForCustomAction],
-        @"{{date1}}": [self formattedDateTimeForTemplate:@"yyyy/MM/dd"],
-        @"{{date2}}": [self formattedDateTimeForTemplate:@"yyyy-MM-dd"],
-        @"{{date3}}": [self formattedDateTimeForTemplate:@"yyyy'年'MM'月'dd'日'"],
-        @"{{now1}}": [self formattedDateTimeForTemplate:@"yyyy/MM/dd-HH:mm:ss"],
-        @"{{now2}}": [self formattedDateTimeForTemplate:@"yyyy-MM-dd-HH:mm:ss"],
-        @"{{time}}": [self formattedDateTimeForTemplate:@"HH:mm:ss"],
-    };
-
-    NSMutableString *output = [NSMutableString string];
-    NSRange search = NSMakeRange(0, template.length);
-    while (search.location < template.length) {
-        NSRange open = [template rangeOfString:@"{{" options:0 range:search];
-        if (open.location == NSNotFound) {
-            [output appendString:[template substringFromIndex:search.location]];
-            break;
-        }
-        if (open.location > search.location) {
-            [output appendString:[template substringWithRange:NSMakeRange(search.location, open.location - search.location)]];
-        }
-        NSRange close = [template rangeOfString:@"}}" options:0 range:NSMakeRange(open.location, template.length - open.location)];
-        if (close.location == NSNotFound) {
-            [output appendString:[template substringFromIndex:open.location]];
-            break;
-        }
-        NSString *placeholder = [template substringWithRange:NSMakeRange(open.location, NSMaxRange(close) - open.location)];
-        [output appendString:values[placeholder] ?: placeholder];
-        search.location = NSMaxRange(close);
-        search.length = template.length - search.location;
-    }
-    return output;
-}
-
-// Whole-content swap for {{selection}}: clears the document in place the same
-// way deleteAllAction does (direct whole-range selection, so no selection
-// highlight or handles ever appear). An empty field or an unusable protocol
-// skips the clear; the caller's insert then degrades to appending, which is
-// the correct result for an empty field anyway.
--(void)clearAllInputTextForSelectionTemplate {
-    UIKeyboardImpl *impl = kbImpl ?: [objc_getClass("UIKeyboardImpl") activeInstance];
-    if (!impl) return;
-
-    if ([delegate respondsToSelector:@selector(selectedTextRange)]) {
-        UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
-        UITextRange *wholeRange = [tempDelegate textRangeFromPosition:[tempDelegate beginningOfDocument]
-                                                           toPosition:[tempDelegate endOfDocument]];
-        if (wholeRange == nil || [[tempDelegate textInRange:wholeRange] length] == 0) return;
-        tempDelegate.selectedTextRange = wholeRange;
-    }else if ([delegate respondsToSelector:@selector(selectAll:)]) {
-        [delegate selectAll:nil];
-    }else if ([delegate respondsToSelector:@selector(selectAll)]) {
-        [delegate selectAll];
-    }else{
-        return;
-    }
-
-    [impl deleteFromInput];
-    [impl clearTransientState];
-    [impl clearAnimations];
-    [impl setCaretBlinks:YES];
-}
-
 // Inserts at the caret through the same channel the built-in paste action
 // uses. The private UIKeyboardImpl insert must stay a last-resort fallback:
 // calling it as the primary path crashes host apps on iOS 17, and no built-in
@@ -2249,34 +2182,40 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         }
     }
 
-    UIKeyboardImpl *impl = kbImpl ?: [objc_getClass("UIKeyboardImpl") activeInstance];
-    if (!impl) {
-        [self showCustomActionLinkError];
+    Class implClass = objc_getClass("UIKeyboardImpl");
+    UIKeyboardImpl *impl = kbImpl;
+    if (!impl && [implClass respondsToSelector:@selector(activeInstance)]) impl = [implClass activeInstance];
+    if (![impl respondsToSelector:@selector(insertText:)]) {
+        [self showCustomActionMessage:LOCALIZED(@"TEXT_RECORD_INPUT_UNAVAILABLE")];
         return;
     }
     @try {
         [impl insertText:text];
-        [impl clearTransientState];
-        [impl clearAnimations];
-        [impl setCaretBlinks:YES];
+        if ([impl respondsToSelector:@selector(clearTransientState)]) [impl clearTransientState];
+        if ([impl respondsToSelector:@selector(clearAnimations)]) [impl clearAnimations];
+        if ([impl respondsToSelector:@selector(setCaretBlinks:)]) [impl setCaretBlinks:YES];
     } @catch (__unused NSException *exception) {
-        [self showCustomActionLinkError];
+        [self showCustomActionMessage:LOCALIZED(@"TEXT_RECORD_INPUT_UNAVAILABLE")];
     }
 }
 
-// Sends the configured text template to the active input field: plain text
-// lands at the cursor; a {{selection}} template replaces the whole field
-// content with the expanded output.
--(void)performTextCustomAction:(NSString *)template {
-    BOOL replacesField = NO;
-    NSString *text = [self expandedTextTemplate:template replacesField:&replacesField];
-    if (text.length == 0) {
-        [self showCustomActionLinkError];
-        return;
+// Text actions contain only literal records. There is no fallback to link.
+-(void)performTextCustomAction:(NSDictionary *)entry sender:(UIButton *)sender {
+    NSMutableArray<NSString *> *records = [NSMutableArray array];
+    id stored = entry[kCustomActionTextRecordsKey];
+    if ([stored isKindOfClass:NSArray.class]) {
+        for (id record in stored) {
+            if ([record isKindOfClass:NSString.class] && [record length]) [records addObject:record];
+        }
     }
-
-    if (replacesField) [self clearAllInputTextForSelectionTemplate];
-    [self insertTextIntoInputField:text];
+    [DXActiveSubActionPanelOwner dismissSubActionPanelAnimated:NO completion:nil];
+    if (!records.count) {
+        [self showCustomActionMessage:LOCALIZED(@"TEXT_RECORD_REQUIRED")];
+    } else if (records.count == 1) {
+        [self insertTextIntoInputField:records.firstObject];
+    } else {
+        [self presentActionChooserForButton:sender selectors:nil textRecords:records];
+    }
 }
 
 // In-app open for the url type. SFSafariViewController needs a presenting
@@ -2415,7 +2354,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }
 
     if ([type isEqualToString:kCustomActionTypeText]) {
-        [self performTextCustomAction:link];
+        [self performTextCustomAction:entry sender:sender];
         [self autoPaginationControl];
         return YES;
     }
@@ -2633,6 +2572,8 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
 
     self.subActionPanelOverlay = nil;
     self.subActionPanelSourceButton = nil;
+    self.textPanelInput = nil;
+    self.textPanelSourceWindow = nil;
     if (DXActiveSubActionPanelOwner == self) DXActiveSubActionPanelOwner = nil;
 
     // The dedicated iOS 17+ host window dies with its overlay. Captured
@@ -2643,7 +2584,7 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
 
     void (^removePanel)(void) = ^{
         [overlay removeFromSuperview];
-        if (floatingHost) {
+        if (floatingHost && ![floatingHost viewWithTag:DXSubActionPanelOverlayTag]) {
             floatingHost.hidden = YES;
             if (DXSubActionPanelFloatingHostWindow == floatingHost) DXSubActionPanelFloatingHostWindow = nil;
         }
@@ -2679,26 +2620,47 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
     }];
 }
 
+-(void)textActionPanelItemTapped:(DXTextActionPanelItem *)item {
+    if (!self.subActionPanelOverlay || ![item isDescendantOfView:self.subActionPanelOverlay]) return;
+    id originalInput = self.textPanelInput;
+    UIWindow *sourceWindow = self.textPanelSourceWindow;
+    [self beginUpdateDelegate];
+    BOOL valid = originalInput && delegate == originalInput && sourceWindow &&
+        self.window == sourceWindow && !sourceWindow.hidden && !self.hidden &&
+        (!sourceWindow.windowScene || sourceWindow.windowScene.activationState == UISceneActivationStateForegroundActive);
+    NSString *text = item.recordText;
+    // Synchronous dismissal and insertion leave no delayed callback that can
+    // write into a different input session after animation or another tap.
+    [self dismissSubActionPanelAnimated:NO completion:nil];
+    if (!valid) {
+        NSLog(@"[TypeX] text-record: selection cancelled after input/window change");
+        return;
+    }
+    [self insertTextIntoInputField:text];
+}
+
 -(void)presentSubActionChooserForButton:(UIButton *)button selectors:(NSArray<NSString *> *)selectors {
-    if (selectors.count == 0) return;
+    [self presentActionChooserForButton:button selectors:selectors textRecords:nil];
+}
+
+-(void)presentActionChooserForButton:(UIButton *)button selectors:(NSArray<NSString *> *)selectors
+                         textRecords:(NSArray<NSString *> *)textRecords {
+    BOOL textMode = textRecords.count > 0;
+    NSUInteger itemCount = textMode ? textRecords.count : selectors.count;
+    if (!itemCount) return;
     UIWindow *sourceWindow = button.window ?: self.window ?: [self keyWindow];
     if (!sourceWindow) return;
-
-    // iOS 17+ presents in its own window (see DXSubActionPanelCreateHostWindow);
-    // older iOS keeps overlaying the keyboard's window directly, where the
-    // panel has always rendered and hit-tested correctly.
+    if (DXActiveSubActionPanelOwner && DXActiveSubActionPanelOwner != self) {
+        [DXActiveSubActionPanelOwner dismissSubActionPanelAnimated:NO completion:nil];
+    }
+    [self dismissSubActionPanelAnimated:NO completion:nil];
     UIWindow *hostWindow = sourceWindow;
     if (@available(iOS 17.0, *)) {
         UIWindow *floating = DXSubActionPanelCreateHostWindow(sourceWindow);
         if (floating) hostWindow = floating;
     }
-    NSLog(@"[TypeX] panel: presenting %lu sub-actions in %@ (floating host: %d)",
-          (unsigned long)selectors.count, NSStringFromClass(hostWindow.class), hostWindow != sourceWindow);
-
-    if (DXActiveSubActionPanelOwner && DXActiveSubActionPanelOwner != self) {
-        [DXActiveSubActionPanelOwner dismissSubActionPanelAnimated:NO completion:nil];
-    }
-    [self dismissSubActionPanelAnimated:NO completion:nil];
+    NSLog(@"[TypeX] panel: presenting %lu %@ (floating host: %d)",
+          (unsigned long)itemCount, textMode ? @"text records" : @"sub-actions", hostWindow != sourceWindow);
 
     UIControl *overlay = [[UIControl alloc] initWithFrame:hostWindow.bounds];
     overlay.tag = DXSubActionPanelOverlayTag;
@@ -2717,11 +2679,11 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
     // horizontal footprint stable so changing the slider never shifts columns
     // or makes the floating panel narrower/wider.
     CGFloat panelWidth = MIN(windowWidth - horizontalMargin * 2.0, defaultPanelWidth);
-    NSInteger columns = windowWidth >= 320.0 ? 4 : 3;
+    NSInteger columns = textMode ? 1 : (windowWidth >= 320.0 ? 4 : 3);
     CGFloat panelPadding = 10.0 * panelScale;
-    CGFloat itemHeight = 92.0 * panelScale;
+    CGFloat itemHeight = (textMode ? 70.0 : 92.0) * panelScale;
     CGFloat itemWidth = (panelWidth - panelPadding * 2.0) / columns;
-    NSInteger rows = (selectors.count + columns - 1) / columns;
+    NSInteger rows = (itemCount + columns - 1) / columns;
     CGFloat contentHeight = panelPadding * 2.0 + rows * itemHeight;
 
     CGFloat safeTop = hostWindow.safeAreaInsets.top + 8.0;
@@ -2763,6 +2725,31 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
     [blankArea addTarget:self action:@selector(subActionPanelBackgroundTapped:) forControlEvents:UIControlEventTouchUpInside];
     [scrollView addSubview:blankArea];
 
+    if (textMode) {
+        [textRecords enumerateObjectsUsingBlock:^(NSString *text, NSUInteger index, __unused BOOL *stop) {
+            DXTextActionPanelItem *item = [[DXTextActionPanelItem alloc] initWithFrame:
+                CGRectMake(panelPadding, panelPadding + index * itemHeight, itemWidth, itemHeight)];
+            item.recordText = text;
+            item.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
+            item.titleLabel.font = [UIFont systemFontOfSize:MAX(12, 16 * panelScale)];
+            item.titleLabel.numberOfLines = 3;
+            item.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+            [item setTitle:text forState:UIControlStateNormal];
+            [item setTitleColor:UIColor.labelColor forState:UIControlStateNormal];
+            [item setTitleColor:UIColor.secondaryLabelColor forState:UIControlStateHighlighted];
+            item.accessibilityLabel = text;
+            [item addTarget:self action:@selector(textActionPanelItemTapped:) forControlEvents:UIControlEventTouchUpInside];
+            [scrollView addSubview:item];
+            if (index + 1 < textRecords.count) {
+                UIView *separator = [[UIView alloc] initWithFrame:CGRectMake(12, itemHeight - 0.5, MAX(0, itemWidth - 24), 0.5)];
+                separator.backgroundColor = UIColor.separatorColor;
+                separator.userInteractionEnabled = NO;
+                [item addSubview:separator];
+            }
+        }];
+        self.textPanelInput = delegate;
+        self.textPanelSourceWindow = self.window;
+    }
     [selectors enumerateObjectsUsingBlock:^(NSString *selectorName, NSUInteger index, __unused BOOL *stop) {
         NSInteger row = index / columns;
         NSInteger column = index % columns;

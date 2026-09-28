@@ -12,7 +12,7 @@ static NSBundle *tweakBundle;
 // row depends on the entry's type:
 // - urlscheme: section 1 = full-width 文本框 (multi-line payload box), then
 //              the 剪切替换 switch (the box types that support @@@)
-// - text:      section 1 = full-width 文本框 (multi-line payload box)
+// - text:      section 1 = ordered records and an Add row
 // - url:       3 = URL 设置 (field), 4 = APP内打开 switch, 5 = 剪切替换 switch
 // - openapp:   3 = installed-app picker, 4 = PullOver-X switch when installed
 // 剪切替换 appears wherever the payload supports @@@ (legacy / url /
@@ -43,7 +43,7 @@ static NSInteger const DXLegacyRowLink = 2;
 @end
 
 // Full-width multi-line text box (a UITextView filling the cell) used for the
-// url scheme / text payloads instead of a small accessory field.
+// URL scheme / JavaScript payloads instead of a small accessory field.
 @interface DXPLinkActionTextCell : UITableViewCell
 @property (nonatomic, strong) UITextView *textView;
 @property (nonatomic, strong) UILabel *placeholderLabel;
@@ -84,6 +84,42 @@ static NSInteger const DXLegacyRowLink = 2;
 }
 @end
 
+// A record is edited as literal multiline text. Back cancels this edit;
+// Save updates the parent's draft, which is persisted by the action's Save.
+@interface DXPTextRecordEditorController : UIViewController
+@property (nonatomic, copy) NSString *recordText;
+@property (nonatomic, copy) void (^completion)(NSString *text);
+@property (nonatomic, strong) UITextView *textView;
+@end
+
+@implementation DXPTextRecordEditorController
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.view.backgroundColor = UIColor.systemBackgroundColor;
+    self.textView = [[UITextView alloc] init];
+    self.textView.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    self.textView.text = self.recordText;
+    self.textView.textContainerInset = UIEdgeInsetsMake(16, 16, 16, 16);
+    self.textView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.textView.smartQuotesType = UITextSmartQuotesTypeNo;
+    self.textView.smartDashesType = UITextSmartDashesTypeNo;
+    self.textView.autocorrectionType = UITextAutocorrectionTypeNo;
+    [self.view addSubview:self.textView];
+    [NSLayoutConstraint activateConstraints:@[
+        [self.textView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [self.textView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.textView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.textView.bottomAnchor constraintEqualToAnchor:self.view.keyboardLayoutGuide.topAnchor],
+    ]];
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:LOCALIZED(@"SAVE")
+        style:UIBarButtonItemStyleDone target:self action:@selector(saveTapped)];
+}
+- (void)saveTapped {
+    if (self.completion) self.completion(self.textView.text ?: @"");
+    [self.navigationController popViewControllerAnimated:YES];
+}
+@end
+
 @interface DXPLinkActionEditorController ()
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) UITextField *nameField;
@@ -98,9 +134,10 @@ static NSInteger const DXLegacyRowLink = 2;
 @property (nonatomic, strong) UISwitch *pullOverSwitch;
 @property (nonatomic, strong) UISwitch *cutReplaceSwitch;
 @property (nonatomic, copy) NSString *selectedAppName;
-// The one payload box cell for the box types (url scheme / text); kept as a
+// The one payload box cell for URL scheme / JavaScript; kept as a
 // property so its text survives cell reuse while scrolling.
 @property (nonatomic, strong) DXPLinkActionTextCell *payloadBoxCell;
+@property (nonatomic, strong) NSMutableArray<NSString *> *textRecords;
 @property (nonatomic, strong) UISegmentedControl *jsInputControl;
 @property (nonatomic, strong) UISegmentedControl *jsOutputControl;
 @end
@@ -175,6 +212,8 @@ static NSInteger const DXLegacyRowLink = 2;
     return _displayedType.length == 0;
 }
 
+- (BOOL)isTextEntry { return [_displayedType isEqualToString:kCustomActionTypeText]; }
+
 - (BOOL)isJavaScriptEntry { return [_displayedType isEqualToString:kCustomActionTypeJavaScript]; }
 
 - (BOOL)isOpenAppEntry {
@@ -200,8 +239,8 @@ static NSInteger const DXLegacyRowLink = 2;
 }
 
 // 剪切替换 is offered wherever the payload can pull in the field's text via
-// @@@: legacy auto-detecting links, url, and url scheme. text expands its own
-// {{...}} templates and openapp carries a bundle identifier, so neither ever
+// @@@: legacy auto-detecting links, url, and url scheme. text stores
+// literal records and openapp carries a bundle identifier, so neither ever
 // reads the field through @@@ and neither gets the row.
 - (BOOL)hasCutReplaceSwitch {
     if (self.isLegacyEntry) return YES;
@@ -270,23 +309,22 @@ static NSInteger const DXLegacyRowLink = 2;
     if ([_displayedType isEqualToString:kCustomActionTypeURLScheme]) placeholder = @"example://open";
     else if ([_displayedType isEqualToString:kCustomActionTypeURL]) placeholder = @"https://";
     self.linkField.placeholder = placeholder;
-    self.linkField.keyboardType = ([_displayedType isEqualToString:kCustomActionTypeText])
-        ? UIKeyboardTypeDefault : UIKeyboardTypeURL;
+    self.linkField.keyboardType = UIKeyboardTypeURL;
 }
 
 #pragma mark - Payload layout
 
-// The url scheme and text payloads use the full-width multi-line text box
+// URL scheme and JavaScript payloads use the full-width multi-line text box
 // (two-section layout) instead of a small accessory field.
 - (BOOL)usesLargePayloadBox {
     return !self.isLegacyEntry &&
-        (self.isJavaScriptEntry || [_displayedType isEqualToString:kCustomActionTypeURLScheme] ||
-         [_displayedType isEqualToString:kCustomActionTypeText]);
+        (self.isJavaScriptEntry || [_displayedType isEqualToString:kCustomActionTypeURLScheme]);
 }
 
 // The payload value lives in the box for box types, in the small field
 // elsewhere; both trim the same way on save.
 - (NSString *)payloadCurrentValue {
+    if (self.isTextEntry) return @"";
     if (self.isJavaScriptEntry) return self.payloadBoxCell.textView.text ?: self.entry[@"script"] ?: @"";
     if (self.usesLargePayloadBox) return [self trimmedValue:self.payloadBoxCell.textView.text];
     return [self trimmedValue:self.linkField.text];
@@ -294,19 +332,19 @@ static NSInteger const DXLegacyRowLink = 2;
 
 - (NSString *)payloadBoxPlaceholder {
     if ([_displayedType isEqualToString:kCustomActionTypeURLScheme]) return @"example://open";
-    // The text payload box carries no hint; the usage list lives in the
-    // section footer instead.
     return @"";
 }
 
 #pragma mark - Table view
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    if (self.isTextEntry) return 2;
     if (self.isJavaScriptEntry) return 3;
     return [self usesLargePayloadBox] ? 2 : 1;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    if (self.isTextEntry) return section == 0 ? DXActionRowPayload : self.textRecords.count + 1;
     if (self.isJavaScriptEntry && section == 2) return 3;
     if (![self usesLargePayloadBox]) return [self rowCount];
     // Box layout: section 0 holds the shared rows (类型/名称/图标), section 1
@@ -315,6 +353,7 @@ static NSInteger const DXLegacyRowLink = 2;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    if (self.isTextEntry) return section == 1 ? LOCALIZED(@"TEXT_RECORDS") : nil;
     if (self.isJavaScriptEntry && section == 1) return LOCALIZED(@"JS_SOURCE");
     if (self.isJavaScriptEntry && section == 2) return LOCALIZED(@"JS_BEHAVIOR");
     if (![self usesLargePayloadBox] || section == 0) return nil;
@@ -325,13 +364,14 @@ static NSInteger const DXLegacyRowLink = 2;
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     // The type hint describes the payload, so it follows the payload: on the
     // box section for box types, on the single section otherwise.
-    if ([self usesLargePayloadBox]) return section == 1 ? [self typeFooter] : nil;
+    if (self.isTextEntry || [self usesLargePayloadBox]) return section == 1 ? [self typeFooter] : nil;
     return section == 0 ? [self typeFooter] : nil;
 }
 
 // Only the payload box gets a custom height; every other row (including the
 // 剪切替换 row that follows it) keeps the system self-sizing it used before.
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (self.isTextEntry && indexPath.section == 1) return indexPath.row < (NSInteger)self.textRecords.count ? 76 : 44;
     if (self.isJavaScriptEntry && indexPath.section == 1) return 260;
     if ([self usesLargePayloadBox] && indexPath.section == 1 && indexPath.row == 0) return 120.0;
     return UITableViewAutomaticDimension;
@@ -376,6 +416,22 @@ static NSInteger const DXLegacyRowLink = 2;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (self.isTextEntry && indexPath.section == 1) {
+        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
+        if (indexPath.row == (NSInteger)self.textRecords.count) {
+            cell.textLabel.text = LOCALIZED(@"TEXT_RECORD_ADD");
+            cell.textLabel.textColor = self.view.tintColor;
+            cell.imageView.image = [UIImage systemImageNamed:@"plus.circle"];
+        } else {
+            cell.textLabel.text = [NSString stringWithFormat:LOCALIZED(@"TEXT_RECORD_NUMBER"), (long)indexPath.row + 1];
+            NSString *text = self.textRecords[indexPath.row];
+            cell.detailTextLabel.text = text.length ? text : LOCALIZED(@"TEXT_RECORD_EMPTY");
+            cell.detailTextLabel.numberOfLines = 2;
+            cell.detailTextLabel.textColor = UIColor.secondaryLabelColor;
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        }
+        return cell;
+    }
     if (self.isJavaScriptEntry && indexPath.section == 2) {
         UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
         cell.textLabel.text = LOCALIZED(indexPath.row == 0 ? @"JS_INPUT" : indexPath.row == 1 ? @"JS_OUTPUT" : @"JS_TEST");
@@ -456,6 +512,25 @@ static NSInteger const DXLegacyRowLink = 2;
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    if (self.isTextEntry && indexPath.section == 1) {
+        [self.view endEditing:YES];
+        NSUInteger index = indexPath.row;
+        BOOL adding = index == self.textRecords.count;
+        DXPTextRecordEditorController *editor = [DXPTextRecordEditorController new];
+        editor.title = adding ? LOCALIZED(@"TEXT_RECORD_ADD")
+            : [NSString stringWithFormat:LOCALIZED(@"TEXT_RECORD_NUMBER"), (long)index + 1];
+        editor.recordText = adding ? @"" : self.textRecords[index];
+        __weak typeof(self) weakSelf = self;
+        editor.completion = ^(NSString *text) {
+            typeof(self) owner = weakSelf;
+            if (!owner) return;
+            if (adding) [owner.textRecords addObject:text];
+            else if (index < owner.textRecords.count) owner.textRecords[index] = text;
+            [owner.tableView reloadData];
+        };
+        [self.navigationController pushViewController:editor animated:YES];
+        return;
+    }
 
     if (self.isJavaScriptEntry && indexPath.section == 2) {
         if (indexPath.row == 2) {
@@ -536,6 +611,36 @@ static NSInteger const DXLegacyRowLink = 2;
     [self presentViewController:alert animated:YES completion:nil];
 }
 
+// Record management never edits the shared name/icon rows.
+- (void)setEditing:(BOOL)editing animated:(BOOL)animated {
+    [super setEditing:editing animated:animated];
+    [self.view endEditing:YES];
+    [self.tableView setEditing:editing animated:animated];
+}
+- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)path {
+    return self.isTextEntry && path.section == 1 && path.row < (NSInteger)self.textRecords.count;
+}
+- (BOOL)tableView:(UITableView *)tableView canMoveRowAtIndexPath:(NSIndexPath *)path {
+    return [self tableView:tableView canEditRowAtIndexPath:path];
+}
+- (NSIndexPath *)tableView:(UITableView *)tableView targetIndexPathForMoveFromRowAtIndexPath:(NSIndexPath *)source
+      toProposedIndexPath:(NSIndexPath *)destination {
+    if (destination.section != 1) return source;
+    return [NSIndexPath indexPathForRow:MIN(destination.row, (NSInteger)self.textRecords.count - 1) inSection:1];
+}
+- (void)tableView:(UITableView *)tableView moveRowAtIndexPath:(NSIndexPath *)source toIndexPath:(NSIndexPath *)destination {
+    NSString *record = self.textRecords[source.row];
+    [self.textRecords removeObjectAtIndex:source.row];
+    [self.textRecords insertObject:record atIndex:destination.row];
+    [tableView reloadData];
+}
+- (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)style forRowAtIndexPath:(NSIndexPath *)path {
+    if (style != UITableViewCellEditingStyleDelete || ![self tableView:tableView canEditRowAtIndexPath:path]) return;
+    [self.textRecords removeObjectAtIndex:path.row];
+    if (!self.textRecords.count) [self.textRecords addObject:@""];
+    [tableView reloadData];
+}
+
 #pragma mark - Text view
 
 - (void)textViewDidChange:(UITextView *)textView {
@@ -584,6 +689,16 @@ static NSInteger const DXLegacyRowLink = 2;
     NSString *name = [self trimmedValue:self.nameField.text];
     NSString *icon = [self trimmedValue:self.iconField.text];
     NSString *link = [self payloadCurrentValue];
+    if (self.isTextEntry) {
+        for (NSString *record in self.textRecords) {
+            if (record.length) continue;
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:LOCALIZED(@"TEXT_RECORDS")
+                message:LOCALIZED(@"TEXT_RECORD_REQUIRED") preferredStyle:UIAlertControllerStyleAlert];
+            [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK") style:UIAlertActionStyleDefault handler:nil]];
+            [self presentViewController:alert animated:YES completion:nil];
+            return;
+        }
+    }
     if (self.isJavaScriptEntry && (link.length == 0 || link.length > 131072)) {
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"JavaScript" message:LOCALIZED(@"JS_SOURCE_INVALID") preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK") style:UIAlertActionStyleDefault handler:nil]];
@@ -621,6 +736,10 @@ static NSInteger const DXLegacyRowLink = 2;
     updated[@"name"] = name;
     updated[@"icon"] = icon;
     updated[@"link"] = link;
+    if (self.isTextEntry) {
+        updated[kCustomActionTextRecordsKey] = [self.textRecords copy];
+        [updated removeObjectForKey:@"link"];
+    }
     if (self.isJavaScriptEntry) {
         updated[@"link"] = @"";
         updated[@"script"] = link;
@@ -731,6 +850,16 @@ static NSInteger const DXLegacyRowLink = 2;
                        [storedType isEqualToString:kCustomActionTypeShortcut] ||
                        [storedType isEqualToString:kCustomActionTypeJavaScript])) ? storedType : @"";
 
+    if (self.isTextEntry) {
+        self.textRecords = [NSMutableArray array];
+        id stored = self.entry[kCustomActionTextRecordsKey];
+        if ([stored isKindOfClass:NSArray.class]) {
+            for (id record in stored) {
+                if ([record isKindOfClass:NSString.class]) [self.textRecords addObject:record];
+            }
+        }
+        if (!self.textRecords.count) [self.textRecords addObject:@""];
+    }
     if (self.isJavaScriptEntry) {
         self.jsInputControl = [[UISegmentedControl alloc] initWithItems:@[LOCALIZED(@"JS_AUTO"), LOCALIZED(@"JS_ALL"), LOCALIZED(@"JS_CLIPBOARD")]];
         self.jsOutputControl = [[UISegmentedControl alloc] initWithItems:@[LOCALIZED(@"JS_REPLACE"), LOCALIZED(@"JS_INSERT"), LOCALIZED(@"JS_COPY")]];
@@ -790,6 +919,10 @@ static NSInteger const DXLegacyRowLink = 2;
                                                                               style:UIBarButtonItemStyleDone
                                                                              target:self
                                                                              action:@selector(saveTapped)];
+    if (self.isTextEntry) {
+        self.navigationItem.rightBarButtonItems = @[self.navigationItem.rightBarButtonItem, self.editButtonItem];
+        self.tableView.allowsSelectionDuringEditing = YES;
+    }
 }
 
 @end

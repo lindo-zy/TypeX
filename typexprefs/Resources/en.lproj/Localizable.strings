@@ -170,7 +170,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "OPEN_WITH_PULLOVER" = "Open with PullOver-X";
 "CUT_REPLACE_FIELD" = "Cut & Replace";
 "TYPE_FOOTER_URL_SCHEME" = "Opens the URL scheme when tapped. Use @@@ to pass the current input field's text as a parameter. With Cut & Replace on, the field is cleared as its text is passed in; off keeps the field's content.";
-"TYPE_FOOTER_TEXT" = "Sends the configured text to the current input field. Supported templates, freely combinable:\n{{clipboard}}: clipboard text (left untouched while the clipboard holds an image)\n{{selection}}: the field's current text — the output replaces the whole field content\n{{date1}}: today's date, e.g. 2026/09/15\n{{date2}}: today's date, e.g. 2026-09-15\n{{date3}}: today's date, e.g. 2026年09月19日\n{{now1}}: date + time, e.g. 2026/09/15-22:16:33\n{{now2}}: date + time, e.g. 2026-09-15-22:16:33\n{{time}}: current time, e.g. 22:16:33\nExample: “Hi:{{clipboard}}” with “alice” on the clipboard outputs “Hi:alice”; “Hi:{{selection}}” with 123 in the field turns the field into “Hi:123”";
+"TYPE_FOOTER_TEXT" = "Manage literal text records. One record is inserted directly; multiple records open a floating list. Tap a record to insert it and close the panel. Text, spaces and line breaks are preserved. Use Edit to delete or reorder records.";
 "TYPE_FOOTER_URL" = "Opens the web URL, either inside this app or outside. Use @@@ to pass the current input field's text as a parameter. With Cut & Replace on, the field is cleared as its text is passed in; off keeps the field's content.";
 "TYPE_FOOTER_OPEN_APP" = "Opens the selected app normally by default. When PullOver-X is installed, you can let it take over; if PullOver-X is not active, TypeX falls back to opening the app normally.";
 
@@ -370,3 +370,12 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "JS_INPUT_UNAVAILABLE" = "This input is unavailable for scripting. Finish composing text first; secure fields are not supported.";
 "JS_TEST_HINT" = "Enter test input. HTTP requests are real; text and navigation actions are previewed. Logs stay on this page.";
 "JS_HELP" = "Entry: async function main(str). Selection uses the full text when nothing is selected. Replace changes the input selection/full text; clipboard input replaces the current selection. Insert writes at the caret/selection. Copy writes to the clipboard.\n$http.get/post/put/patch/delete({url, headers, body}) returns UTF-8 text; use JSON.parse for JSON and a string body. $url.open, $url.openInApp, $app.open and console.log are supported.\nReturn text or {type, content, title?, args?}; types: txt/url/urlInApp/app/function. Multiple results show a menu; null does not insert. Navigation ends the session. Stale input/network results are discarded.\nImages, files, $pb, $kb, legacy js actions and browser/Node APIs are not supported.";
+
+// Text action records
+"TEXT_RECORDS" = "Text Records";
+"TEXT_RECORD_ADD" = "Add Record";
+"TEXT_RECORD_NUMBER" = "Record %ld";
+"TEXT_RECORD_EMPTY" = "Tap to enter text";
+"TEXT_RECORD_REQUIRED" = "Enter text for each record, or delete unused records in Edit mode.";
+"TEXT_RECORD_INPUT_UNAVAILABLE" = "The current input field is unavailable.";
+"TEXT_RECORD_COUNT" = "%lu records";

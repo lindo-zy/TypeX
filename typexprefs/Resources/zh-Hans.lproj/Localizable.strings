@@ -171,7 +171,7 @@
 "OPEN_WITH_PULLOVER" = "由 PullOver-X 打开";
 "CUT_REPLACE_FIELD" = "剪切替换";
 "TYPE_FOOTER_URL_SCHEME" = "点击后执行 URL Scheme 打开跳转，沿用系统跳转方式；使用 @@@ 可传入当前输入框的内容作为入参。开启「剪切替换」后，@@@ 传入内容的同时清空输入框；关闭则保留输入框内容。";
-"TYPE_FOOTER_TEXT" = "点击后将配置的文本发送到当前输入框，支持以下模板，可自由组合：\n{{clipboard}}：替换为剪贴板文本（剪贴板为图片时不替换）\n{{selection}}：替换为输入框当前内容，输出将整体替换输入框内容\n{{date1}}：当前日期，如 2026/09/15\n{{date2}}：当前日期，如 2026-09-15\n{{date3}}：当前日期，如 2026年09月19日\n{{now1}}：当前日期+时间，如 2026/09/15-22:16:33\n{{now2}}：当前日期+时间，如 2026-09-15-22:16:33\n{{time}}：当前时间，如 22:16:33\n示例：设置为“你好:{{clipboard}}”，剪贴板为 alice 时输出“你好:alice”；设置为“你好:{{selection}}”，输入框内容为 123 时输入框变为“你好:123”";
+"TYPE_FOOTER_TEXT" = "管理多条纯文本记录。一条时直接插入，多条时打开悬浮列表，点选记录后插入并关闭。原样保留文本、空格和换行。点击“编辑”可删除记录或拖动排序。";
 "TYPE_FOOTER_URL" = "点击后打开该网址，可选择在 APP 内或 APP 外打开；url 支持入参替换，使用 @@@ 传入当前输入框的内容。开启「剪切替换」后，@@@ 传入内容的同时清空输入框；关闭则保留输入框内容。";
 "TYPE_FOOTER_OPEN_APP" = "默认正常跳转打开所选应用。安装 PullOver-X 后可交由其接管；PullOver-X 未激活时，TypeX 会回退为正常打开。";
 
@@ -369,3 +369,12 @@
 "JS_INPUT_UNAVAILABLE" = "当前输入框无法用于脚本，请先结束拼音输入；密码框不支持。";
 "JS_TEST_HINT" = "填写测试文本后运行。网络请求会真实发送；文本与跳转动作只预览。日志仅保留在本页。";
 "JS_HELP" = "入口：async function main(str)。选区优先：无选区时读取全文。替换：替换读取的选区或全文；剪贴板输入则替换当前选区。插入：在当前光标或选区写入；复制：写入剪贴板。\n支持 $http.get/post/put/patch/delete({url, headers, body})，返回 UTF-8 字符串，JSON 用 JSON.parse 解析；body 请传字符串。支持 $url.open、$url.openInApp、$app.open 和 console.log。\n返回字符串，或 {type, content, title?, args?}；type 支持 txt/url/urlInApp/app/function。数组多项显示菜单，null 不写入。跳转后结束当前脚本会话。网络或输入状态失效时不回写。\n暂不支持图片、文件、$pb、$kb、旧式 js 类型或完整浏览器/Node 环境。";
+
+// Text action records
+"TEXT_RECORDS" = "文本记录";
+"TEXT_RECORD_ADD" = "添加记录";
+"TEXT_RECORD_NUMBER" = "记录 %ld";
+"TEXT_RECORD_EMPTY" = "点击输入文本";
+"TEXT_RECORD_REQUIRED" = "请为每条记录填写文本，或在编辑模式下删除不用的记录。";
+"TEXT_RECORD_INPUT_UNAVAILABLE" = "当前输入框不可用。";
+"TEXT_RECORD_COUNT" = "%lu 条记录";
