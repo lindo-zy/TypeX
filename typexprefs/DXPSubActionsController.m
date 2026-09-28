@@ -76,42 +76,43 @@ static CGFloat const DXSubActionContentLeading = 40.0;
 
 #pragma mark - Storage
 
-// Sub-actions of all buttons live in one store for the toolbar configuration;
-// each entry is {identifier, selector} and array order is execution order.
+// Each gesture has its own store. Persist one envelope even when the last
+// action is deleted, so legacy/default actions do not reappear on reload.
 - (NSString *)subActionsKey {
-    return DXScopedPreferenceKey(kSubActionskey, self.configuration ?: @"bottom");
+    return DXCustomActionsKeyForGesture((int)self.gestureType, self.configuration);
 }
 
 - (NSMutableArray<NSMutableDictionary *> *)entriesForIdentifier {
     NSMutableArray<NSMutableDictionary *> *entries = [NSMutableArray array];
     NSDictionary *prefs = [[DXPrefsManager sharedInstance] readPrefs];
-    for (NSDictionary *entry in prefs[self.subActionsKey]) {
-        if ([entry isKindOfClass:[NSDictionary class]] && [entry[@"identifier"] isEqual:self.identifier]) {
-            [entries addObject:[entry mutableCopy]];
-        }
+    for (NSString *selector in DXGestureActionSelectors(prefs, self.identifier, (int)self.gestureType, self.configuration)) {
+        [entries addObject:[@{@"identifier": self.identifier, @"selector": selector} mutableCopy]];
     }
     return entries;
 }
 
 - (void)writeEntries:(NSArray<NSDictionary *> *)entries {
+    if (self.identifier.length == 0) return;
     NSMutableDictionary *prefs = [[[DXPrefsManager sharedInstance] readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
     NSString *key = self.subActionsKey;
-
     NSMutableArray *updated = [NSMutableArray array];
-    for (NSDictionary *entry in prefs[key]) {
-        // Drop this button's entries, keep every other button's untouched.
-        if (![entry isKindOfClass:[NSDictionary class]] || ![entry[@"identifier"] isEqual:self.identifier]) {
-            [updated addObject:entry];
+    id stored = prefs[key];
+    if ([stored isKindOfClass:[NSArray class]]) {
+        for (id entry in stored) {
+            if (![entry isKindOfClass:[NSDictionary class]] || ![entry[@"identifier"] isEqual:self.identifier]) {
+                [updated addObject:entry];
+            }
         }
     }
-    [updated addObjectsFromArray:entries];
-    prefs[key] = updated;
-    [[DXPrefsManager sharedInstance] writePrefs:prefs];
-
-    CFStringRef notificationName = (__bridge CFStringRef)kPrefsChangedIdentifier;
-    if (notificationName) {
-        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), notificationName, NULL, NULL, YES);
+    NSMutableArray *selectors = [NSMutableArray array];
+    for (NSDictionary *entry in entries) {
+        NSString *selector = entry[@"selector"];
+        if ([selector isKindOfClass:[NSString class]] && selector.length > 0) [selectors addObject:selector];
     }
+    [updated addObject:@{@"identifier": self.identifier, @"selectors": selectors}];
+    prefs[key] = updated;
+    // writePrefs mirrors the shared snapshot and notifies open toolbar hosts.
+    [[DXPrefsManager sharedInstance] writePrefs:prefs];
 }
 
 #pragma mark - Picker navigation

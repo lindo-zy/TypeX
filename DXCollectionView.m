@@ -1933,16 +1933,17 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }
 }
 
-// Shared by the long-press gesture and the "点按触发子动作" tap mode: a single
-// sub-action fires directly, several open a chooser, none keeps the gesture
-// inert. The dedicated long-press action store is no longer consulted.
--(void)runSubActionsForButton:(UIButton *)button {
+// All six gestures share the same behavior: one action runs directly;
+// multiple actions open the existing chooser in their configured order.
+-(void)runSubActionsForButton:(UIButton *)button gesture:(DXShortcutGestureType)gesture {
+    if (![button isKindOfClass:[UIButton class]] || !button.window) return;
     [DXJavaScriptHost cancelActive];
     [self autoPaginationControl];
-    NSArray<NSString *> *subActions = preferencesSubActionSelectorsForIdentifier(button.accessibilityIdentifier, self.configuration);
+    NSArray<NSString *> *subActions = preferencesGestureActionSelectors(button.accessibilityIdentifier, (int)gesture, self.configuration);
     if (subActions.count == 0) return;
 
-    self.hapticType = 2;
+    self.hapticType = gesture == DXShortcutGestureTap ? 1 : 2;
+    NSLog(@"[TypeX][Gesture] trigger gesture=%ld count=%lu configuration=%@", (long)gesture, (unsigned long)subActions.count, self.configuration);
 
     if (subActions.count == 1) {
         [self dispatchSubActionSelector:subActions.firstObject sender:button];
@@ -1953,7 +1954,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 -(void)activateLPActions:(UIGestureRecognizer *)recognizer {
     if (recognizer.state != UIGestureRecognizerStateBegan) return;
-    [self runSubActionsForButton:(UIButton *)recognizer.view];
+    [self runSubActionsForButton:(UIButton *)recognizer.view gesture:DXShortcutGestureLongPress];
 }
 
 // Bundle identifiers use reverse-DNS notation. Web links are classified first,
@@ -2803,32 +2804,11 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
         default: return;
     }
 
-    [self autoPaginationControl];
-    UIButton *button = (UIButton *)recognizer.view;
-    NSString *selectorName = preferencesSelectorForIdentifierScoped(button.accessibilityIdentifier, 1, gestureType, @"", self.configuration);
-    if (selectorName.length == 0) return;
-
-    self.hapticType = 2;
-    [self dispatchConfiguredActionSelector:selectorName sender:button];
+    [self runSubActionsForButton:(UIButton *)recognizer.view gesture:(DXShortcutGestureType)gestureType];
 }
 
 -(void)cellButtonTouchUpInside:(UIButton *)sender {
-    // "点按触发子动作" buttons: tap runs the sub-action chain exactly like a
-    // long press and the configured tap action is skipped entirely.
-    if (preferencesTapRunsSubActionsForIdentifier(sender.accessibilityIdentifier, self.configuration)) {
-        [self runSubActionsForButton:sender];
-        return;
-    }
-
-    // With the switch off, tap runs ONLY the tap action: the configured 点按
-    // action, or the button's own historical TouchUpInside selector. Sub-actions
-    // stay on the long press (and on tap only while the switch is on).
-    NSString *selectorName = preferencesSelectorForIdentifierScoped(sender.accessibilityIdentifier, 1, DXShortcutGestureTap, @"", self.configuration);
-    if (selectorName.length == 0) selectorName = sender.accessibilityIdentifier;
-
-    // Draft buttons have no action yet: they render but taps stay inert.
-    if (DXIsDraftActionSelector(selectorName)) return;
-    [self dispatchConfiguredActionSelector:selectorName sender:sender];
+    [self runSubActionsForButton:sender gesture:DXShortcutGestureTap];
 }
 
 -(UIWindow *)keyWindow {
@@ -2915,11 +2895,9 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
     // until it fails.
     [cell.btn addTarget:self action:@selector(cellButtonTouchUpInside:) forControlEvents:UIControlEventTouchUpInside];
 
-    // Long press runs the button's sub-action configuration, so it is mounted
-    // only for buttons that have sub-actions, mirroring the conditional swipe
-    // recognizers below.
+    // Mount recognizers only for gestures with executable actions.
     NSMutableArray<UIGestureRecognizer *> *recognizers = [NSMutableArray array];
-    if ([preferencesSubActionSelectorsForIdentifier(cell.btn.accessibilityIdentifier, self.configuration) count] > 0) {
+    if ([preferencesGestureActionSelectors(cell.btn.accessibilityIdentifier, DXShortcutGestureLongPress, self.configuration) count] > 0) {
         UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(activateLPActions:)];
         longPress.minimumPressDuration = 0.5;
         [recognizers addObject:longPress];
@@ -2930,7 +2908,7 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
     // horizontal swipe would win over the paging pan on flicks that start on a
     // button.
     for (NSInteger gesture = DXShortcutGestureSwipeUp; gesture <= DXShortcutGestureSwipeRight; gesture++) {
-        if ([preferencesSelectorForIdentifierScoped(cell.btn.accessibilityIdentifier, 1, (int)gesture, @"", self.configuration) length] == 0) continue;
+        if ([preferencesGestureActionSelectors(cell.btn.accessibilityIdentifier, (int)gesture, self.configuration) count] == 0) continue;
 
         UISwipeGestureRecognizer *swipe = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(activateSwipeActions:)];
         switch (gesture) {

@@ -141,14 +141,12 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SUB_ACTION" = "Sub-action";
 "ADD" = "Add";
 "CHOOSE_ACTION" = "Choose Action";
-"FOOTER_SUB_ACTIONS" = "On tap, these sub-actions run in order after the button's tap action. On long press, a single sub-action fires directly, while several open a chooser to pick one. Use the minus button to delete a sub-action and drag its handle to reorder.";
-"TAP_TRIGGERS_SUB_ACTIONS" = "Tap Triggers Sub-actions";
-"FOOTER_TAP_SUB_ACTIONS" = "When on, tapping the button runs its sub-actions exactly like a long press, and the button's own tap action is skipped. When off, tap runs only the action configured under Tap; sub-actions fire on long press only.";
 
 "DISPLAY_STYLE" = "Display Style";
 "ICON" = "Icon";
 "NAME" = "Name";
 "ACTION_LINK" = "Action Link";
+"BASIC_ACTIONS" = "Basic Actions";
 "CUSTOM_ACTIONS" = "Custom Actions";
 "CUSTOM_ACTION" = "Custom Action";
 "CUSTOM_ACTION_SETTINGS" = "Custom Action Settings";

@@ -93,6 +93,16 @@ static NSBundle *tweakBundle;
                 [updated addObject:value];
                 continue;
             }
+            if ([value[@"selectors"] isKindOfClass:[NSArray class]]) {
+                NSMutableDictionary *entry = [value mutableCopy];
+                NSMutableArray *selectors = [value[@"selectors"] mutableCopy];
+                [selectors removeObject:selector];
+                entry[@"selectors"] = selectors;
+                // Preserve an empty envelope: deleting the last definition
+                // must not restore this gesture's legacy configuration.
+                [updated addObject:entry];
+                continue;
+            }
             BOOL selected = [value[@"selector"] isEqual:selector] || [value[@"selector2"] isEqual:selector];
             if (!selected) [updated addObject:value];
         }
@@ -165,10 +175,9 @@ static NSBundle *tweakBundle;
     }];
 }
 
-// In customActionsOnly mode the custom-actions group is the single section 0;
-// otherwise it sits behind the built-in actions as section 1.
+// Keep custom actions first in both management and selection pages.
 - (NSInteger)customActionsSection {
-    return self.customActionsOnly ? 0 : 1;
+    return 0;
 }
 
 - (void)pushEditorForCustomRow:(NSInteger)row {
@@ -204,7 +213,7 @@ static NSBundle *tweakBundle;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    if (section != self.customActionsSection) return LOCALIZED(@"ACTION");
+    if (section != self.customActionsSection) return LOCALIZED(@"BASIC_ACTIONS");
     // Picker modes hide the whole group when there is nothing to select; the
     // sub-action picker keeps it visible so its 添加 row is always reachable.
     if (!self.customActionsOnly && self.linkActions.count == 0 && !self.allowsCreatingCustomActions) return nil;
@@ -324,11 +333,11 @@ static NSBundle *tweakBundle;
     if (selector.length == 0) return nil;
     for (NSUInteger row = 0; row < self.fullOrder.count; row++) {
         if ([[DXHelper actionNameFromArray:self.fullOrder atIndex:row] isEqualToString:selector]) {
-            return [NSIndexPath indexPathForRow:row inSection:0];
+            return self.customActionsOnly ? nil : [NSIndexPath indexPathForRow:row inSection:1];
         }
     }
     for (NSUInteger row = 0; row < self.linkActions.count; row++) {
-        if ([self.linkActions[row][@"selector"] isEqual:selector]) return [NSIndexPath indexPathForRow:row inSection:1];
+        if ([self.linkActions[row][@"selector"] isEqual:selector]) return [NSIndexPath indexPathForRow:row inSection:self.customActionsSection];
     }
     return nil;
 }
@@ -343,17 +352,17 @@ static NSBundle *tweakBundle;
 
 #pragma mark - Multi-select (batch pick)
 
-// Report picks in list order (built-ins first, then custom actions) so a
+// Report picks in list order (custom actions first, then built-ins) so a
 // batch append lands in the order the user saw on screen.
 - (NSArray<NSString *> *)orderedPickedSelectors {
     NSMutableArray<NSString *> *ordered = [NSMutableArray array];
-    for (NSUInteger row = 0; row < self.fullOrder.count; row++) {
-        NSString *selector = [DXHelper actionNameFromArray:self.fullOrder atIndex:row];
-        if ([self.pickedSelectors containsObject:selector]) [ordered addObject:selector];
-    }
     for (NSDictionary *entry in self.linkActions) {
         NSString *selector = entry[@"selector"];
         if ([selector isKindOfClass:[NSString class]] && [self.pickedSelectors containsObject:selector]) [ordered addObject:selector];
+    }
+    for (NSUInteger row = 0; row < self.fullOrder.count; row++) {
+        NSString *selector = [DXHelper actionNameFromArray:self.fullOrder atIndex:row];
+        if ([self.pickedSelectors containsObject:selector]) [ordered addObject:selector];
     }
     return ordered;
 }

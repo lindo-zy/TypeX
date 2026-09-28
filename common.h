@@ -40,7 +40,7 @@
 #define kSwipeDownCustomActionskey @"swipedownactions"
 #define kSwipeLeftCustomActionskey @"swipeleftactions"
 #define kSwipeRightCustomActionskey @"swiperightactions"
-// User-defined URL actions shown below the built-in actions in every gesture
+// User-defined actions shown above the built-in actions in every gesture
 // picker. Definitions are global so the same ordered list is available to the
 // top and bottom toolbar configurations.
 #define kLinkActionskey @"linkactions"
@@ -66,9 +66,7 @@
 // Quick actions persist the owning bundle in "link" and the stable item type.
 #define kCustomActionShortcutTypeKey @"shortcuttype"
 #define kCustomActionShortcutTitleKey @"shortcuttitle"
-// Per-entry field on a shortcut dictionary: set to @YES when the button's tap
-// should run its sub-action chain (long-press behavior) instead of the tap
-// action configured for it.
+// Legacy tap-mode flag, read only to preserve configurations from older builds.
 #define kTapSubActionsEntryKey @"tapsubactions"
 
 #define kSubActionskey @"subactions"
@@ -293,9 +291,8 @@ static inline void DXPlaceCaretAtEnd(id<UITextInput> field) {
     field.selectedTextRange = [field textRangeFromPosition:end toPosition:end];
 }
 
-// Gesture types for per-shortcut custom actions. Long press keeps the
-// historical "customactions" store; each swipe direction has its own. The tap
-// store holds an optional override for the button's own TouchUpInside action.
+// Each gesture has an independent ordered action list. Long press retains
+// the historical "customactions" key; tap and each swipe use their own keys.
 typedef NS_ENUM(NSInteger, DXShortcutGestureType) {
     DXShortcutGestureLongPress = 0,
     DXShortcutGestureSwipeUp = 1,
@@ -334,6 +331,67 @@ static inline NSString *DXCustomActionsKeyForGesture(int gestureType, NSString *
         default: baseKey = kCustomActionskey; break;
     }
     return DXScopedPreferenceKey(baseKey, configuration);
+}
+
+// Shared by Settings and toolbar hosts. New gesture entries store an ordered
+// selectors array; an explicit empty array disables the gesture and must never
+// resurrect a legacy/default action. Legacy preferences are read without writes.
+static inline NSArray<NSString *> *DXGestureActionSelectors(NSDictionary *preferences, NSString *identifier,
+                                                          int gestureType, NSString *configuration) {
+    if (![preferences isKindOfClass:[NSDictionary class]] ||
+        ![identifier isKindOfClass:[NSString class]] || identifier.length == 0) return @[];
+    id stored = preferences[DXCustomActionsKeyForGesture(gestureType, configuration)];
+    NSDictionary *legacyEntry = nil;
+    if ([stored isKindOfClass:[NSArray class]]) {
+        for (NSDictionary *entry in stored) {
+            if (![entry isKindOfClass:[NSDictionary class]] || ![entry[@"identifier"] isEqual:identifier]) continue;
+            if (entry[@"selectors"] != nil) {
+                NSMutableArray *selectors = [NSMutableArray array];
+                id values = entry[@"selectors"];
+                if ([values isKindOfClass:[NSArray class]]) {
+                    for (id value in values) {
+                        if ([value isKindOfClass:[NSString class]] && [value length] > 0) [selectors addObject:value];
+                    }
+                }
+                return selectors;
+            }
+            if (!legacyEntry) legacyEntry = entry;
+        }
+    }
+
+    BOOL usesLegacySubActions = gestureType == DXShortcutGestureLongPress;
+    if (gestureType == DXShortcutGestureTap) {
+        id sections = preferences[DXScopedPreferenceKey(kShortcutskey, configuration)];
+        if ([sections isKindOfClass:[NSArray class]]) {
+            for (id section in sections) {
+                if (![section isKindOfClass:[NSArray class]]) continue;
+                for (NSDictionary *entry in section) {
+                    if (![entry isKindOfClass:[NSDictionary class]] || ![entry[@"selector"] isEqual:identifier]) continue;
+                    id flag = entry[kTapSubActionsEntryKey];
+                    usesLegacySubActions = [flag respondsToSelector:@selector(boolValue)] && [flag boolValue];
+                }
+            }
+        }
+    }
+    if (usesLegacySubActions) {
+        NSMutableArray *selectors = [NSMutableArray array];
+        id entries = preferences[DXScopedPreferenceKey(kSubActionskey, configuration)];
+        if ([entries isKindOfClass:[NSArray class]]) {
+            for (NSDictionary *entry in entries) {
+                if (![entry isKindOfClass:[NSDictionary class]] || ![entry[@"identifier"] isEqual:identifier]) continue;
+                id selector = entry[@"selector"];
+                if ([selector isKindOfClass:[NSString class]] && [selector length] > 0) [selectors addObject:selector];
+            }
+        }
+        // The previous runtime ignored the old long-press single-action store.
+        return selectors;
+    }
+
+    id selector = legacyEntry[@"selector2"] ?: legacyEntry[@"selector"];
+    if ([selector isKindOfClass:[NSString class]] && [selector length] > 0) return @[selector];
+    if (gestureType == DXShortcutGestureTap && !DXIsDraftActionSelector(identifier) &&
+        ![identifier isEqualToString:kNewButtonPendingIdentifier]) return @[identifier];
+    return @[];
 }
 
 static inline UIColor *DXColorFromHex(NSString *value, NSString *fallback) {

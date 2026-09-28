@@ -62,41 +62,11 @@ NSString *preferencesSelectorForIdentifier(NSString* identifier, int selectorNum
     return preferencesSelectorForIdentifierScoped(identifier, selectorNum, gestureType, fallback, @"bottom");
 }
 
-// Whether the "点按触发子动作" switch is on for one button. The flag is a
-// field on the button's own shortcut entry (both the enabled and disabled
-// sections are searched) so it follows the entry everywhere its identifier
-// does, exactly like the name/icon overrides.
-BOOL preferencesTapRunsSubActionsForIdentifier(NSString *identifier, NSString *configuration) {
-    if (![identifier isKindOfClass:[NSString class]] || identifier.length == 0) return NO;
-    id stored = prefs[DXScopedPreferenceKey(kShortcutskey, configuration)];
-    if (![stored isKindOfClass:[NSArray class]]) return NO;
-
-    for (NSArray *section in (NSArray *)stored) {
-        if (![section isKindOfClass:[NSArray class]]) continue;
-        for (NSDictionary *entry in section) {
-            if ([entry isKindOfClass:[NSDictionary class]] && [entry[@"selector"] isEqual:identifier]) {
-                return [entry[kTapSubActionsEntryKey] boolValue];
-            }
-        }
-    }
-    return NO;
-}
-
-// Ordered sub-actions configured for one button ("添加子动作" page). Each
-// entry is {identifier, selector}; several entries may share an identifier and
-// array order is the execution order. Hidden/legacy selectors are rejected so
-// old or hand-edited plists cannot dispatch unknown actions.
-NSArray<NSString *> *preferencesSubActionSelectorsForIdentifier(NSString* identifier, NSString *configuration) {
+// Validate resolved gesture lists before installing recognizers or dispatching.
+NSArray<NSString *> *preferencesGestureActionSelectors(NSString *identifier, int gestureType, NSString *configuration) {
     NSMutableArray<NSString *> *selectors = [NSMutableArray array];
-    if (![identifier isKindOfClass:[NSString class]] || identifier.length == 0) return selectors;
-    if (![prefs[DXScopedPreferenceKey(kSubActionskey, configuration)] isKindOfClass:[NSArray class]]) return selectors;
-
-    for (NSDictionary *entry in prefs[DXScopedPreferenceKey(kSubActionskey, configuration)]) {
-        if (![entry isKindOfClass:[NSDictionary class]] || ![entry[@"identifier"] isEqual:identifier]) continue;
-        NSString *selector = entry[@"selector"];
-        if (![selector isKindOfClass:[NSString class]] || selector.length == 0) continue;
-        if (!preferencesIsConfiguredActionSelector(selector)) continue;
-        [selectors addObject:selector];
+    for (NSString *selector in DXGestureActionSelectors(prefs, identifier, gestureType, configuration)) {
+        if (preferencesIsConfiguredActionSelector(selector)) [selectors addObject:selector];
     }
     return selectors;
 }

@@ -40,8 +40,7 @@ float preferencesFloat(NSString* key, float fallback);
 int preferencesInt(NSString* key, int fallback);
 NSString *preferencesSelectorForIdentifier(NSString* identifier, int selectorNum, int gestureType, NSString *fallback);
 NSString *preferencesSelectorForIdentifierScoped(NSString* identifier, int selectorNum, int gestureType, NSString *fallback, NSString *configuration);
-NSArray<NSString *> *preferencesSubActionSelectorsForIdentifier(NSString* identifier, NSString *configuration);
-BOOL preferencesTapRunsSubActionsForIdentifier(NSString *identifier, NSString *configuration);
+NSArray<NSString *> *preferencesGestureActionSelectors(NSString *identifier, int gestureType, NSString *configuration);
 NSDictionary *preferencesLinkActionForSelector(NSString *selector);
 BOOL preferencesIsConfiguredActionSelector(NSString *selector);
 

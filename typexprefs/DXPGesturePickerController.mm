@@ -1,5 +1,4 @@
 #import "DXPGesturePickerController.h"
-#import "DXPCustomActionViewController.h"
 #import "DXPSubActionsController.h"
 #import "../DXHelper.h"
 #import "../DXShortcutsGenerator.h"
@@ -86,29 +85,13 @@ static NSBundle *tweakBundle;
 
 #pragma mark - Gesture action lookup
 
-// The custom action stored for one gesture type for this page's identifier.
-- (NSDictionary *)customActionEntryForGesture:(DXShortcutGestureType)gesture identifier:(NSString *)identifier {
-    if (![identifier isKindOfClass:[NSString class]] || identifier.length == 0) return nil;
-    NSDictionary *prefs = [[DXPrefsManager sharedInstance] readPrefs];
-    NSArray *entries = prefs[DXCustomActionsKeyForGesture((int)gesture, self.configuration)];
-    if (![entries isKindOfClass:[NSArray class]]) return nil;
-    for (NSDictionary *entry in entries) {
-        if ([entry isKindOfClass:[NSDictionary class]] && [entry[@"identifier"] isEqual:identifier]) {
-            return entry;
-        }
-    }
-    return nil;
-}
-
 - (NSString *)selectedActionForGesture:(DXShortcutGestureType)gesture identifier:(NSString *)identifier {
-    NSDictionary *entry = [self customActionEntryForGesture:gesture identifier:identifier];
-    NSString *action = entry[@"selector2"] ?: entry[@"selector"];
-    return ([action isKindOfClass:[NSString class]] && action.length > 0) ? action : nil;
+    NSDictionary *prefs = [[DXPrefsManager sharedInstance] readPrefs];
+    return DXGestureActionSelectors(prefs, identifier, (int)gesture, self.configuration).firstObject;
 }
 
-// All preference stores that carry per-button entries: the six gesture stores
-// (the long-press one is legacy but old installs may still hold entries) plus
-// the ordered sub-action list. Pending new buttons stage under one
+// All preference stores that carry per-button entries: six gesture stores
+// plus the legacy ordered sub-action list. Pending new buttons stage under one
 // sentinel identifier in every store; cleanup/re-key must cover all of them.
 - (NSArray<NSString *> *)perButtonPreferenceKeys {
     NSMutableArray<NSString *> *keys = [NSMutableArray array];
@@ -321,7 +304,6 @@ static NSBundle *tweakBundle;
     entry[@"icon"] = icon;
     if (!entry[@"images12"]) entry[@"images12"] = canonical[@"images12"] ?: @"UIButtonBarListIcon";
     if (!entry[@"images13"]) entry[@"images13"] = icon;
-    if (self.pendingTapSubActions) entry[kTapSubActionsEntryKey] = @YES;
     // Adding is unlimited. Once the active capacity is full, save the new
     // button in the same list but keep its switch off until another is closed.
     if (disableNewEntry) entry[@"disabled"] = @YES;
@@ -339,28 +321,6 @@ static NSBundle *tweakBundle;
 }
 
 #pragma mark - Specifier value handlers
-
-// "点按触发子动作" switch: while the new button is unsaved the choice is held
-// in memory; on a saved button it reads and writes the entry field directly.
-- (id)readTapSubActionsValue:(PSSpecifier *)specifier {
-    if (self.pendingNewEntry) return @(self.pendingTapSubActions);
-    return @([[self storedShortcutEntry][kTapSubActionsEntryKey] boolValue]);
-}
-
-- (void)setTapSubActionsValue:(id)value specifier:(PSSpecifier *)specifier {
-    BOOL on = [value isKindOfClass:[NSNumber class]] ? [value boolValue] : NO;
-    if (self.pendingNewEntry) {
-        self.pendingTapSubActions = on;
-        return;
-    }
-    // Off removes the field so entries stay clean; on stores @YES. The write
-    // is immediate (like the enable toggle on the manage page) and posts the
-    // prefs-changed notification, so open toolbars pick it up at once.
-    [self updateStoredShortcutEntryWithMutator:^(NSMutableDictionary *entry) {
-        if (on) entry[kTapSubActionsEntryKey] = @YES;
-        else [entry removeObjectForKey:kTapSubActionsEntryKey];
-    }];
-}
 
 - (id)readNameValue:(PSSpecifier *)specifier {
     if (self.pendingNewEntry) {
@@ -437,12 +397,11 @@ static NSBundle *tweakBundle;
 
 #pragma mark - Specifiers
 
-// Gesture rows in display order: the tap action (which drives a new button's
-// identity), then the four swipes. Long press has no row: it always runs the
-// button's sub-action configuration.
+// Every gesture opens its own ordered sub-action editor.
 - (NSArray<NSArray *> *)gestureRows {
     return @[
         @[@(DXShortcutGestureTap), @"GESTURE_TAP"],
+        @[@(DXShortcutGestureLongPress), @"LONG_PRESS"],
         @[@(DXShortcutGestureSwipeUp), @"SWIPE_UP"],
         @[@(DXShortcutGestureSwipeDown), @"SWIPE_DOWN"],
         @[@(DXShortcutGestureSwipeLeft), @"SWIPE_LEFT"],
@@ -473,22 +432,10 @@ static NSBundle *tweakBundle;
 
         for (NSArray *gestureRow in [self gestureRows]) {
             NSString *label = LOCALIZED(gestureRow[1]);
-            PSSpecifier *gestureSpec = [PSSpecifier preferenceSpecifierNamed:label target:nil set:nil get:nil detail:NSClassFromString(@"DXPGesturePickerController") cell:PSLinkListCell edit:nil];
+            PSSpecifier *gestureSpec = [PSSpecifier preferenceSpecifierNamed:label target:nil set:nil get:nil detail:NSClassFromString(@"DXPSubActionsController") cell:PSLinkListCell edit:nil];
             [gestureSpec setProperty:label forKey:@"label"];
             [snippetEntrySpecifiers addObject:gestureSpec];
         }
-
-        PSSpecifier *subActionGroup = [PSSpecifier preferenceSpecifierNamed:LOCALIZED(@"ADD_SUB_ACTION") target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
-        [subActionGroup setProperty:LOCALIZED(@"FOOTER_TAP_SUB_ACTIONS") forKey:@"footerText"];
-        [snippetEntrySpecifiers addObject:subActionGroup];
-
-        PSSpecifier *tapSubActionSpec = [PSSpecifier preferenceSpecifierNamed:LOCALIZED(@"TAP_TRIGGERS_SUB_ACTIONS") target:self set:@selector(setTapSubActionsValue:specifier:) get:@selector(readTapSubActionsValue:) detail:nil cell:PSSwitchCell edit:nil];
-        [tapSubActionSpec setProperty:LOCALIZED(@"TAP_TRIGGERS_SUB_ACTIONS") forKey:@"label"];
-        [snippetEntrySpecifiers addObject:tapSubActionSpec];
-
-        PSSpecifier *subActionSpec = [PSSpecifier preferenceSpecifierNamed:LOCALIZED(@"SUB_ACTIONS") target:nil set:nil get:nil detail:NSClassFromString(@"DXPSubActionsController") cell:PSLinkListCell edit:nil];
-        [subActionSpec setProperty:LOCALIZED(@"SUB_ACTIONS") forKey:@"label"];
-        [snippetEntrySpecifiers addObject:subActionSpec];
 
         _specifiers = snippetEntrySpecifiers;
 
@@ -513,24 +460,6 @@ static NSBundle *tweakBundle;
         return;
     }
 
-    // The sub-action row opens the ordered "添加子动作" editor.
-    if ([cell.textLabel.text isEqualToString:LOCALIZED(@"SUB_ACTIONS")]) {
-        DXPSubActionsController *subActionsController = [[DXPSubActionsController alloc] init];
-        subActionsController.fullOrder = self.fullOrder;
-        // While the new button is unsaved, sub-actions accumulate under one
-        // sentinel identifier and are re-keyed on Save.
-        subActionsController.identifier = self.pendingNewEntry ? kNewButtonPendingIdentifier : self.identifier;
-        subActionsController.configuration = self.configuration;
-        subActionsController.title = LOCALIZED(@"SUB_ACTIONS");
-
-        [subActionsController setRootController: [self rootController]];
-        [subActionsController setParentController: [self parentController]];
-        [self pushController:subActionsController];
-
-        [tableView deselectRowAtIndexPath:indexPath animated:YES];
-        return;
-    }
-
     // The custom name/icon rows are plain edit-text cells handled by
     // Preferences; only gesture rows push the action editor. Rows are matched
     // by label so the position of the row in the list does not matter here.
@@ -546,7 +475,7 @@ static NSBundle *tweakBundle;
         return;
     }
 
-    DXPCustomActionViewController *actionViewController = [[DXPCustomActionViewController alloc] init];
+    DXPSubActionsController *actionViewController = [[DXPSubActionsController alloc] init];
 
     actionViewController.fullOrder = self.fullOrder;
     // While the new button is unsaved, gesture choices accumulate under one
@@ -554,10 +483,10 @@ static NSBundle *tweakBundle;
     actionViewController.identifier = self.pendingNewEntry ? kNewButtonPendingIdentifier : self.identifier;
     actionViewController.configuration = self.configuration;
     // Each gesture type keeps its custom action under its own preference key.
-    actionViewController.keyID = DXCustomActionsKeyForGesture((int)gestureType, self.configuration);
+    actionViewController.gestureType = gestureType;
     if (gestureType == DXShortcutGestureTap) self.pushedTapActionPicker = YES;
 
-    actionViewController.title = cell.textLabel.text;
+    actionViewController.title = LOCALIZED(@"SUB_ACTIONS");
 
     [actionViewController setRootController: [self rootController]];
     [actionViewController setParentController: [self parentController]];
@@ -596,7 +525,6 @@ static NSBundle *tweakBundle;
         self.pendingIcon = nil;
         self.nameDirty = NO;
         self.iconDirty = NO;
-        self.pendingTapSubActions = NO;
     }
 }
 
