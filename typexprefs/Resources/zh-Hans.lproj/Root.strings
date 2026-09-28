@@ -39,3 +39,9 @@
 // 截图
 "SHELLX_SCREENSHOT_HIDE_KEYBOARD" = "截图时隐藏键盘";
 "SHELLX_SCREENSHOT_HIDE_KEYBOARD_FOOTER" = "默认关闭。开启后，使用 ShellX 截图动作时会先隐藏键盘再截图；截图后不会自动恢复键盘。";
+
+// 配置备份
+"BACKUP_SECTION" = "配置备份";
+"BACKUP_CONFIG" = "备份配置";
+"RESTORE_CONFIG" = "恢复配置";
+"BACKUP_FOOTER" = "将全部配置导出为文件，保存到“文件”App 中妥善保管；恢复时选择备份文件，将覆盖当前全部配置。备份文件包含完整配置（含 AI 引擎密钥），请勿随意分享。";

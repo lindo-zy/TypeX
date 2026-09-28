@@ -11,7 +11,7 @@ BUNDLE_NAME = TypeXPrefs
 # 生效应用/打开应用 pages; see AltList/README-TypeX-vendor.md.
 TypeXPrefs_FILES = $(wildcard *.m) $(wildcard *.mm) $(wildcard AltList/*.m) ../DXPrefsManager.m ../DXShortcutsGenerator.m ../DXHelper.m ../DXAIEngine.m ../DXJavaScriptEngine.m
 TypeXPrefs_INSTALL_PATH = /Library/PreferenceBundles
-TypeXPrefs_FRAMEWORKS = UIKit CoreGraphics SwiftUI MobileCoreServices JavaScriptCore
+TypeXPrefs_FRAMEWORKS = UIKit CoreGraphics SwiftUI MobileCoreServices JavaScriptCore UniformTypeIdentifiers
 TypeXPrefs_PRIVATE_FRAMEWORKS = Preferences AppSupport
 TypeXPrefs_CFLAGS = -fobjc-arc -Wno-tautological-pointer-compare
 # sparkcolourpicker is no longer needed — using system UIColorPickerViewController
