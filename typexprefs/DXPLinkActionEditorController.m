@@ -122,6 +122,8 @@ static NSInteger const DXLegacyRowLink = 2;
 
 @interface DXPLinkActionEditorController ()
 @property (nonatomic, strong) UITableView *tableView;
+// 文本记录区头部右上角的 编辑/完成 按钮（原导航栏编辑入口移入此处）。
+@property (nonatomic, strong) UIButton *recordsEditButton;
 @property (nonatomic, strong) UITextField *nameField;
 @property (nonatomic, strong) UITextField *iconField;
 // 图标 row accessory: preview thumbnail (left) + edit field (right) in one
@@ -359,6 +361,35 @@ static NSInteger const DXLegacyRowLink = 2;
     if (![self usesLargePayloadBox] || section == 0) return nil;
     return [_displayedType isEqualToString:kCustomActionTypeURLScheme]
         ? LOCALIZED(@"URL_SCHEME_SETTINGS") : LOCALIZED(@"TEXT_SETTINGS");
+}
+
+// 文本记录区的分区头：标题左侧、编辑/完成 按钮右侧。返回 nil 的分区自动回退
+// 到 titleForHeaderInSection，其余类型的头部不受影响。
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+    if (!self.isTextEntry || section != 1) return nil;
+
+    UIView *header = [[UIView alloc] init];
+    header.layoutMargins = UIEdgeInsetsMake(4, 20, 2, 20);
+
+    UILabel *titleLabel = [[UILabel alloc] init];
+    titleLabel.font = [UIFont systemFontOfSize:13];
+    titleLabel.textColor = UIColor.secondaryLabelColor;
+    titleLabel.text = LOCALIZED(@"TEXT_RECORDS");
+    [header addSubview:titleLabel];
+
+    UIButton *editButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    editButton.titleLabel.font = [UIFont systemFontOfSize:15];
+    [editButton setTitle:LOCALIZED(self.isEditing ? @"DONE" : @"EDIT") forState:UIControlStateNormal];
+    [editButton addTarget:self action:@selector(toggleRecordsEditing) forControlEvents:UIControlEventTouchUpInside];
+    self.recordsEditButton = editButton;
+    [header addSubview:editButton];
+
+    [titleLabel.topAnchor constraintEqualToAnchor:header.layoutMarginsGuide.topAnchor].active = YES;
+    [titleLabel.bottomAnchor constraintEqualToAnchor:header.layoutMarginsGuide.bottomAnchor].active = YES;
+    [titleLabel.leadingAnchor constraintEqualToAnchor:header.layoutMarginsGuide.leadingAnchor].active = YES;
+    [editButton.centerYAnchor constraintEqualToAnchor:header.centerYAnchor].active = YES;
+    [editButton.trailingAnchor constraintEqualToAnchor:header.layoutMarginsGuide.trailingAnchor].active = YES;
+    return header;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
@@ -616,6 +647,13 @@ static NSInteger const DXLegacyRowLink = 2;
     [super setEditing:editing animated:animated];
     [self.view endEditing:YES];
     [self.tableView setEditing:editing animated:animated];
+    [self.recordsEditButton setTitle:LOCALIZED(editing ? @"DONE" : @"EDIT") forState:UIControlStateNormal];
+}
+
+// 文本记录区头部的 编辑/完成 按钮：与原导航栏 editButtonItem 同一
+// setEditing: 通道，记录行的删除/拖动排序行为不变。
+- (void)toggleRecordsEditing {
+    [self setEditing:!self.isEditing animated:YES];
 }
 - (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)path {
     return self.isTextEntry && path.section == 1 && path.row < (NSInteger)self.textRecords.count;
@@ -920,7 +958,7 @@ static NSInteger const DXLegacyRowLink = 2;
                                                                              target:self
                                                                              action:@selector(saveTapped)];
     if (self.isTextEntry) {
-        self.navigationItem.rightBarButtonItems = @[self.navigationItem.rightBarButtonItem, self.editButtonItem];
+        // 编辑入口移到文本记录区头部右上角（viewForHeaderInSection），导航栏只留保存。
         self.tableView.allowsSelectionDuringEditing = YES;
     }
 }
