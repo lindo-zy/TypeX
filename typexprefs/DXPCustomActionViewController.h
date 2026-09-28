@@ -22,6 +22,12 @@
 // row opens its editor, and custom rows gain swipe delete. Picker modes list
 // custom actions for selection only — no add row, no editing.
 @property (nonatomic, assign) BOOL customActionsOnly;
+// Picker-mode extension for sub-action picking: the custom-action group stays
+// visible even with zero actions and grows a trailing "添加" row, so a missing
+// definition can be created in place instead of detouring through the
+// custom-actions management page. Gesture-slot pickers keep the read-only
+// layout (flag stays NO).
+@property (nonatomic, assign) BOOL allowsCreatingCustomActions;
 @property (nonatomic, strong) NSMutableDictionary *prefs;
 // Ordered user-defined action definitions (kLinkActionskey). Public so the
 // standalone management page can render its own two-section layout on top of
@@ -34,6 +40,11 @@
 - (void)writePreferences;
 - (void)removeReferencesToSelector:(NSString *)selector fromPreferences:(NSMutableDictionary *)preferences;
 - (void)pushEditorForCustomRow:(NSInteger)row;
+// No-op here; pickers that enable allowsCreatingCustomActions override it to
+// fold the just-saved selector into their pending selection.
+- (void)customActionWasCreated:(NSString *)selector;
+// Batch-mode checkmark for one selector without exposing the live pick set.
+- (void)markSelectorPicked:(NSString *)selector;
 // 添加 flow on a fixed type: creates a PENDING entry and pushes the editor;
 // the store is only touched when the editor reports the saved entry.
 - (void)startAddFlowForType:(NSString *)type;

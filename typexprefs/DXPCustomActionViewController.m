@@ -134,11 +134,15 @@ static NSBundle *tweakBundle;
         [strongSelf persistLinkActions];
         if (listWasEmpty) {
             [strongSelf.tableView reloadData];
-            return;
+        } else {
+            NSIndexPath *newPath = [NSIndexPath indexPathForRow:strongSelf.linkActions.count - 1
+                                                      inSection:strongSelf.customActionsSection];
+            [strongSelf.tableView insertRowsAtIndexPaths:@[newPath] withRowAnimation:UITableViewRowAnimationAutomatic];
         }
-        NSIndexPath *newPath = [NSIndexPath indexPathForRow:strongSelf.linkActions.count - 1
-                                                  inSection:strongSelf.customActionsSection];
-        [strongSelf.tableView insertRowsAtIndexPaths:@[newPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+        // Hosts that allow in-place creation fold the new selector into their
+        // pending selection here (both paths: an empty starting list returns
+        // early above).
+        [strongSelf customActionWasCreated:savedEntry[@"selector"]];
     };
     [editor setRootController:[self rootController]];
     [editor setParentController:[self parentController]];
@@ -201,16 +205,17 @@ static NSBundle *tweakBundle;
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     if (section != self.customActionsSection) return LOCALIZED(@"ACTION");
-    // Picker modes hide the whole group when there is nothing to select.
-    if (!self.customActionsOnly && self.linkActions.count == 0) return nil;
+    // Picker modes hide the whole group when there is nothing to select; the
+    // sub-action picker keeps it visible so its 添加 row is always reachable.
+    if (!self.customActionsOnly && self.linkActions.count == 0 && !self.allowsCreatingCustomActions) return nil;
     return LOCALIZED(@"CUSTOM_ACTIONS");
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section != self.customActionsSection) return self.fullOrder.count;
-    // The trailing "添加" row belongs to the management page only; pickers
-    // list custom actions for selection without offering mutations.
-    return self.linkActions.count + (self.customActionsOnly ? 1 : 0);
+    // The trailing "添加" row belongs to the management page and the sub-action
+    // picker (in-place creation); plain selection pickers stay read-only.
+    return self.linkActions.count + ((self.customActionsOnly || self.allowsCreatingCustomActions) ? 1 : 0);
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -265,8 +270,8 @@ static NSBundle *tweakBundle;
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    // Only the management page carries the "添加" row, so this branch is
-    // unreachable in picker modes (they are select-only for custom actions).
+    // The management page and the sub-action picker carry the "添加" row;
+    // plain selection pickers never render it (row count stays at list size).
     if (indexPath.section == self.customActionsSection && indexPath.row >= (NSInteger)self.linkActions.count) {
         [self presentAddActionTypeChooser];
         return;
@@ -326,6 +331,14 @@ static NSBundle *tweakBundle;
         if ([self.linkActions[row][@"selector"] isEqual:selector]) return [NSIndexPath indexPathForRow:row inSection:1];
     }
     return nil;
+}
+
+- (void)customActionWasCreated:(NSString *)selector {
+}
+
+- (void)markSelectorPicked:(NSString *)selector {
+    if (selector.length == 0) return;
+    [self.pickedSelectors addObject:selector];
 }
 
 #pragma mark - Multi-select (batch pick)
