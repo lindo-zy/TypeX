@@ -1,6 +1,7 @@
 #import "DXJavaScriptHost.h"
 #import "DXJavaScriptEngine.h"
 #import "common.h"
+#import <objc/runtime.h>
 
 @interface DXJavaScriptChoiceWindow : UIWindow
 @end
@@ -35,6 +36,22 @@ static DXJavaScriptHost *DXActiveJavaScriptHost;
 // Menu rows snap to whole heights so the panel edge never cuts through a
 // label; the cap keeps large menus scrollable instead of covering the screen.
 static const CGFloat DXJSChoiceRowHeight = 44.0;
+
+// Keyboard frame probe in screen coordinates, same geometric validation as
+// DXAIPanel's probe: UIKeyboardImpl is a full-screen container on some iOS
+// versions, so the frame must go through the view chain and pass a
+// "sits in the lower half of the screen" check or it is not a keyboard.
+static CGRect DXJSProbeKeyboardFrame(void) {
+    Class keyboardClass = objc_getClass("UIKeyboardImpl");
+    if (!keyboardClass || ![keyboardClass respondsToSelector:@selector(activeInstance)]) return CGRectZero;
+    UIView *keyboard = [keyboardClass performSelector:@selector(activeInstance)];
+    if (!keyboard || !keyboard.window) return CGRectZero;
+    CGRect screenFrame = [keyboard.window convertRect:[keyboard convertRect:keyboard.bounds toView:nil] toWindow:nil];
+    CGFloat screenHeight = CGRectGetHeight(keyboard.window.bounds);
+    if (CGRectIsNull(screenFrame) || CGRectGetHeight(screenFrame) <= 10.0) return CGRectZero;
+    if (CGRectGetMinY(screenFrame) <= 0.0 || CGRectGetMinY(screenFrame) >= screenHeight - 10.0) return CGRectZero;
+    return screenFrame;
+}
 
 @implementation DXJavaScriptHost
 + (void)cancelActive { [DXActiveJavaScriptHost cancel]; }
@@ -196,7 +213,7 @@ static const CGFloat DXJSChoiceRowHeight = 44.0;
     self.choices = choices;
     DXJavaScriptChoiceWindow *window = [[DXJavaScriptChoiceWindow alloc] initWithWindowScene:scene];
     window.frame = scene.coordinateSpace.bounds;
-    window.windowLevel = MAX(UIWindowLevelAlert + 1, self.sourceWindow.windowLevel + 1);
+    window.windowLevel = MAX(1000000.0, self.sourceWindow.windowLevel + 1);
     UIViewController *controller = [UIViewController new];
     window.rootViewController = controller;
     UIControl *backdrop = [[UIControl alloc] initWithFrame:window.bounds];
@@ -207,16 +224,28 @@ static const CGFloat DXJSChoiceRowHeight = 44.0;
     // Action-sheet look: choices sit as full-width cells inside one rounded
     // block split by hairlines, cancel is bold in its own block below. The
     // scroll itself stays clear so the gap between the two blocks reads as
-    // backdrop, and the size cap keeps large menus scrollable.
+    // backdrop. The sheet is bottom-anchored just above the keyboard and its
+    // height cap is the space up there, so a long menu scrolls instead of
+    // running behind the keyboard; without a keyboard it falls back to the
+    // old two-thirds-of-screen bound.
     CGFloat hairline = 1.0 / UIScreen.mainScreen.scale;
     CGFloat gap = 8.0;
     CGFloat width = MIN(360, CGRectGetWidth(window.bounds) - 32);
-    CGFloat cap = MAX(DXJSChoiceRowHeight, floor((CGRectGetHeight(window.bounds) * 0.66 - gap - DXJSChoiceRowHeight) / DXJSChoiceRowHeight) * DXJSChoiceRowHeight);
+    CGFloat screenHeight = CGRectGetHeight(window.bounds);
+    CGRect keyboardFrame = DXJSProbeKeyboardFrame();
+    BOOL keyboardVisible = !CGRectIsEmpty(keyboardFrame) &&
+        CGRectGetMinY(keyboardFrame) > 0.0 && CGRectGetMinY(keyboardFrame) < screenHeight - 10.0;
+    UIEdgeInsets safeInsets = self.sourceWindow.safeAreaInsets;
+    CGFloat topInset = safeInsets.top + 6.0;
+    CGFloat bottomLimit = keyboardVisible ? CGRectGetMinY(keyboardFrame) - 10.0
+                                          : screenHeight - MAX(safeInsets.bottom, 8.0);
+    CGFloat available = MIN(bottomLimit - topInset, screenHeight * 0.66);
+    CGFloat cap = MAX(DXJSChoiceRowHeight, floor((available - gap - DXJSChoiceRowHeight) / DXJSChoiceRowHeight) * DXJSChoiceRowHeight);
     CGFloat itemsHeight = MIN(choices.count * DXJSChoiceRowHeight, cap);
     CGFloat height = itemsHeight + gap + DXJSChoiceRowHeight;
     UIScrollView *scroll = [UIScrollView new];
     scroll.backgroundColor = UIColor.clearColor;
-    scroll.frame = CGRectMake((CGRectGetWidth(window.bounds) - width) / 2, MAX(50, (CGRectGetHeight(window.bounds) - height) / 3), width, height);
+    scroll.frame = CGRectMake((CGRectGetWidth(window.bounds) - width) / 2, MAX(topInset, bottomLimit - height), width, height);
     scroll.contentSize = CGSizeMake(width, choices.count * DXJSChoiceRowHeight + gap + DXJSChoiceRowHeight);
     [backdrop addSubview:scroll];
     NSBundle *bundle = [NSBundle bundleWithPath:bundlePath];
