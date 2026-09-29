@@ -204,28 +204,51 @@ static const CGFloat DXJSChoiceRowHeight = 44.0;
     backdrop.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [backdrop addTarget:self action:@selector(cancel) forControlEvents:UIControlEventTouchUpInside];
     [controller.view addSubview:backdrop];
-    UIScrollView *scroll = [UIScrollView new];
-    scroll.backgroundColor = UIColor.secondarySystemBackgroundColor;
-    scroll.layer.cornerRadius = 14;
+    // Action-sheet look: choices sit as full-width cells inside one rounded
+    // block split by hairlines, cancel is bold in its own block below. The
+    // scroll itself stays clear so the gap between the two blocks reads as
+    // backdrop, and the size cap keeps large menus scrollable.
+    CGFloat hairline = 1.0 / UIScreen.mainScreen.scale;
+    CGFloat gap = 8.0;
     CGFloat width = MIN(360, CGRectGetWidth(window.bounds) - 32);
-    CGFloat rows = (choices.count + 1) * DXJSChoiceRowHeight;
-    CGFloat cap = MAX(DXJSChoiceRowHeight, floor(CGRectGetHeight(window.bounds) * 0.66 / DXJSChoiceRowHeight) * DXJSChoiceRowHeight);
-    CGFloat height = MIN(rows, cap);
+    CGFloat cap = MAX(DXJSChoiceRowHeight, floor((CGRectGetHeight(window.bounds) * 0.66 - gap - DXJSChoiceRowHeight) / DXJSChoiceRowHeight) * DXJSChoiceRowHeight);
+    CGFloat itemsHeight = MIN(choices.count * DXJSChoiceRowHeight, cap);
+    CGFloat height = itemsHeight + gap + DXJSChoiceRowHeight;
+    UIScrollView *scroll = [UIScrollView new];
+    scroll.backgroundColor = UIColor.clearColor;
     scroll.frame = CGRectMake((CGRectGetWidth(window.bounds) - width) / 2, MAX(50, (CGRectGetHeight(window.bounds) - height) / 3), width, height);
+    scroll.contentSize = CGSizeMake(width, choices.count * DXJSChoiceRowHeight + gap + DXJSChoiceRowHeight);
     [backdrop addSubview:scroll];
     NSBundle *bundle = [NSBundle bundleWithPath:bundlePath];
-    for (NSUInteger index = 0; index <= choices.count; index++) {
+    UIView *itemsBlock = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, choices.count * DXJSChoiceRowHeight)];
+    itemsBlock.backgroundColor = UIColor.secondarySystemBackgroundColor;
+    itemsBlock.layer.cornerRadius = 14;
+    itemsBlock.clipsToBounds = YES;
+    [scroll addSubview:itemsBlock];
+    for (NSUInteger index = 0; index < choices.count; index++) {
         UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
-        button.frame = CGRectMake(12, index * DXJSChoiceRowHeight, width - 24, DXJSChoiceRowHeight);
+        button.frame = CGRectMake(0, index * DXJSChoiceRowHeight, width, DXJSChoiceRowHeight);
         button.tag = (NSInteger)index;
         button.titleLabel.numberOfLines = 2;
         button.titleLabel.font = [UIFont systemFontOfSize:15];
-        NSString *title = index == choices.count ? NSLocalizedStringFromTableInBundle(@"ANSWER_CANCEL", nil, bundle, nil) : choices[index][@"title"];
+        NSString *title = choices[index][@"title"];
         [button setTitle:title.length ? title : @"∅" forState:UIControlStateNormal];
-        [button addTarget:self action:index == choices.count ? @selector(cancel) : @selector(choiceTapped:) forControlEvents:UIControlEventTouchUpInside];
-        [scroll addSubview:button];
+        [button addTarget:self action:@selector(choiceTapped:) forControlEvents:UIControlEventTouchUpInside];
+        [itemsBlock addSubview:button];
+        if (index) {
+            UIView *line = [[UIView alloc] initWithFrame:CGRectMake(0, index * DXJSChoiceRowHeight, width, hairline)];
+            line.backgroundColor = UIColor.separatorColor;
+            [itemsBlock addSubview:line];
+        }
     }
-    scroll.contentSize = CGSizeMake(width, (choices.count + 1) * DXJSChoiceRowHeight);
+    UIButton *cancelButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    cancelButton.frame = CGRectMake(0, choices.count * DXJSChoiceRowHeight + gap, width, DXJSChoiceRowHeight);
+    cancelButton.backgroundColor = UIColor.secondarySystemBackgroundColor;
+    cancelButton.layer.cornerRadius = 14;
+    cancelButton.titleLabel.font = [UIFont boldSystemFontOfSize:15];
+    [cancelButton setTitle:NSLocalizedStringFromTableInBundle(@"ANSWER_CANCEL", nil, bundle, nil) forState:UIControlStateNormal];
+    [cancelButton addTarget:self action:@selector(cancel) forControlEvents:UIControlEventTouchUpInside];
+    [scroll addSubview:cancelButton];
     self.menuWindow = window;
     window.hidden = NO; // Never make key or resign the input responder.
 }
