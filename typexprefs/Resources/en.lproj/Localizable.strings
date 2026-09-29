@@ -251,7 +251,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 /* Custom actions management page (KayokoX-style layout) */
 "NO_CUSTOM_ACTIONS" = "No custom actions yet";
 "MANAGE_HINT_TAP_EDIT" = "When not editing, tap an action to edit it";
-"MANAGE_HINT_EDIT_DELETE" = "While editing, tap an action to delete it";
+"MANAGE_HINT_EDIT_DELETE" = "While editing, tap an action to delete it, or drag to reorder";
 "ADD_TYPE_HINT" = "Pick a type below to create a new action";
 
 /* AI Chat */

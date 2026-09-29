@@ -250,7 +250,7 @@
 /* Custom actions management page (KayokoX-style layout) */
 "NO_CUSTOM_ACTIONS" = "暂无自定义动作";
 "MANAGE_HINT_TAP_EDIT" = "非编辑状态下，点按编辑动作";
-"MANAGE_HINT_EDIT_DELETE" = "编辑状态下，点按删除动作";
+"MANAGE_HINT_EDIT_DELETE" = "编辑状态下，点按删除动作，拖动调整顺序";
 "ADD_TYPE_HINT" = "选择一种类型即可创建新动作";
 
 /* AI 问答 */

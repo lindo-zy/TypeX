@@ -225,6 +225,33 @@ static NSInteger const DXSectionAddType = 1;
     }
 }
 
+// Edit-mode drag reorder. The array order is the display order everywhere the
+// actions are offered, so persist it immediately like deletion does.
+- (BOOL)tableView:(UITableView *)tableView canMoveRowAtIndexPath:(NSIndexPath *)indexPath {
+    return [self tableView:tableView canEditRowAtIndexPath:indexPath];
+}
+
+- (NSIndexPath *)tableView:(UITableView *)tableView targetIndexPathForMoveFromRowAtIndexPath:(NSIndexPath *)source toProposedIndexPath:(NSIndexPath *)destination {
+    // Keep moves inside the action list: never onto the empty placeholder row
+    // or the add-action section.
+    if (destination.section != DXSectionSelected || destination.row >= (NSInteger)self.linkActions.count) {
+        return source;
+    }
+    return destination;
+}
+
+- (void)tableView:(UITableView *)tableView moveRowAtIndexPath:(NSIndexPath *)sourceIndexPath toIndexPath:(NSIndexPath *)destinationIndexPath {
+    if (sourceIndexPath.section != DXSectionSelected || destinationIndexPath.section != DXSectionSelected ||
+        sourceIndexPath.row >= (NSInteger)self.linkActions.count ||
+        destinationIndexPath.row >= (NSInteger)self.linkActions.count ||
+        sourceIndexPath.row == destinationIndexPath.row) return;
+    NSMutableDictionary *entry = self.linkActions[sourceIndexPath.row];
+    [self.linkActions removeObjectAtIndex:sourceIndexPath.row];
+    [self.linkActions insertObject:entry atIndex:destinationIndexPath.row];
+    self.prefs[kLinkActionskey] = self.linkActions;
+    [self writePreferences];
+}
+
 // Swipe delete stays reachable outside edit mode as well.
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
     if (![self tableView:tableView canEditRowAtIndexPath:indexPath]) return nil;
