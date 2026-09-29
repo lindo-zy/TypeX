@@ -56,6 +56,17 @@ async function main(str) {
             type: 'function',
             title: '今日油价',
             content: 'youjia'
+        },
+        {
+            type: 'function',
+            title: '天气',
+            content: 'tianqi',
+            args: [str]
+        },
+        {
+            type: 'function',
+            title: '日期时间',
+            content: 'riqi'
         }
     ];
 
@@ -80,4 +91,21 @@ async function youjia() {
         readableString += `${priceInfo.title}：${priceInfo.price}元/升\n`;
     });
     return readableString.replaceAll('#', '-');
+}
+
+async function tianqi(str = '') {
+    const [lat, lon] = (str.trim() || '31.23,121.47').split(',').map(s => s.trim());
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + encodeURIComponent(lat) +
+                '&longitude=' + encodeURIComponent(lon) + '&current=temperature_2m,wind_speed_10m';
+    const now = JSON.parse(await $http.get({ url })).current;
+    return `当前气温 ${now.temperature_2m}°C，风速 ${now.wind_speed_10m} km/h`;
+}
+
+async function riqi() {
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    const dateCN = d.getFullYear() + '年' + p(d.getMonth() + 1) + '月' + p(d.getDate()) + '日';
+    const dateISO = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+    const time = p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    return [dateCN, dateISO, dateCN + time, dateISO + ' ' + time];
 }
