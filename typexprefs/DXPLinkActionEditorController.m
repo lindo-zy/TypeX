@@ -392,6 +392,14 @@ static NSInteger const DXLegacyRowLink = 2;
     return header;
 }
 
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+    // 代码创建的 UITableView 对自定 header view 的自增高在实机上不可靠（无
+    // estimatedSectionHeaderHeight 时按 0 处理），而编辑入口就在这个头部里，
+    // 高度塌陷会让删除/拖动排序整体不可达——必须给显式高度。
+    if (self.isTextEntry && section == 1) return 34;
+    return UITableViewAutomaticDimension;
+}
+
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     // The type hint describes the payload, so it follows the payload: on the
     // box section for box types, on the single section otherwise.
@@ -544,6 +552,7 @@ static NSInteger const DXLegacyRowLink = 2;
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if (self.isTextEntry && indexPath.section == 1) {
+        if (self.tableView.editing) return; // 编辑态只有删除圆圈与拖动把手，不进内容编辑
         [self.view endEditing:YES];
         NSUInteger index = indexPath.row;
         BOOL adding = index == self.textRecords.count;
