@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""增量同步 iCloud 的 TypeX deb 归档到坚果云 WebDAV 镜像。
+"""增量同步 iCloud 的 deb 归档到坚果云 WebDAV 镜像（多项目）。
 
-用法（构建归档 iCloud 后执行，无参数）:
-    python3 webdav-sync.py
+用法（构建归档 iCloud 后执行）:
+    python3 webdav-sync.py            # 默认 TypeX
+    python3 webdav-sync.py PixPin     # 指定项目（Downloads 下的目录名）
+    python3 webdav-sync.py TypeX PixPin KayokoX PullOver-X
 
-行为约定（2026-09-29 起，每次构建归档后都要跑一次）:
-- 只同步 *.deb（跳过 .DS_Store 等隐藏文件），旧版本两侧都保留
-- 远端缺失或文件大小不一致才 PUT；对账 + 幂等，重跑零上传
+行为约定（2026-09-29 起，每次构建归档后都要跑一次对应项目）:
+- iCloud 源: ~/Library/Mobile Documents/com~apple~CloudDocs/Downloads/<项目>/<子目录>/
+- WebDAV 目标: https://dav.jianguoyun.com/dav/<项目>/<子目录>/，结构一一对应
+- 只同步 *.deb（跳过隐藏文件），旧版本两侧都保留
+- 远端缺失或文件大小不一致才 PUT；同步后对账，不一致退出码 1；重跑幂等
 - 鉴权走 ~/.netrc 的 dav.jianguoyun.com 条目（curl --netrc），本脚本与仓库均不含密码
 """
 import os
@@ -16,9 +20,8 @@ import sys
 import urllib.parse
 
 BASE = "https://dav.jianguoyun.com/dav"
-REMOTE_ROOT = BASE + "/TypeX"
-ICLOUD = os.path.expanduser(
-    "~/Library/Mobile Documents/com~apple~CloudDocs/Downloads/TypeX")
+DOWNLOADS = os.path.expanduser(
+    "~/Library/Mobile Documents/com~apple~CloudDocs/Downloads")
 
 
 def curl(method, url, extra=()):
@@ -52,47 +55,58 @@ def propfind_files(url):
     return files
 
 
-def local_debs(sub):
-    return sorted(f for f in os.listdir(os.path.join(ICLOUD, sub))
+def local_debs(local_dir):
+    return sorted(f for f in os.listdir(local_dir)
                   if f.endswith(".deb") and not f.startswith("."))
 
 
-def main():
-    subs = sorted(d for d in os.listdir(ICLOUD)
-                  if os.path.isdir(os.path.join(ICLOUD, d)) and not d.startswith("."))
+def sync_project(project):
+    local_root = os.path.join(DOWNLOADS, project)
+    remote_root = f"{BASE}/{urllib.parse.quote(project)}"
+    if not os.path.isdir(local_root):
+        sys.exit(f"iCloud 归档目录不存在: {local_root}")
+    print(f"\n===== {project}: {local_root} -> {remote_root} =====")
+    subs = sorted(d for d in os.listdir(local_root)
+                  if os.path.isdir(os.path.join(local_root, d)) and not d.startswith("."))
     print(f"本地归档子目录: {subs}")
-    root_code = curl("MKCOL", REMOTE_ROOT)
-    assert root_code in ("201", "405"), f"MKCOL TypeX -> HTTP {root_code}"
+    root_code = curl("MKCOL", remote_root)
+    assert root_code in ("201", "405"), f"MKCOL {project} -> HTTP {root_code}"
     uploaded = skipped = 0
     for sub in subs:
-        code = curl("MKCOL", f"{REMOTE_ROOT}/{sub}")
-        assert code in ("201", "405"), f"MKCOL {sub} -> HTTP {code}"
-        files = local_debs(sub)
-        remote = propfind_files(f"{REMOTE_ROOT}/{sub}") or {}
+        code = curl("MKCOL", f"{remote_root}/{sub}")
+        assert code in ("201", "405"), f"MKCOL {project}/{sub} -> HTTP {code}"
+        files = local_debs(os.path.join(local_root, sub))
+        remote = propfind_files(f"{remote_root}/{sub}") or {}
         print(f"\n[{sub}] 本地 {len(files)} 个 deb，远端已有 {len(remote)} 个")
         for name in files:
-            size = os.path.getsize(os.path.join(ICLOUD, sub, name))
+            size = os.path.getsize(os.path.join(local_root, sub, name))
             if remote.get(name) == size:
                 skipped += 1
                 continue
             reason = "远端缺失" if name not in remote else f"大小不一致(远端 {remote.get(name)})"
-            code = curl("PUT", f"{REMOTE_ROOT}/{sub}/{urllib.parse.quote(name)}",
-                        ("--data-binary", "@" + os.path.join(ICLOUD, sub, name)))
+            code = curl("PUT", f"{remote_root}/{sub}/{urllib.parse.quote(name)}",
+                        ("--data-binary", "@" + os.path.join(local_root, sub, name)))
             if code not in ("200", "201", "204"):
-                sys.exit(f"上传失败: {sub}/{name} HTTP {code}")
+                sys.exit(f"上传失败: {project}/{sub}/{name} HTTP {code}")
             uploaded += 1
             print(f"  上传: {name} ({size} B, {reason})")
-    print(f"\n同步完成：上传 {uploaded}，一致跳过 {skipped}")
+    print(f"同步完成：上传 {uploaded}，一致跳过 {skipped}")
 
     mismatch = []
     for sub in subs:
-        remote = propfind_files(f"{REMOTE_ROOT}/{sub}") or {}
-        for name in local_debs(sub):
-            size = os.path.getsize(os.path.join(ICLOUD, sub, name))
+        remote = propfind_files(f"{remote_root}/{sub}") or {}
+        for name in local_debs(os.path.join(local_root, sub)):
+            size = os.path.getsize(os.path.join(local_root, sub, name))
             if remote.get(name) != size:
-                mismatch.append(f"  {sub}/{name}: 本地 {size} 远端 {remote.get(name)}")
+                mismatch.append(f"  {project}/{sub}/{name}: 本地 {size} 远端 {remote.get(name)}")
     print("对账: " + ("全部一致 ✅" if not mismatch else "不一致 ❌\n" + "\n".join(mismatch)))
-    sys.exit(1 if mismatch else 0)
+    return not mismatch
+
+
+def main():
+    projects = sys.argv[1:] or ["TypeX"]
+    ok = all(sync_project(project) for project in projects)
+    sys.exit(0 if ok else 1)
 
 
 if __name__ == "__main__":
