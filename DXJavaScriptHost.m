@@ -24,6 +24,8 @@
 @property (nonatomic, copy) NSString *output;
 @property (nonatomic, strong) NSTimer *timer;
 @property (nonatomic, strong) UIWindow *menuWindow;
+@property (nonatomic, strong) UIScrollView *choiceScroll;
+@property (nonatomic, strong) UIButton *choiceCancelButton;
 @property (nonatomic, strong) NSArray *choices;
 @property (nonatomic, strong) NSDate *started;
 @property (nonatomic, assign) BOOL cancelled;
@@ -37,20 +39,22 @@ static DXJavaScriptHost *DXActiveJavaScriptHost;
 // label; the cap keeps large menus scrollable instead of covering the screen.
 static const CGFloat DXJSChoiceRowHeight = 44.0;
 
-// Keyboard frame probe in screen coordinates, same geometric validation as
-// DXAIPanel's probe: UIKeyboardImpl is a full-screen container on some iOS
-// versions, so the frame must go through the view chain and pass a
-// "sits in the lower half of the screen" check or it is not a keyboard.
-static CGRect DXJSProbeKeyboardFrame(void) {
+// Always return menu-window coordinates, including when the keyboard belongs
+// to a different window/scene. A full-screen input container is not a keyboard.
+static CGRect DXJSProbeKeyboardFrame(UIWindow *window) {
     Class keyboardClass = objc_getClass("UIKeyboardImpl");
     if (!keyboardClass || ![keyboardClass respondsToSelector:@selector(activeInstance)]) return CGRectZero;
-    UIView *keyboard = [keyboardClass performSelector:@selector(activeInstance)];
-    if (!keyboard || !keyboard.window) return CGRectZero;
-    CGRect screenFrame = [keyboard.window convertRect:[keyboard convertRect:keyboard.bounds toView:nil] toWindow:nil];
-    CGFloat screenHeight = CGRectGetHeight(keyboard.window.bounds);
-    if (CGRectIsNull(screenFrame) || CGRectGetHeight(screenFrame) <= 10.0) return CGRectZero;
-    if (CGRectGetMinY(screenFrame) <= 0.0 || CGRectGetMinY(screenFrame) >= screenHeight - 10.0) return CGRectZero;
-    return screenFrame;
+    @try {
+        id instance = [keyboardClass performSelector:@selector(activeInstance)];
+        if (![instance isKindOfClass:UIView.class]) return CGRectZero;
+        UIView *keyboard = instance;
+        if (!keyboard.window || keyboard.window.screen != window.screen) return CGRectZero;
+        CGRect frame = [keyboard convertRect:keyboard.bounds toView:keyboard.window];
+        frame = [keyboard.window convertRect:frame toWindow:window];
+        if (CGRectIsNull(frame) || CGRectIsInfinite(frame) || CGRectGetHeight(frame) <= 10.0) return CGRectZero;
+        if (CGRectGetMinY(frame) <= 0.0 || CGRectGetMinY(frame) >= CGRectGetHeight(window.bounds) - 10.0) return CGRectZero;
+        return frame;
+    } @catch (__unused NSException *exception) { return CGRectZero; }
 }
 
 @implementation DXJavaScriptHost
@@ -62,6 +66,7 @@ static CGRect DXJSProbeKeyboardFrame(void) {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [self.engine cancel]; self.engine = nil;
     self.menuWindow.hidden = YES; self.menuWindow = nil; self.choices = nil;
+    self.choiceScroll = nil; self.choiceCancelButton = nil;
     self.provider = nil; self.open = nil; self.error = nil;
     if (DXActiveJavaScriptHost == self) DXActiveJavaScriptHost = nil;
     NSLog(@"[TypeXJS] session closed");
@@ -111,6 +116,7 @@ static CGRect DXJSProbeKeyboardFrame(void) {
 }
 - (void)tick {
     if (![self valid] || -[self.started timeIntervalSinceNow] > 120) [self cancel];
+    else if (self.menuWindow) [self layoutChoices];
 }
 + (void)startEntry:(NSDictionary *)entry sourceView:(UIView *)view inputProvider:(id (^)(void))provider
              open:(void (^)(NSString *, NSString *))open error:(void (^)(NSString *))error {
@@ -174,6 +180,7 @@ static CGRect DXJSProbeKeyboardFrame(void) {
     (void)keepAlive;
     if (![self valid]) { [self cancel]; return; }
     self.menuWindow.hidden = YES; self.menuWindow = nil; self.choices = nil;
+    self.choiceScroll = nil; self.choiceCancelButton = nil;
     NSString *type = action[@"type"], *content = action[@"content"];
     if ([type isEqual:@"function"]) { [self.engine callFunction:content arguments:action[@"args"]]; return; }
     if (![@[@"txt", @"url", @"urlInApp", @"app"] containsObject:type]) { [self fail:@"Unsupported action type"]; return; }
@@ -207,13 +214,65 @@ static CGRect DXJSProbeKeyboardFrame(void) {
     if (sender.tag < 0 || (NSUInteger)sender.tag >= self.choices.count) return;
     [self execute:self.choices[(NSUInteger)sender.tag]];
 }
+- (void)layoutChoices {
+    UIWindow *window = self.menuWindow;
+    if (!window || self.cancelled) return;
+    UIView *inputView = [(id)self.input isKindOfClass:UIView.class] ? (UIView *)self.input : nil;
+    CGFloat topInset = MAX(window.safeAreaInsets.top, MAX(inputView.window.safeAreaInsets.top,
+                                                        self.sourceWindow.safeAreaInsets.top)) + 12.0;
+    CGFloat screenHeight = CGRectGetHeight(window.bounds);
+    CGFloat anchorY = CGFLOAT_MAX;
+    CGRect keyboardFrame = DXJSProbeKeyboardFrame(window);
+    if (!CGRectIsEmpty(keyboardFrame) && CGRectGetMinY(keyboardFrame) > topInset)
+        anchorY = CGRectGetMinY(keyboardFrame);
+
+    // The bottom toolbar is inside the keyboard. Its wide ancestors expose
+    // the keyboard's upper edge even when UIKeyboardImpl is a full-screen
+    // container. The top toolbar itself can be above that edge.
+    UIWindow *sourceWindow = self.sourceWindow;
+    for (UIView *view = self.sourceView; view && view != sourceWindow; view = view.superview) {
+        CGRect frame = [view convertRect:view.bounds toView:sourceWindow];
+        frame = [sourceWindow convertRect:frame toWindow:window];
+        if (CGRectIsNull(frame) || CGRectIsInfinite(frame) || CGRectIsEmpty(frame)) continue;
+        CGFloat y = CGRectGetMinY(frame);
+        if ((view == self.sourceView || CGRectGetWidth(frame) >= CGRectGetWidth(window.bounds) * 0.72) &&
+            y > topInset && y < screenHeight - 10.0) anchorY = MIN(anchorY, y);
+    }
+    // If neither hierarchy yields an edge, keep the panel in the upper half
+    // instead of reverting to the screen bottom underneath a remote keyboard.
+    if (anchorY == CGFLOAT_MAX) anchorY = topInset + (screenHeight - topInset) * 0.5;
+    CGFloat bottomLimit = MIN(anchorY - 10.0, screenHeight - window.safeAreaInsets.bottom - 10.0);
+    CGFloat gap = 8.0;
+    CGFloat available = bottomLimit - topInset;
+    if (available < DXJSChoiceRowHeight * 2 + gap) {
+        [self fail:@"Not enough space above the keyboard for script choices"]; return;
+    }
+    CGFloat width = MIN(360.0, CGRectGetWidth(window.bounds) - 32.0);
+    CGFloat cap = floor((available - gap - DXJSChoiceRowHeight) / DXJSChoiceRowHeight) * DXJSChoiceRowHeight;
+    CGFloat itemsHeight = MIN(self.choices.count * DXJSChoiceRowHeight, cap);
+    CGRect frame = CGRectMake((CGRectGetWidth(window.bounds) - width) / 2,
+                              bottomLimit - itemsHeight - gap - DXJSChoiceRowHeight, width, itemsHeight);
+    if (!CGRectEqualToRect(self.choiceScroll.frame, frame)) {
+        self.choiceScroll.frame = frame;
+        NSLog(@"[TypeXJS] choices layout rows=%lu top=%.1f bottom=%.1f anchor=%.1f level=%.0f",
+              (unsigned long)self.choices.count, frame.origin.y, bottomLimit, anchorY, window.windowLevel);
+    }
+    self.choiceScroll.contentSize = CGSizeMake(width, self.choices.count * DXJSChoiceRowHeight);
+    self.choiceScroll.alwaysBounceVertical = self.choiceScroll.contentSize.height > itemsHeight;
+    self.choiceCancelButton.frame = CGRectMake(frame.origin.x, CGRectGetMaxY(frame) + gap, width, DXJSChoiceRowHeight);
+}
 - (void)showChoices:(NSArray *)choices {
+    if (![self valid]) { [self cancel]; return; }
     UIWindowScene *scene = self.scene;
     if (!scene || scene.activationState != UISceneActivationStateForegroundActive) { [self fail:@"No active scene for script choices"]; return; }
     self.choices = choices;
     DXJavaScriptChoiceWindow *window = [[DXJavaScriptChoiceWindow alloc] initWithWindowScene:scene];
     window.frame = scene.coordinateSpace.bounds;
     window.windowLevel = MAX(1000000.0, self.sourceWindow.windowLevel + 1);
+    for (UIWindow *candidate in scene.windows) {
+        if (candidate != window && candidate != self.menuWindow && !candidate.hidden)
+            window.windowLevel = MAX(window.windowLevel, candidate.windowLevel + 1);
+    }
     UIViewController *controller = [UIViewController new];
     window.rootViewController = controller;
     UIControl *backdrop = [[UIControl alloc] initWithFrame:window.bounds];
@@ -223,30 +282,15 @@ static CGRect DXJSProbeKeyboardFrame(void) {
     [controller.view addSubview:backdrop];
     // Action-sheet look: choices sit as full-width cells inside one rounded
     // block split by hairlines, cancel is bold in its own block below. The
-    // scroll itself stays clear so the gap between the two blocks reads as
-    // backdrop. The sheet is bottom-anchored just above the keyboard and its
-    // height cap is the space up there, so a long menu scrolls instead of
-    // running behind the keyboard; without a keyboard it falls back to the
-    // old two-thirds-of-screen bound.
+    // list scrolls in the space above the keyboard; cancel stays accessible
+    // below it. Layout uses all available height up to the top safe area.
     CGFloat hairline = 1.0 / UIScreen.mainScreen.scale;
-    CGFloat gap = 8.0;
     CGFloat width = MIN(360, CGRectGetWidth(window.bounds) - 32);
-    CGFloat screenHeight = CGRectGetHeight(window.bounds);
-    CGRect keyboardFrame = DXJSProbeKeyboardFrame();
-    BOOL keyboardVisible = !CGRectIsEmpty(keyboardFrame) &&
-        CGRectGetMinY(keyboardFrame) > 0.0 && CGRectGetMinY(keyboardFrame) < screenHeight - 10.0;
-    UIEdgeInsets safeInsets = self.sourceWindow.safeAreaInsets;
-    CGFloat topInset = safeInsets.top + 6.0;
-    CGFloat bottomLimit = keyboardVisible ? CGRectGetMinY(keyboardFrame) - 10.0
-                                          : screenHeight - MAX(safeInsets.bottom, 8.0);
-    CGFloat available = MIN(bottomLimit - topInset, screenHeight * 0.66);
-    CGFloat cap = MAX(DXJSChoiceRowHeight, floor((available - gap - DXJSChoiceRowHeight) / DXJSChoiceRowHeight) * DXJSChoiceRowHeight);
-    CGFloat itemsHeight = MIN(choices.count * DXJSChoiceRowHeight, cap);
-    CGFloat height = itemsHeight + gap + DXJSChoiceRowHeight;
     UIScrollView *scroll = [UIScrollView new];
     scroll.backgroundColor = UIColor.clearColor;
-    scroll.frame = CGRectMake((CGRectGetWidth(window.bounds) - width) / 2, MAX(topInset, bottomLimit - height), width, height);
-    scroll.contentSize = CGSizeMake(width, choices.count * DXJSChoiceRowHeight + gap + DXJSChoiceRowHeight);
+    scroll.layer.cornerRadius = 14;
+    scroll.clipsToBounds = YES;
+    scroll.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
     [backdrop addSubview:scroll];
     NSBundle *bundle = [NSBundle bundleWithPath:bundlePath];
     UIView *itemsBlock = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, choices.count * DXJSChoiceRowHeight)];
@@ -271,14 +315,19 @@ static CGRect DXJSProbeKeyboardFrame(void) {
         }
     }
     UIButton *cancelButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    cancelButton.frame = CGRectMake(0, choices.count * DXJSChoiceRowHeight + gap, width, DXJSChoiceRowHeight);
     cancelButton.backgroundColor = UIColor.secondarySystemBackgroundColor;
     cancelButton.layer.cornerRadius = 14;
     cancelButton.titleLabel.font = [UIFont boldSystemFontOfSize:15];
     [cancelButton setTitle:NSLocalizedStringFromTableInBundle(@"ANSWER_CANCEL", nil, bundle, nil) forState:UIControlStateNormal];
     [cancelButton addTarget:self action:@selector(cancel) forControlEvents:UIControlEventTouchUpInside];
-    [scroll addSubview:cancelButton];
+    [backdrop addSubview:cancelButton];
+    self.menuWindow.hidden = YES;
     self.menuWindow = window;
+    self.choiceScroll = scroll;
+    self.choiceCancelButton = cancelButton;
+    [self layoutChoices];
+    if (self.cancelled) return;
     window.hidden = NO; // Never make key or resign the input responder.
+    [self layoutChoices]; // Refresh safe-area insets once the window is visible.
 }
 @end
