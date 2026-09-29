@@ -63,11 +63,6 @@ async function main(str) {
             title: '天气',
             content: 'tianqi',
             args: [raw]
-        },
-        {
-            type: 'function',
-            title: '日期时间',
-            content: 'riqi'
         }
     ];
 
@@ -123,13 +118,4 @@ async function tianqiByCoords(lat, lon, name = '') {
                 '&longitude=' + encodeURIComponent(lon) + '&current=temperature_2m,wind_speed_10m';
     const now = JSON.parse(await $http.get({ url })).current;
     return (name ? name + '：' : '') + `当前气温 ${now.temperature_2m}°C，风速 ${now.wind_speed_10m} km/h`;
-}
-
-async function riqi() {
-    const d = new Date();
-    const p = n => String(n).padStart(2, '0');
-    const dateCN = d.getFullYear() + '年' + p(d.getMonth() + 1) + '月' + p(d.getDate()) + '日';
-    const dateISO = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
-    const time = p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
-    return [dateCN, dateISO, dateCN + time, dateISO + ' ' + time];
 }
