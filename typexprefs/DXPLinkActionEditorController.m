@@ -464,11 +464,14 @@ static NSInteger const DXLegacyRowLink = 2;
             cell.textLabel.textColor = self.view.tintColor;
             cell.imageView.image = [UIImage systemImageNamed:@"plus.circle"];
         } else {
-            cell.textLabel.text = [NSString stringWithFormat:LOCALIZED(@"TEXT_RECORD_NUMBER"), (long)indexPath.row + 1];
             NSString *text = self.textRecords[indexPath.row];
-            cell.detailTextLabel.text = text.length ? text : LOCALIZED(@"TEXT_RECORD_EMPTY");
-            cell.detailTextLabel.numberOfLines = 2;
-            cell.detailTextLabel.textColor = UIColor.secondaryLabelColor;
+            if (text.length) {
+                cell.textLabel.text = text;
+                cell.textLabel.numberOfLines = 3;
+            } else {
+                cell.textLabel.text = LOCALIZED(@"TEXT_RECORD_EMPTY");
+                cell.textLabel.textColor = UIColor.secondaryLabelColor;
+            }
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         }
         return cell;
