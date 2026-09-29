@@ -55,11 +55,6 @@ async function main(str) {
         },
         {
             type: 'function',
-            title: '今日油价',
-            content: 'youjia'
-        },
-        {
-            type: 'function',
             title: '天气',
             content: 'tianqi',
             args: [raw]
