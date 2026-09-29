@@ -375,6 +375,7 @@ static NSInteger const DXLegacyRowLink = 2;
     titleLabel.font = [UIFont systemFontOfSize:13];
     titleLabel.textColor = UIColor.secondaryLabelColor;
     titleLabel.text = LOCALIZED(@"TEXT_RECORDS");
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [header addSubview:titleLabel];
 
     UIButton *editButton = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -382,6 +383,7 @@ static NSInteger const DXLegacyRowLink = 2;
     [editButton setTitle:LOCALIZED(self.isEditing ? @"DONE" : @"EDIT") forState:UIControlStateNormal];
     [editButton addTarget:self action:@selector(toggleRecordsEditing) forControlEvents:UIControlEventTouchUpInside];
     self.recordsEditButton = editButton;
+    editButton.translatesAutoresizingMaskIntoConstraints = NO;
     [header addSubview:editButton];
 
     [titleLabel.topAnchor constraintEqualToAnchor:header.layoutMarginsGuide.topAnchor].active = YES;
