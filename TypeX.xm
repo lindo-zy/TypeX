@@ -17,7 +17,6 @@ id delegate;
 UIKeyboardImpl *kbImpl;
 UIColor *currentTintColor;
 UIColor *currentBackgroundTintColor;
-UIColor *currentTopToolbarBackgroundColor;
 BOOL isLandscape = NO;
 NSMutableDictionary *prefs;
 BOOL isDictating = NO;
@@ -134,9 +133,7 @@ static int gPullOverOpenStateToken = NOTIFY_TOKEN_INVALID;
 }
 
 - (void)setBackgroundColor:(UIColor *)backgroundColor {
-    if (currentTopToolbarBackgroundColor) {
-        [super setBackgroundColor:currentTopToolbarBackgroundColor];
-    } else if (backgroundColor && CGColorGetAlpha(backgroundColor.CGColor) > 0.01) {
+    if (backgroundColor && CGColorGetAlpha(backgroundColor.CGColor) > 0.01) {
         [super setBackgroundColor:backgroundColor];
     } else {
         [self dxApplyBackgroundColor];
@@ -144,12 +141,8 @@ static int gPullOverOpenStateToken = NOTIFY_TOKEN_INVALID;
 }
 
 - (void)dxApplyBackgroundColor {
-    UIColor *backgroundColor = currentTopToolbarBackgroundColor;
-    UIColor *accessoryColor = self.originalAccessory.backgroundColor;
-    if (!backgroundColor && accessoryColor && CGColorGetAlpha(accessoryColor.CGColor) > 0.01) {
-        backgroundColor = accessoryColor;
-    }
-    if (!backgroundColor) {
+    UIColor *backgroundColor = self.originalAccessory.backgroundColor;
+    if (!backgroundColor || CGColorGetAlpha(backgroundColor.CGColor) <= 0.01) {
         if (@available(iOS 13.0, *)) {
             backgroundColor = [UIColor systemBackgroundColor];
         } else {
@@ -1023,32 +1016,6 @@ static void reloadPrefs(void);
         self.typex.hidden = YES;
     }
 }
-/*
- %new
- -(void)shouldUpdateLayoutWithDelay:(float)delay{
- 
- double delayInSeconds = delay;
- dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, delayInSeconds * NSEC_PER_SEC);
- dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
- shouldUpdateLayout = YES;
- 
- });
- }
- */
-//-(void)setLeftDockItem:(UIKeyboardDockItem *)leftDock{
-//%orig;
-//currentTintColor = leftDock.button.tintColor;
-//[[NSNotificationCenter defaultCenter] postNotificationName:@"typeXLayoutChanged" object:nil];
-//}
-/*
- - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event{
- %orig;
- if (preferencesBool(kEnabledkey,YES) && self.typex.cursorTimer){
- [self.typex.cursorTimer invalidate];
- self.typex.cursorTimer = nil;
- }
- }
- */
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
     %orig;
     // Defer tint refresh to next runloop: the system updates dock button
@@ -1358,20 +1325,15 @@ static void reloadPrefs(void) {
         firstInit = NO;
     }
     currentBackgroundTintColor = nil;
-    currentTopToolbarBackgroundColor = nil;
-    //currentTintColor = nil;
-    
+
     // Shortcuts tint: if enabled, use custom color; otherwise follow system (set in setLeftDockItem/updateTypeXTint)
     if (preferencesBool(kShortcutsTintEnabled,NO)) {
         currentTintColor = DXColorFromHex(prefs[@"shortcutstint"], @"#ff0000");
     }
-    
+
     // Background tint options share the legacy colorBOOL master switch.
     if (preferencesBool(kColorEnabledkey,NO)){
         if (preferencesBool(kShortcutsBackgroundTintEnabled,YES)) currentBackgroundTintColor = DXColorFromHex(prefs[@"shortcutsbackgroundtint"], @"#5B5B5B");
-        if (preferencesBool(kTopToolbarBackgroundTintEnabledKey,YES)){
-            currentTopToolbarBackgroundColor = DXColorFromHex(prefs[kTopToolbarBackgroundTintKey], @"#5B5B5B");
-        }
     }
     
     toggledOn = preferencesBool(kToggledOnkey,YES);

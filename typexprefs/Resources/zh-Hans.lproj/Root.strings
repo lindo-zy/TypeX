@@ -22,14 +22,6 @@
 "LONG_PRESS" = "长按";
 "SPACE_BAR_SCROLLING" = "空格键滑动滚动";
 "FOOTER_SPACE_BAR_SCROLLING" = "设置左右滑动空格键时的滚动粒度。";
-"CUSTOMIZATION" = "自定义";
-"SHORTCUTS_TINT" = "快捷方式颜色";
-"SHORTCUTS_BACKGROUND_TINT" = "快捷方式背景颜色";
-"TOP_TOOLBAR_SETTINGS" = "顶部工具栏设置";
-"TOP_TOOLBAR" = "顶部工具栏";
-"TOP_TOOLBAR_BACKGROUND_TINT" = "顶部工具栏背景颜色";
-"ADVANCED" = "高级";
-"ADVANCED_SETTINGS" = "高级设置";
 "FOOTER_CREDITS" = "特别感谢\nudevs、lclrc乌贼、Aransh";
 
 "PASTE_CHIP" = "剪贴板图片悬浮粘贴";

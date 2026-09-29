@@ -22,14 +22,6 @@
 "LONG_PRESS" = "Long Press";
 "SPACE_BAR_SCROLLING" = "SpaceBar Swipe Scrolling";
 "FOOTER_SPACE_BAR_SCROLLING" = "Set the granularity of scrolling when swiping space bar left/right.";
-"CUSTOMIZATION" = "Customization";
-"SHORTCUTS_TINT" = "Shortcuts Tint";
-"SHORTCUTS_BACKGROUND_TINT" = "Shortcuts Background Tint";
-"TOP_TOOLBAR_SETTINGS" = "Top Toolbar Settings";
-"TOP_TOOLBAR" = "Top Toolbar";
-"TOP_TOOLBAR_BACKGROUND_TINT" = "Top Toolbar Background Tint";
-"ADVANCED" = "Advanced";
-"ADVANCED_SETTINGS" = "Advanced Settings";
 "FOOTER_CREDITS" = "Special thanks\nudevs, lclrc乌贼,Aransh";
 
 "PASTE_CHIP" = "Clipboard Image Quick Paste";

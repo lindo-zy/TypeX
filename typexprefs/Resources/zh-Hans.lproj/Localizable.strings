@@ -324,22 +324,11 @@
 /* 设置页通用（补齐缺失键） */
 "TWEAK" = "插件";
 "ENABLED" = "启用";
-"DISABLED" = "关闭";
 "HAPTIC" = "触感反馈";
 "PASTE_CHIP" = "粘贴悬浮窗";
 "PASTE_CHIP_FOOTER" = "剪贴板有新内容时在键盘上方弹出悬浮粘贴窗，并自动放行系统「允许粘贴」弹窗。";
 "PASTE_CHIP_APPS" = "生效应用";
 "FOOTER_CREDITS" = "TypeX 由 lindo 开发，感谢使用与支持";
-"SHORTCUTS_TINT_GROUP" = "快捷按钮颜色";
-"SHORTCUTS_TINT" = "按钮颜色";
-"SHORTCUTS_TINT_FOOTER" = "跟随系统使用当前 App 主题色，使用自定义可自行挑选颜色。";
-"FOLLOW_SYSTEM" = "跟随系统";
-"USE_CUSTOM" = "使用自定义";
-"CUSTOMIZATION" = "背景颜色";
-"CUSTOMIZATION_FOOTER" = "按钮背景与顶部工具栏背景共用同一个总开关，关闭后两处都不再着色。";
-"SHORTCUTS_BACKGROUND_TINT" = "按钮背景颜色";
-"TOP_TOOLBAR_BACKGROUND_TINT" = "顶部工具栏背景颜色";
-"TOP_TOOLBAR_PREVIEW" = "顶部工具栏预览";
 
 // App quick actions
 "ACTION_TYPE_SHORTCUT" = "快捷方式";

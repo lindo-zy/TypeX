@@ -75,8 +75,6 @@
 #define kTopSubActionskey @"topsubactions"
 #define kShortcutsTintEnabled @"shortcutstintBOOL"
 #define kShortcutsBackgroundTintEnabled @"shortcutsbackgroundtintBOOL"
-#define kTopToolbarBackgroundTintKey @"toptoolbarbackgroundtint"
-#define kTopToolbarBackgroundTintEnabledKey @"toptoolbarbackgroundtintBOOL"
 #define kPasteAndGoEnabledkey @"pasteandgo"
 #define kHeightOffsetkey @"heightoffset"
 #define kEnabledSmartDeleteForwardkey @"smartdeleteforwardBOOL"

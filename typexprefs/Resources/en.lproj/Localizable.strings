@@ -330,17 +330,6 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "PASTE_CHIP_FOOTER" = "Shows a floating paste chip above the keyboard when the clipboard holds new content, and auto-answers the system paste-permission alert.";
 "PASTE_CHIP_APPS" = "Enabled Apps";
 "FOOTER_CREDITS" = "TypeX by lindo. Thanks for your support.";
-"SHORTCUTS_TINT_GROUP" = "Button Tint";
-"SHORTCUTS_TINT" = "Button Color";
-"SHORTCUTS_TINT_FOOTER" = "Follow the system tint or pick a custom color for the shortcut buttons.";
-"FOLLOW_SYSTEM" = "Follow System";
-"USE_CUSTOM" = "Custom";
-"DISABLED" = "Off";
-"CUSTOMIZATION" = "Background Colors";
-"CUSTOMIZATION_FOOTER" = "Background tints share one master switch; turning it off disables both the button and the top toolbar background colors.";
-"SHORTCUTS_BACKGROUND_TINT" = "Button Background";
-"TOP_TOOLBAR_BACKGROUND_TINT" = "Top Toolbar Background";
-"TOP_TOOLBAR_PREVIEW" = "Top Toolbar Preview";
 
 // App quick actions
 "ACTION_TYPE_SHORTCUT" = "App Shortcut";
