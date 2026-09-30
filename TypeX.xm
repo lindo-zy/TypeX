@@ -272,9 +272,10 @@ static void DXInstallTopAccessoryForResponder(UIResponder *responder, BOOL reloa
 
     if ((reloadConfiguration || preferencesRecovered) && !createdContainer) {
         CGFloat previousToolbarHeight = CGRectGetHeight(container.toolbar.frame);
-        // 数据和样式都没变时跳过整表重载：无谓的 reloadData 让复用 cell 跨位置
+        // 偏好快照没变时跳过整表重载：无谓的 reloadData 让复用 cell 跨位置
         // 换位，键盘装配期多次重布局里会闪出一帧内容错位（顺序闪变根因）。
-        // 真正的偏好变更必然返回 YES，这里照常生效。
+        // 快照对比覆盖按钮数据/样式/手势绑定/色调等全部可见输入；真正的偏好
+        // 变更必然返回 YES，这里照常生效。
         if ([container.toolbar reloadShortcutConfiguration]) {
             [container.toolbar.collectionViewLayout invalidateLayout];
             [container.toolbar reloadData];

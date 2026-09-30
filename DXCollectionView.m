@@ -103,6 +103,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 @interface DXCollectionView ()
 @property (nonatomic, assign, readwrite) BOOL shortcutConfigurationAvailable;
+// 上次成功应用的偏好快照引用：键盘出现路径的整表重载门控依据（顺序闪变修复）。
+@property (nonatomic, strong) NSDictionary *dxAppliedPrefsSnapshot;
 @property (nonatomic, assign, readwrite) CGFloat bottomSpacing;
 @property (nonatomic, assign, readwrite) BOOL multiRowEnabled;
 @property (nonatomic, assign, readwrite) NSInteger buttonsPerRow;
@@ -759,17 +761,11 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 -(BOOL)reloadShortcutConfiguration{
     DXPrefsManager *manager = [DXPrefsManager sharedInstance];
-    NSDictionary *currentPrefs = manager.preferencesAvailable ? manager.prefs : nil;
-    self.shortcutConfigurationAvailable = [currentPrefs isKindOfClass:[NSDictionary class]];
-    if (!self.shortcutConfigurationAvailable) currentPrefs = @{};
+    NSDictionary *freshPrefs = manager.preferencesAvailable ? manager.prefs : nil;
+    NSDictionary *previousPrefs = self.dxAppliedPrefsSnapshot;
+    self.shortcutConfigurationAvailable = [freshPrefs isKindOfClass:[NSDictionary class]];
+    NSDictionary *currentPrefs = self.shortcutConfigurationAvailable ? freshPrefs : @{};
     prefs = [currentPrefs mutableCopy];
-    // 键盘每次弹出都会走带重载的路径，而数据/样式其实没变。无谓的整表
-    // reloadData 会让复用 cell 跨位置换位，键盘装配期的多次重布局里闪出一帧
-    // 内容错位（顺序闪变根因）。这里先记下当前可见状态，方法末尾对比，仅当
-    // 可见结果真正变化时才让调用方 invalidate + reloadData。
-    NSArray *previousShortcuts = self.shortcuts;
-    NSDictionary *previousCustomNames = self.customNames;
-    Class previousLayoutClass = [self.collectionViewLayout class];
     NSMutableArray *defaultImages12 = [[self.shortcutsGenerator imageNameArrayForiOS:0] mutableCopy];
     NSMutableArray *defaultImages13 = [[self.shortcutsGenerator imageNameArrayForiOS:1] mutableCopy];
     NSMutableArray *defaultSelectors = [[self.shortcutsGenerator selectorNames] mutableCopy];
@@ -826,12 +822,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         self.customNames = @{};
     }
 
-    CGFloat previousChrome[7] = { self.buttonHeight, self.buttonRadius, self.buttonSpacing,
-                                  self.bottomSpacing, self.borderWidth, self.widthScale, self.rowSpacing };
-    BOOL previousBorderEnabled = self.borderEnabled;
-    BOOL previousShortLabel = self.useShortLabel;
-    BOOL previousMultiRow = self.multiRowEnabled;
-    NSInteger previousPerRow = self.buttonsPerRow;
     self.shortcuts = @[images12, images13, selectors];
     [self reloadButtonChrome];
     [self dxApplyLayoutForConfiguration];
@@ -844,26 +834,13 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     self.sectionOffsetForwardArray = nil;
     self.sectionOffsetBackwardArray = nil;
 
-    BOOL changed = ![previousShortcuts[kbuttonsImages12] isEqual:images12]
-                || ![previousShortcuts[kbuttonsImages13] isEqual:images13]
-                || ![previousShortcuts[kselectors] isEqual:selectors]
-                || ![previousCustomNames isEqualToDictionary:self.customNames]
-                || previousBorderEnabled != self.borderEnabled
-                || previousShortLabel != self.useShortLabel
-                || previousMultiRow != self.multiRowEnabled
-                || previousPerRow != self.buttonsPerRow
-                || previousLayoutClass != [self.collectionViewLayout class];
-    if (!changed) {
-        CGFloat currentChrome[7] = { self.buttonHeight, self.buttonRadius, self.buttonSpacing,
-                                     self.bottomSpacing, self.borderWidth, self.widthScale, self.rowSpacing };
-        for (NSInteger chromeIndex = 0; chromeIndex < 7; chromeIndex++) {
-            if (previousChrome[chromeIndex] != currentChrome[chromeIndex]) {
-                changed = YES;
-                break;
-            }
-        }
-    }
-    return changed;
+    // 键盘每次弹出都会走带重载的路径，而偏好快照其实没变。无谓的整表
+    // reloadData 会让复用 cell 跨位置换位，键盘装配期多次重布局里闪出一帧
+    // 内容错位（顺序闪变根因）。快照对比一个判据覆盖全部可见输入（按钮数据、
+    // 样式、手势绑定、色调），粒度等同旧的每次重载；真正的偏好变更必然返回
+    // YES，调用方照常 invalidate + reloadData。
+    self.dxAppliedPrefsSnapshot = freshPrefs;
+    return !(freshPrefs == previousPrefs || [freshPrefs isEqual:previousPrefs]);
 }
 
 
