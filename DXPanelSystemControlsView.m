@@ -65,8 +65,8 @@
 @implementation DXPanelSystemControlsView
 - (instancetype)initWithFrame:(CGRect)frame {
     if ((self = [super initWithFrame:frame])) {
-        NSArray *names = @[@"手电筒", @"无线网络", @"静音", @"深色模式", @"方向锁定"];
-        NSArray *icons = @[@"flashlight.on.fill", @"wifi", @"bell.slash.fill", @"circle.lefthalf.filled", @"lock.rotation"];
+        NSArray *names = @[@"勿扰模式", @"无线网络", @"静音", @"蓝牙", @"方向锁定"];
+        NSArray *icons = @[@"moon.fill", @"wifi", @"bell.slash.fill", @"antenna.radiowaves.left.and.right", @"lock.rotation"];
         NSMutableArray *buttons = [NSMutableArray array], *labels = [NSMutableArray array];
         for (NSUInteger index = 0; index < names.count; index++) {
             UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom]; button.tag = index;
@@ -97,7 +97,7 @@
 - (void)configureDark:(BOOL)dark preview:(BOOL)preview {
     self.dark = dark; self.preview = preview; self.userInteractionEnabled = !preview;
     [self.brightness configureDark:dark]; [self.volume configureDark:dark];
-    if (preview) self.state = @{@"flashlight": @NO, @"wifi": @YES, @"silent": @YES, @"dark-mode": @NO, @"orientation-lock": @YES, @"brightness": @0.62, @"volume": @0.38};
+    if (preview) self.state = @{@"do-not-disturb": @NO, @"wifi": @YES, @"silent": @YES, @"bluetooth": @YES, @"orientation-lock": @YES, @"brightness": @0.62, @"volume": @0.38};
     [self applyState:self.state ?: @{} busy:NO];
 }
 - (void)applyState:(NSDictionary *)state busy:(BOOL)busy {

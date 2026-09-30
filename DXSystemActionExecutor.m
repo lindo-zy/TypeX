@@ -279,15 +279,28 @@ NSDictionary *DXReadPanelSystemControlState(void) {
     if (!NSThread.isMainThread || ![NSProcessInfo.processInfo.processName isEqual:@"SpringBoard"]) return nil;
     DXLoadSystemActionFrameworks();
     NSMutableDictionary *state = [NSMutableDictionary dictionary];
-    id flashlight = DXSystemFlashlight();
-    NSNumber *level = DXSystemPanelValue(flashlight, @"flashlightLevel");
-    if (level && [flashlight respondsToSelector:NSSelectorFromString(@"setFlashlightLevel:withError:")]) state[@"flashlight"] = @(level.floatValue > 0);
+    id btManager = DXSystemShared(@"BluetoothManager", @"sharedInstance");
+    NSNumber *powered = DXSystemPanelValue(btManager, @"powered");
+    if (powered && [btManager respondsToSelector:NSSelectorFromString(@"setPowered:")]) state[@"bluetooth"] = @([powered boolValue]);
     id wifi = DXSystemShared(@"SBWiFiManager", @"sharedInstance");
     NSNumber *enabled = DXSystemPanelValue(wifi, @"wiFiEnabled");
     if (enabled && [wifi respondsToSelector:NSSelectorFromString(@"setWiFiEnabled:")]) state[@"wifi"] = @([enabled boolValue]);
-    id arbiter = DXSystemShared(@"UIUserInterfaceStyleArbiter", @"sharedInstance");
-    NSNumber *style = DXSystemPanelValue(arbiter, @"currentStyle");
-    if (style && [arbiter respondsToSelector:NSSelectorFromString(@"toggleCurrentStyle")]) state[@"dark-mode"] = @(style.integerValue == UIUserInterfaceStyleDark);
+    // Read-only mirror of the toggle route in DXSystemToggleDND: the DND daemon
+    // only answers entitlement-checked Control Center client identifiers.
+    id dndService = nil, dndState = nil;
+    NSError *dndError = nil;
+    if (DXSystemInvoke(NSClassFromString(@"DNDStateService"), @"serviceForClientIdentifier:",
+        @[@"com.apple.donotdisturb.control-center.module"], &dndService) && dndService &&
+        DXSystemInvokeReportingError(dndService, @"queryCurrentStateWithError:", @[NSNull.null], &dndState, &dndError) && dndState && !dndError) {
+        id activeIdentifier = nil;
+        if (DXSystemInvoke(dndState, @"activeModeIdentifier", @[], &activeIdentifier))
+            state[@"do-not-disturb"] = @([activeIdentifier isEqual:@"com.apple.donotdisturb.mode.default"]);
+        else {
+            id isActive = nil;
+            if (DXSystemInvoke(dndState, @"isActive", @[], &isActive) && [isActive isKindOfClass:NSNumber.class])
+                state[@"do-not-disturb"] = @([isActive boolValue]);
+        }
+    }
     id lock = DXSystemShared(@"SBOrientationLockManager", @"sharedInstance");
     NSNumber *locked = DXSystemPanelValue(lock, @"isUserLocked");
     if (locked && [lock respondsToSelector:NSSelectorFromString(@"unlock")] &&
@@ -323,6 +336,6 @@ DXSystemOpenResult DXPerformPanelSystemControl(NSString *action, NSNumber *value
         return DXSystemCallFirstAvailable(ringer, @[@[@"setRingerMuted:", @[next]],
             @[@"setRingerMuted:withFeedback:reason:clientType:", @[next, @NO, @"TypeXPanel", @0]]]);
     }
-    if ([@[@"flashlight", @"wifi", @"dark-mode", @"orientation-lock"] containsObject:action]) return DXPerformSystemAction(action);
+    if ([@[@"do-not-disturb", @"wifi", @"bluetooth", @"orientation-lock"] containsObject:action]) return DXPerformSystemAction(action);
     return DXSystemOpenInvalid;
 }

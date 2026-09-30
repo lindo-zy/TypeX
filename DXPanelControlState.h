@@ -3,7 +3,7 @@
 
 // Fixed panel controls are separate from the user-configured action directory.
 static inline NSArray<NSString *> *DXPanelToggleIdentifiers(void) {
-    return @[@"flashlight", @"wifi", @"silent", @"dark-mode", @"orientation-lock"];
+    return @[@"do-not-disturb", @"wifi", @"silent", @"bluetooth", @"orientation-lock"];
 }
 static inline BOOL DXPanelControlRequestValid(id request) {
     if (![request isKindOfClass:NSDictionary.class]) return NO;
