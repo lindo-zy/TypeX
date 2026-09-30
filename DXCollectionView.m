@@ -9,7 +9,6 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <notify.h>
-#import <stdarg.h>
 #import <SafariServices/SafariServices.h>
 
 static const NSInteger DXCustomActionToastTag = 0x54584341;
@@ -132,31 +131,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 @end
 
-// diag-swap（临时诊断，定案后整组删除）：键盘出现/顶部工具栏重载后 1.5s 窗口内往
-// syslog 打 [TypeX] diag-swap 日志，定位「键盘出现时按钮顺序闪变」。四个观察面对照：
-// reload=数据序、layoutPass=布局算出的位置序、cellFor/willDisplay=配置进 cell 的内容、
-// layoutSubviews=实际可见内容。哪一层与数据序不一致，闪变就出在哪一层。
-// 方向枚举解码：trait/eff 0=LTR 1=RTL；semanticContentAttribute 2=ForceLeftToRight。
-static NSTimeInterval dxDiagSwapWindowDeadline = 0.0;
-
-static void dxDiagSwapOpenWindow(void) {
-    dxDiagSwapWindowDeadline = [NSDate date].timeIntervalSince1970 + 1.5;
-}
-
-static BOOL dxDiagSwapLoggingActive(void) {
-    return [NSDate date].timeIntervalSince1970 < dxDiagSwapWindowDeadline;
-}
-
-static void dxDiagSwapLog(NSString *format, ...) NS_FORMAT_FUNCTION(1, 2);
-static void dxDiagSwapLog(NSString *format, ...) {
-    if (!dxDiagSwapLoggingActive()) return;
-    va_list args;
-    va_start(args, format);
-    NSString *message = [[NSString alloc] initWithFormat:format arguments:args];
-    va_end(args);
-    NSLog(@"[TypeX] diag-swap: %@", message);
-}
-
 // 多行模式布局：按钮按行填充，第一行钉在工具栏底部（贴键盘），第二行向上
 // 堆叠。UICollectionViewFlowLayout 按方向整行/整列顺序填充，表达不了"短行
 // 位于顶部"（末行不满时缺口会落在填充序列中段），所以直接自绘几何。
@@ -208,19 +182,6 @@ static void dxDiagSwapLog(NSString *format, ...) {
             [NSIndexPath indexPathForItem:item inSection:0]];
         if (!attribute) continue;
         if (CGRectIntersectsRect(attribute.frame, rect)) [attributes addObject:attribute];
-    }
-    // diag-swap（临时诊断）：本 pass 布局算出的位置序。
-    if (dxDiagSwapLoggingActive()) {
-        NSMutableString *positions = [NSMutableString string];
-        NSInteger logged = MIN(items, (NSInteger)6);
-        for (NSInteger item = 0; item < logged; item++) {
-            UICollectionViewLayoutAttributes *attribute = [self layoutAttributesForItemAtIndexPath:
-                [NSIndexPath indexPathForItem:item inSection:0]];
-            [positions appendFormat:@"%ld→x%.1f ", (long)item, attribute ? attribute.frame.origin.x : -1.0];
-        }
-        dxDiagSwapLog(@"layoutPass bounds=%@ cols=%ld items=%ld | %@",
-                      NSStringFromCGRect(self.collectionView.bounds),
-                      (long)self.dxColumnCount, (long)items, positions);
     }
     return attributes;
 }
@@ -404,7 +365,6 @@ static void dxDiagSwapLog(NSString *format, ...) {
         self.showsVerticalScrollIndicator = NO;
         self.showsHorizontalScrollIndicator = NO;
         self.pagingEnabled = YES;
-        [self registerClass:NSClassFromString(@"DXCell") forCellWithReuseIdentifier:@"kTypeXCellID"];
         dispatch_async(dispatch_get_main_queue(), ^{
             [self keyboardRotated:nil];
         });
@@ -415,8 +375,6 @@ static void dxDiagSwapLog(NSString *format, ...) {
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHideForSubActionPanel:) name:UIApplicationWillResignActiveNotification object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(scrollBackward:) name:@"scrollBackward" object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(scrollForward:) name:@"scrollForward" object:nil];
-        // diag-swap（临时诊断）：兜底开窗，覆盖没有顶部重载的键盘出现路径。
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(dxDiagKeyboardDidShow:) name:UIKeyboardDidShowNotification object:nil];
         
     }
     
@@ -454,7 +412,6 @@ static void dxDiagSwapLog(NSString *format, ...) {
     [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationWillResignActiveNotification object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:@"scrollBackward" object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:@"scrollForward" object:nil];
-    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIKeyboardDidShowNotification object:nil];
     //[[NSNotificationCenter defaultCenter] removeObserver:self name:UITextFieldTextDidBeginEditingNotification object:nil];
     
 }
@@ -463,33 +420,6 @@ static void dxDiagSwapLog(NSString *format, ...) {
     if (indexPath.section == 0 && indexPath.row == 0){
         self.firstCellVisible = YES;
     }
-    // diag-swap（临时诊断）：即将上屏的内容与方向状态。
-    if ([self.configuration isEqualToString:@"top"]) {
-        DXCell *dxCell = (DXCell *)cell;
-        dxDiagSwapLog(@"willDisplay s%ld.i%ld shows=%@ cell=%p trait=%ld eff=%ld attr=%ld",
-                      (long)indexPath.section, (long)indexPath.item,
-                      dxCell.btn.accessibilityIdentifier ?: @"?", dxCell,
-                      (long)self.traitCollection.layoutDirection,
-                      (long)self.effectiveUserInterfaceLayoutDirection,
-                      (long)self.semanticContentAttribute);
-    }
-}
-
-// diag-swap（临时诊断，定案后随整组 diag-swap 删除）：每次布局完成后实际可见的
-// 「位置→正在显示的按钮」快照，与 reload 打出的数据序对照，直接定位闪变层。
-- (void)layoutSubviews {
-    [super layoutSubviews];
-    if (![self.configuration isEqualToString:@"top"] || !dxDiagSwapLoggingActive()) return;
-    NSMutableString *visible = [NSMutableString string];
-    for (NSIndexPath *indexPath in self.indexPathsForVisibleItems) {
-        DXCell *cell = (DXCell *)[self cellForItemAtIndexPath:indexPath];
-        [visible appendFormat:@"s%ld.i%ld→%@(%p)@x%.0f ",
-            (long)indexPath.section, (long)indexPath.item,
-            cell.btn.accessibilityIdentifier ?: @"?", cell,
-            cell.frame.origin.x];
-    }
-    dxDiagSwapLog(@"layoutSubviews bounds=%@ visible[%@]",
-                  NSStringFromCGRect(self.bounds), visible);
 }
 
 - (void)collectionView:(UICollectionView *)collectionView didEndDisplayingCell:(UICollectionViewCell *)cell forItemAtIndexPath:(NSIndexPath *)indexPath{
@@ -890,17 +820,6 @@ static void dxDiagSwapLog(NSString *format, ...) {
 
     self.shortcuts = @[images12, images13, selectors];
     [self reloadButtonChrome];
-    // diag-swap（临时诊断）：开窗并打数据序，供 layoutPass/cellFor/layoutSubviews 对照。
-    if ([self.configuration isEqualToString:@"top"]) {
-        dxDiagSwapOpenWindow();
-        NSMutableString *order = [NSMutableString string];
-        for (NSUInteger index = 0; index < selectors.count && index < 16; index++) {
-            [order appendFormat:@"%lu:%@ ", (unsigned long)index, selectors[index]];
-        }
-        dxDiagSwapLog(@"reload self=%p multiRow=%d perRow=%ld items=%lu order[%@]",
-                      self, self.multiRowEnabled, (long)self.buttonsPerRow,
-                      (unsigned long)selectors.count, order);
-    }
     [self dxApplyLayoutForConfiguration];
     UICollectionViewFlowLayout *activeFlowLayout = (UICollectionViewFlowLayout *)self.collectionViewLayout;
     if ([activeFlowLayout isKindOfClass:[UICollectionViewFlowLayout class]]) {
@@ -1017,13 +936,6 @@ static void dxDiagSwapLog(NSString *format, ...) {
 -(void)keyboardWillHideForSubActionPanel:(NSNotification *)notification {
     (void)notification;
     [self dismissSubActionPanelAnimated:NO completion:nil];
-}
-
-// diag-swap（临时诊断，定案后随整组删除）：键盘已上屏，开窗捕捉装配期瞬态 pass。
-- (void)dxDiagKeyboardDidShow:(NSNotification *)notification {
-    if (![self.configuration isEqualToString:@"top"]) return;
-    dxDiagSwapOpenWindow();
-    dxDiagSwapLog(@"keyboardDidShow self=%p window open", self);
 }
 
 
@@ -2916,7 +2828,10 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
 }
 
 - (UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath {
-    DXCell *cell = [collectionView dequeueReusableCellWithReuseIdentifier:@"kTypeXCellID" forIndexPath:indexPath];
+    // 全新分配，不走复用队列：整表 reloadData 会把复用的 cell 跨位置换位，在
+    // 键盘装配期的多次重布局里会有一帧「位置正确、内容是别的按钮」的错位画面
+    // （键盘出现时顺序闪变）。按钮数 ≤16，全新分配的开销可忽略。
+    DXCell *cell = [[DXCell alloc] initWithFrame:CGRectZero];
     //cell.transform = CGAffineTransformMakeScale(-1, 1);
     int cellIndex = [self shortcutsPerSection]*indexPath.section + indexPath.row;
     //[cell.btn setTitle:_buttons[indexPath.row] forState:UIControlStateNormal];
@@ -3003,12 +2918,7 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
     cell.btn.tintColor = currentTintColor;
     [cell.btn setTitleColor:currentTintColor forState:UIControlStateNormal];
     cell.btn.hidden = isLandscape||isDictating?YES:NO;
-    // diag-swap（临时诊断）：本次配置写进 cell 的内容与位置映射。
-    if ([self.configuration isEqualToString:@"top"]) {
-        dxDiagSwapLog(@"cellFor s%ld.i%ld idx=%ld sel=%@ cell=%p",
-                      (long)indexPath.section, (long)indexPath.item, (long)cellIndex,
-                      selectorName, cell);
-    }
+    //cell.btn.backgroundColor = [UIColor colorWithWhite:0.5 alpha:0.7];
     return cell;
     
     
