@@ -12,6 +12,43 @@ static void expect(NSDictionary *prefs, NSString *identifier, int gesture, NSStr
 
 int main(void) {
     @autoreleasepool {
+        // Exercise the production classification: long distance, confined-button and cancelled drags.
+        struct { double x, y, width, button; int has, inside, expected; } swipes[] = {
+            {-140, 5, 390, 60, 1, 0, -2}, {140, 5, 390, 60, 1, 0, 2},
+            {116, 0, 390, 60, 1, 0, 0}, {117, 0, 390, 60, 1, 0, 2},
+            {99, 0, 250, 32, 0, 0, 0}, {100, 0, 250, 32, 0, 0, 2},
+            {25, 1, 390, 60, 1, 1, 1}, {-25, 1, 390, 60, 1, 1, -1},
+            {150, 0, 390, 200, 1, 1, 1}, {150, 0, 390, 200, 1, 0, 0},
+            {70, 0, 390, 60, 1, 0, 0}, {200, 160, 390, 60, 1, 0, 0},
+            {3, 0, 390, 60, 1, 1, 0}, {150, 0, 0, 60, 1, 0, 0},
+            {NAN, 0, 390, 60, 1, 0, 0}, {INFINITY, 0, 390, 60, 1, 0, 0}
+        };
+        for (NSUInteger i = 0; i < sizeof(swipes)/sizeof(swipes[0]); i++) {
+            int actual = DXToolbarHorizontalResult(swipes[i].x, swipes[i].y, swipes[i].width,
+                swipes[i].button, swipes[i].has, swipes[i].inside);
+            if (actual != swipes[i].expected) { NSLog(@"FAIL horizontal %lu: %d", (unsigned long)i, actual); return 1; }
+            checks++;
+        }
+        NSMutableDictionary *panelPrefs = [@{kDXPanelLeftItems: @[], kDXPanelRightItems: @[@{@"selector": @"copyAction:", @"name": @"Copy"}],
+            kDXPanelCommonItems: @"malformed", kDXPanelScale: @(NAN)} mutableCopy];
+        if (DXKeyboardPanelItems(nil, @"left").count || DXKeyboardPanelItems(panelPrefs, @"left").count ||
+            DXKeyboardPanelItems(panelPrefs, @"common").count || DXKeyboardPanelItems(panelPrefs, @"right").count != 1 ||
+            DXKeyboardPanelItems(@{}, @"left").count != 6 || DXKeyboardPanelNumber(panelPrefs, kDXPanelScale, 100, 70, 120) != 100) return 1;
+        [panelPrefs removeObjectForKey:kDXPanelCommonItems];
+        if (DXKeyboardPanelItems(panelPrefs, @"common").count != 6 || DXKeyboardPanelItems(panelPrefs, @"left").count != 0) return 1;
+        checks += 7;
+        NSMutableArray *savedButtons = [NSMutableArray array];
+        for (NSInteger i = 0; i < 20; i++) [savedButtons addObject:@{@"selector": [NSString stringWithFormat:@"button%ld", (long)i], @"name": @"kept"}];
+        NSArray *order = @[savedButtons, @[@{@"selector": @"disabled-record"}]];
+        for (NSArray *fixture in @[@[@{}, @"top", @6], @[@{DXScopedPreferenceKey(kButtonsPerRowKey, @"top"): @4, DXScopedPreferenceKey(kMultiRowEnabledKey, @"top"): @YES}, @"top", @8], @[@{}, @"bottom", @8]]) {
+            NSDictionary *settings = fixture[0];
+            NSArray *normalized = DXToolbarOrderFittingCapacity(order, settings, fixture[1]);
+            NSUInteger active = 0;
+            for (NSDictionary *entry in normalized[0]) if (![entry[@"disabled"] boolValue]) active++;
+            if (active != [fixture[2] unsignedIntegerValue] || [normalized[0] count] != 20 ||
+                ![normalized[1] isEqual:order[1]] || ![normalized[0][19][@"name"] isEqual:@"kept"]) return 1;
+            checks++;
+        }
         NSString *button = @"copyAction:";
         NSString *custom = @"__typex_link_action_example";
         NSMutableDictionary *prefs = [NSMutableDictionary dictionary];
@@ -74,6 +111,11 @@ int main(void) {
                 expect(prefs, button, gesture, scope, @[[NSString stringWithFormat:@"%@-%d", scope, gesture]]);
             }
         }
+        NSMutableDictionary *panelCleanup = [@{kDXPanelLeftItems: @[@{@"id": @"a", @"selector": custom}, @{@"id": @"b", @"selector": button}],
+            kDXPanelRightItems: @[@{@"selector": custom}], kDXPanelCommonItems: @[]} mutableCopy];
+        [[GestureCleanup new] removeReferencesToSelector:custom fromPreferences:panelCleanup];
+        if ([panelCleanup[kDXPanelLeftItems] count] != 1 || [panelCleanup[kDXPanelRightItems] count] || [panelCleanup[kDXPanelCommonItems] count]) return 1;
+        checks++;
         printf("PASS: %lu gesture compatibility, isolation, ordering, deletion and malformed-input checks\n", (unsigned long)checks);
     }
     return 0;

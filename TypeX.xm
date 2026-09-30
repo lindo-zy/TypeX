@@ -5,6 +5,7 @@
 #import "DXQuickActionProvider.h"
 #import "DXPasteChip.h"
 #import "DXAIPanel.h"
+#import "DXKeyboardPanel.h"
 #import "DXSystemOpenBroker.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -939,6 +940,7 @@ static void reloadPrefs(void);
 
 %new
 -(void)toggleTypeX:(NSNotification*)notification{
+    [[DXKeyboardPanel sharedInstance] dismiss];
     if (preferencesBool(kEnabledHaptickey,YES)){
         [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
     }
@@ -1095,121 +1097,6 @@ static void reloadPrefs(void);
 }
 %end
 
-%hook UIKeyboardLayoutStar
-
--(BOOL)isHandwritingPlane{
-    BOOL isHWR = %orig;
-    if (preferencesBool(kEnabledkey,YES) && preferencesBool(kSpaceBarScrollingBOOL,YES)){
-        UISwipeGestureRecognizer *leftRecognizer = [self valueForKey:@"_leftSwipeRecognizer"];
-        UISwipeGestureRecognizer *rightRecognizer = [self valueForKey:@"_rightSwipeRecognizer"];
-        if (isHWR){
-            leftRecognizer.enabled = NO;
-            rightRecognizer.enabled = NO;
-        }else{
-            leftRecognizer.enabled = YES;
-            rightRecognizer.enabled = YES;
-        }
-    }
-    return isHWR;
-}
-
--(id)initWithFrame:(CGRect)arg1{
-    self = %orig;
-
-    if (preferencesBool(kEnabledkey,YES) && preferencesBool(kSpaceBarScrollingBOOL,YES)){
-        UISwipeGestureRecognizer *leftRecognizer = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(leftSwipeHandle:)];
-        leftRecognizer.direction = UISwipeGestureRecognizerDirectionLeft;
-        [leftRecognizer setNumberOfTouchesRequired:1];
-        [self setValue:leftRecognizer forKey:@"_leftSwipeRecognizer"];
-        [self addGestureRecognizer:leftRecognizer];
-        
-        UISwipeGestureRecognizer *rightRecognizer = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(rightSwipeHandle:)];
-        rightRecognizer.direction = UISwipeGestureRecognizerDirectionRight;
-        [rightRecognizer setNumberOfTouchesRequired:1];
-        [self setValue:rightRecognizer forKey:@"_rightSwipeRecognizer"];
-        [self addGestureRecognizer:rightRecognizer];
-        
-        //UISwipeGestureRecognizer *upRecognizer = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(upSwipeHandle:)];
-        //upRecognizer.direction = UISwipeGestureRecognizerDirectionUp;
-        //[upRecognizer setNumberOfTouchesRequired:1];
-        //[self setValue:upRecognizer forKey:@"_upSwipeRecognizer"];
-        //[self addGestureRecognizer:upRecognizer];
-        
-    }
-    return self;
-}
-
-%new
-- (void)leftSwipeHandle:(UISwipeGestureRecognizer*)recognizer
-{
-    //if (recognizer.state == UIGestureRecognizerStateBegan) {
-    //NSString *key = [[[self keyHitTest:[recognizer locationInView:recognizer.view]] representedString] lowercaseString];
-    //if ([key isEqualToString:@" "]){
-    if (!dockView.typex.hidden){
-        kbImpl = [%c(UIKeyboardImpl) activeInstance];
-        delegate = DXKeyboardInputDelegate(kbImpl);
-        [kbImpl clearInputWithCandidatesCleared:YES];
-        if ([self respondsToSelector:@selector(clearContinuousPathView)]){
-            [self clearContinuousPathView];
-        }
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"scrollForward" object:nil];
-    }
-    //}
-    //}else if (recognizer.state == UIGestureRecognizerStateEnded){
-    //}
-}
-
-%new
-- (void)rightSwipeHandle:(UISwipeGestureRecognizer*)recognizer
-{
-    //if (recognizer.state == UIGestureRecognizerStateBegan) {
-    //NSString *key = [[[self keyHitTest:[recognizer locationInView:recognizer.view]] representedString] lowercaseString];
-    //if ([key isEqualToString:@" "]){
-    if (!dockView.typex.hidden){
-        kbImpl = [%c(UIKeyboardImpl) activeInstance];
-        delegate = DXKeyboardInputDelegate(kbImpl);
-        [kbImpl clearInputWithCandidatesCleared:YES];
-        if ([self respondsToSelector:@selector(clearContinuousPathView)]){
-            [self clearContinuousPathView];
-        }
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"scrollBackward" object:nil];
-    }
-    //}
-    //}else if (recognizer.state == UIGestureRecognizerStateEnded){
-    //}
-}
-
-/*
- %new
- - (void)upSwipeHandle:(UISwipeGestureRecognizer*)recognizer
- {
- //if (recognizer.state == UIGestureRecognizerStateBegan) {
- //NSString *key = [[[self keyHitTest:[recognizer locationInView:recognizer.view]] representedString] lowercaseString];
- //if ([key isEqualToString:@" "]){
- dockView.typex.hidden = !dockView.typex.hidden;
- 
- //}
- //}else if (recognizer.state == UIGestureRecognizerStateEnded){
- //}
- }
- */
-
-
-- (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event {
-    %orig;
-}
-
--(void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event{
-    %orig;
-}
-
-
-- (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event  {
-    %orig;
-}
-
-%end
-
 %hook UIKeyboardMenuView
 -(void)show{
     //if (preferencesBool(kEnabledkey,YES) && !(preferencesInt(kDedicatedGestureButtonkey, 0) < 1)){
@@ -1324,6 +1211,7 @@ static NSString *DXDiagShortcutShape(id value) {
 }
 
 static void reloadPrefs(void) {
+    [[DXKeyboardPanel sharedInstance] dismiss];
     DXPrefsManager *manager = [DXPrefsManager sharedInstance];
     [manager reload];
     prefs = manager.preferencesAvailable ? [manager.prefs mutableCopy] : nil;

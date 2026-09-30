@@ -3,6 +3,9 @@
 #import "DXCollectionView.h"
 #import "DXHelper.h"
 #import "DXAIPanel.h"
+#import "DXKeyboardPanel.h"
+#import "DXKeyboardPanelPreferences.h"
+#import "DXToolbarHorizontalGesture.h"
 #import "DXSystemOpenBroker.h"
 #import "DXJavaScriptHost.h"
 
@@ -238,16 +241,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     return DXScopedPreferenceKey(key, self.configuration ?: @"bottom");
 }
 
-- (int)shortcutsPerSection {
-    // Page size of the single-row horizontal paging layout (multi-row mode off).
-    // On the top toolbar the configured per-row count is the page size — e.g.
-    // six per row with twelve enabled buttons shows six, then the remaining six
-    // after one swipe — while the bottom toolbar keeps its fixed eight-per-page
-    // behavior.
-    if ([self.configuration isEqualToString:@"top"]) return MAX(1, self.buttonsPerRow);
-    return maxshortcutpersection;
-}
-
 // 多行模式（仅顶部）：单节承载全部按钮，由 DXMultiRowTopLayout 负责换行；
 // 不再走"节=分页"的横滑模型。
 - (BOOL)multiRowActive {
@@ -269,7 +262,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         preferencesFloat([self scopedPreferenceKey:kBottomSpacingKey], topBottomSpacingDefault))) : 0.0;
     self.borderEnabled = preferencesBool([self scopedPreferenceKey:kCellBorderEnabledkey], NO);
     self.borderWidth = preferencesFloat([self scopedPreferenceKey:kCellBorderWidthkey], buttonBorderWidthDefault);
-    self.widthScale = preferencesFloat([self scopedPreferenceKey:kButtonWidthScalekey], buttonWidthScaleDefault);
+    self.widthScale = MIN(100, MAX(30, preferencesFloat([self scopedPreferenceKey:kButtonWidthScalekey], buttonWidthScaleDefault)));
     self.useShortLabel = preferencesBool([self scopedPreferenceKey:kShortLabelEnabledKey], NO);
     // 多行模式与每行个数只对顶部工具栏生效；每行个数夹在 [1, 8] 防御 plist
     // 手改出的越界值（设置页滑动条本身已限范围）。
@@ -303,7 +296,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
          + self.bottomSpacing;
 }
 
-// 多行开关切换布局实例：自绘布局 ↔ 流式分页布局。放在 reloadShortcutConfiguration
+// 多行开关切换布局实例：自绘双行布局 ↔ 固定单行布局。放在 reloadShortcutConfiguration
 // 里执行，偏好恢复竞态（init 时快照未就绪）也会在下一次重载时纠正。
 - (void)dxApplyLayoutForConfiguration {
     if (![self.configuration isEqualToString:@"top"]) return;
@@ -355,7 +348,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         
         self.hapticType = 1;
         self.refreshView = YES;
-        self.firstCellVisible = YES;
         
         self.isWordSender = NO;
         self.moveCursorWithSelect = NO;
@@ -366,7 +358,13 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         self.dataSource = self;
         self.showsVerticalScrollIndicator = NO;
         self.showsHorizontalScrollIndicator = NO;
-        self.pagingEnabled = YES;
+        self.pagingEnabled = NO;
+        self.scrollEnabled = NO;
+        DXToolbarHorizontalGesture *horizontal = [[DXToolbarHorizontalGesture alloc] initWithTarget:self action:@selector(toolbarHorizontalEnded:)];
+        horizontal.cancelsTouchesInView = YES;
+        horizontal.delaysTouchesBegan = NO;
+        [self addGestureRecognizer:horizontal];
+        [[DXKeyboardPanel sharedInstance] registerToolbar:self];
         [self registerClass:NSClassFromString(@"DXCell") forCellWithReuseIdentifier:@"kTypeXCellID"];
         dispatch_async(dispatch_get_main_queue(), ^{
             [self keyboardRotated:nil];
@@ -376,8 +374,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardRotated:) name:UIDeviceOrientationDidChangeNotification object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHideForSubActionPanel:) name:UIKeyboardWillHideNotification object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHideForSubActionPanel:) name:UIApplicationWillResignActiveNotification object:nil];
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(scrollBackward:) name:@"scrollBackward" object:nil];
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(scrollForward:) name:@"scrollForward" object:nil];
         
     }
     
@@ -397,7 +393,10 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 - (void)didMoveToWindow {
     [super didMoveToWindow];
-    if (!self.window) [self dismissSubActionPanelAnimated:NO completion:nil];
+    if (!self.window) {
+        [self dismissSubActionPanelAnimated:NO completion:nil];
+        [[DXKeyboardPanel sharedInstance] toolbarDetached:self];
+    } else [[DXKeyboardPanel sharedInstance] registerToolbar:self];
 }
 
 - (void)dealloc {
@@ -413,196 +412,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     [[NSNotificationCenter defaultCenter] removeObserver:self name:UIDeviceOrientationDidChangeNotification object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:UIKeyboardWillHideNotification object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationWillResignActiveNotification object:nil];
-    [[NSNotificationCenter defaultCenter] removeObserver:self name:@"scrollBackward" object:nil];
-    [[NSNotificationCenter defaultCenter] removeObserver:self name:@"scrollForward" object:nil];
     //[[NSNotificationCenter defaultCenter] removeObserver:self name:UITextFieldTextDidBeginEditingNotification object:nil];
-    
-}
-
-- (void)collectionView:(UICollectionView *)collectionView willDisplayCell:(UICollectionViewCell *)cell forItemAtIndexPath:(NSIndexPath *)indexPath{
-    if (indexPath.section == 0 && indexPath.row == 0){
-        self.firstCellVisible = YES;
-    }
-}
-
-- (void)collectionView:(UICollectionView *)collectionView didEndDisplayingCell:(UICollectionViewCell *)cell forItemAtIndexPath:(NSIndexPath *)indexPath{
-    if (indexPath.section == 0 && indexPath.row == 0){
-        self.firstCellVisible = NO;
-    }
-}
-
-
--(NSArray *)synthesizeIndexingForIndexOrOffset:(BOOL)index descendingOffset:(BOOL)reverse numberOfItems:(int)itemsCount{
-    NSMutableArray *indexArray = [[NSMutableArray alloc] init];
-    for (int j = 0; j < 2; j ++){
-        for (int i = 0; i < itemsCount; i++){
-            if (index){
-                [indexArray addObject:[NSNumber numberWithInt:i]];
-            }else{
-                [indexArray addObject:reverse ? [NSNumber numberWithInt:1 - j] : [NSNumber numberWithInt:j]];
-            }
-        }
-    }
-    return indexArray;
-}
-
--(void)scrollBackward:(NSNotification*)notification{
-    // 多行模式无横滑分页，滚动索引数学不适用。
-    if ([self multiRowActive]) return;
-
-    NSArray *indexPaths = [self indexPathsForVisibleItems];
-    //NSSortDescriptor *sort = [NSSortDescriptor sortDescriptorWithKey:@"row" ascending:YES];
-    //NSArray *orderedIndexPaths = [indexPaths sortedArrayUsingDescriptors:@[sort]];
-    
-    
-    
-    //NSInteger centerIndex = ceil((float)self.visibleCells.count/2.0f);
-    NSMutableArray *universalIndexArray = [[NSMutableArray alloc] init];
-    for (NSIndexPath *ip in indexPaths){
-        [universalIndexArray addObject:[NSNumber numberWithLong:[self shortcutsPerSection]*ip.section + ip.row]];
-    }
-    
-    
-    NSSortDescriptor *sort = [NSSortDescriptor sortDescriptorWithKey:nil ascending:YES];
-    NSArray *orderedIndexPaths = [indexPaths sortedArrayUsingDescriptors:@[sort]];
-    
-    
-    
-    NSIndexPath *firstCellIndexPath = [orderedIndexPaths firstObject];
-    
-    //NSIndexPath *scrollToIndexPath;
-    
-    /*
-     if (self.touchEnded){
-     self.touchEnded = NO;
-     double delayInSeconds = 1;
-     dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, delayInSeconds * NSEC_PER_SEC);
-     dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
-     self.touchEnded = YES;
-     });
-     */
-    //if (self.firstCellVisible || self.firstInit){
-    if (self.firstCellVisible){
-        //self.firstInit = NO;
-        [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
-        return;
-    }
-    //}
-    
-    
-    int x = firstCellIndexPath.section;
-    int y = firstCellIndexPath.row;
-    int G = preferencesInt(kGranularity, granularity) -1;
-    //int ymax = [self numberOfItemsInSection:firstCellIndexPath.section] -1;
-    int allowedMaxY = [self shortcutsPerSection];
-    G = G+1-allowedMaxY>0?allowedMaxY-1:G;
-    G = G==0?1:G;
-    
-    //NSArray *indexArray = @[@0, @1, @2, @3, @4, @5, @0, @1, @2, @3, @4, @5];
-    //NSArray *sectionOffsetArray = @[@1, @1, @1, @1, @1, @1, @0, @0, @0, @0, @0, @0];
-    if (!self.indexArray){
-        self.indexArray = [NSArray array];
-        self.indexArray = [self synthesizeIndexingForIndexOrOffset:YES descendingOffset:YES numberOfItems:[self shortcutsPerSection]];
-    }
-    if (!self.sectionOffsetBackwardArray){
-        self.sectionOffsetBackwardArray = [NSArray array];
-        self.sectionOffsetBackwardArray = [self synthesizeIndexingForIndexOrOffset:NO descendingOffset:YES numberOfItems:[self shortcutsPerSection]];
-    }
-    
-    // 每行个数也是单行分页页长，页长小到 1 时旧索引式会落到数组界外，先夹进
-    // 两个平行数组的公共有效范围。
-    NSInteger backwardIndex = MIN((NSInteger)self.indexArray.count - 1,
-                                  MAX(0, y + allowedMaxY - (G + 1)));
-    NSIndexPath *newIndexPath = [NSIndexPath indexPathForRow:[self.indexArray[backwardIndex] intValue]  inSection:x - [self.sectionOffsetBackwardArray[backwardIndex] intValue]];
-    [self scrollToItemAtIndexPath:newIndexPath atScrollPosition:UICollectionViewScrollPositionLeft animated:YES];
-    //int firstCellGlobalIndex = [self shortcutsPerSection]*firstCellIndexPath.section + firstCellIndexPath.row;
-    //int newRowIndex =  [fullIndexArray[rowIndex - G] intValue];
-    
-}
-
--(void)scrollForward:(NSNotification*)notification{
-    // 多行模式无横滑分页，滚动索引数学不适用。
-    if ([self multiRowActive]) return;
-
-    NSArray *indexPaths = [self indexPathsForVisibleItems];
-    //NSSortDescriptor *sort = [NSSortDescriptor sortDescriptorWithKey:@"row" ascending:YES];
-    //NSArray *orderedIndexPaths = [indexPaths sortedArrayUsingDescriptors:@[sort]];
-    
-    
-    
-    //NSInteger centerIndex = ceil((float)self.visibleCells.count/2.0f);
-    NSMutableArray *universalIndexArray = [[NSMutableArray alloc] init];
-    for (NSIndexPath *ip in indexPaths){
-        [universalIndexArray addObject:[NSNumber numberWithLong:[self shortcutsPerSection]*ip.section + ip.row]];
-    }
-    
-    NSSortDescriptor *sort = [NSSortDescriptor sortDescriptorWithKey:nil ascending:YES];
-    NSArray *orderedIndexPaths = [indexPaths sortedArrayUsingDescriptors:@[sort]];
-    
-    
-    
-    //NSInteger centerIndex = ceil((float)self.visibleCells.count/2.0f);
-    NSIndexPath *firstCellIndexPath = [orderedIndexPaths firstObject];
-    NSIndexPath *lastCellIndexPath = [orderedIndexPaths lastObject];
-    //NSIndexPath *scrollToIndexPath;
-    
-    
-    if ( (lastCellIndexPath.section == self.numberOfSections -1) && (lastCellIndexPath.row == [self numberOfItemsInSection:lastCellIndexPath.section]-1) ){
-        [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
-        return;
-    }
-    
-    int x = firstCellIndexPath.section;
-    int y = firstCellIndexPath.row;
-    int G = preferencesInt(kGranularity, granularity) -1;
-    int allowedMaxY = [self shortcutsPerSection];
-    G = G+1-allowedMaxY>0?allowedMaxY-1:G;
-    G = G==0?1:G;
-    
-    //int ymax = [self numberOfItemsInSection:firstCellIndexPath.section] -1;
-    //int allowedMaxY = [self shortcutsPerSection];
-    //NSArray *indexArray = @[@0, @1, @2, @3, @4, @5, @0, @1, @2, @3, @4, @5];
-    //NSArray *sectionOffsetArray = @[@0, @0, @0, @0, @0, @0, @1, @1, @1, @1, @1, @1];
-    if (!self.indexArray){
-        self.indexArray = [NSArray array];
-        self.indexArray = [self synthesizeIndexingForIndexOrOffset:YES descendingOffset:NO numberOfItems:[self shortcutsPerSection]];
-    }
-    if (!self.sectionOffsetForwardArray){
-        self.sectionOffsetForwardArray = [NSArray array];
-        self.sectionOffsetForwardArray = [self synthesizeIndexingForIndexOrOffset:NO descendingOffset:NO numberOfItems:[self shortcutsPerSection]];
-    }
-    NSInteger forwardIndex = MIN((NSInteger)self.indexArray.count - 1,
-                                 MAX(0, y + G + 1));
-    NSIndexPath *newIndexPath = [NSIndexPath indexPathForRow:[self.indexArray[forwardIndex] intValue] inSection:x + [self.sectionOffsetForwardArray[forwardIndex] intValue]];
-    
-    [self scrollToItemAtIndexPath:newIndexPath atScrollPosition:UICollectionViewScrollPositionLeft animated:YES];
-    
-    /*
-     if (G-y == 0 && G+1==allowedMaxY){
-     newIndexPath = [NSIndexPath indexPathForRow:0 inSection:x+1];
-     }else if (G+y > ymax){
-     newIndexPath = [NSIndexPath indexPathForRow:[indexArray[y+G+1] intValue] inSection:x+1];
-     }else if (G+y < ymax){
-     newIndexPath = [NSIndexPath indexPathForRow:[indexArray[y+G+1] intValue] inSection:x];
-     }else{
-     newIndexPath = [NSIndexPath indexPathForRow:0 inSection:x+1];
-     }
-     [self scrollToItemAtIndexPath:newIndexPath atScrollPosition:UICollectionViewScrollPositionLeft animated:YES];
-     */
-    /*
-     //if (firstCellIndexPath.section != 0){
-     if (firstCellIndexPath.row ==  [self numberOfItemsInSection:firstCellIndexPath.section] -1){
-     scrollToIndexPath =  [NSIndexPath indexPathForRow:preferencesInt(kGranularity, granularity) - 1 inSection:firstCellIndexPath.section + 1];
-     }else if (preferencesInt(kGranularity, granularity) == [self shortcutsPerSection]){
-     scrollToIndexPath =  [NSIndexPath indexPathForRow:0 inSection:firstCellIndexPath.section + 1];
-     }else if (firstCellIndexPath.row + preferencesInt(kGranularity, granularity) > [self numberOfItemsInSection:firstCellIndexPath.section] -1){
-     scrollToIndexPath =  [NSIndexPath indexPathForRow:preferencesInt(kGranularity, granularity) - ([self numberOfItemsInSection:firstCellIndexPath.section] - 1 - firstCellIndexPath.row) inSection:firstCellIndexPath.section + 1];
-     }else{
-     scrollToIndexPath =  [NSIndexPath indexPathForRow:firstCellIndexPath.row + preferencesInt(kGranularity, granularity) inSection:firstCellIndexPath.section];
-     }
-     //}
-     */
-    //[self scrollToItemAtIndexPath:newIndexPath atScrollPosition:UICollectionViewScrollPositionLeft animated:YES];
     
 }
 
@@ -744,21 +554,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }
 }
 
--(void)autoPaginationControl{
-    if (self.pagingEnabled){
-        self.pagingEnabled = NO;
-    }else{
-        if (!self.autoPaginationDispatchBlock){
-            self.autoPaginationDispatchBlock = dispatch_block_create(0, ^{
-                self.pagingEnabled = YES;
-                self.autoPaginationDispatchBlock = nil;
-            });
-            
-        }
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), self.autoPaginationDispatchBlock);
-    }
-}
-
 -(BOOL)reloadShortcutConfiguration{
     DXPrefsManager *manager = [DXPrefsManager sharedInstance];
     NSDictionary *freshPrefs = manager.preferencesAvailable ? manager.prefs : nil;
@@ -785,7 +580,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     if (self.shortcutConfigurationAvailable && configuredShortcuts.count > 0 &&
         [configuredShortcuts[0] isKindOfClass:[NSArray class]]) {
         NSMutableDictionary *customNames = [[NSMutableDictionary alloc] init];
-        NSInteger enabledTopButtons = 0;
+        NSInteger enabledButtons = 0;
+        NSInteger capacity = DXToolbarCapacityForPreferences(currentPrefs, self.configuration);
         for (NSDictionary *item in configuredShortcuts[0]) {
             if (![item isKindOfClass:[NSDictionary class]]) continue;
             NSString *selector = item[@"selector"];
@@ -794,19 +590,16 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
             if (!DXIsDraftActionSelector(selector) && DXIsHiddenShortcutSelector(selector)) continue;
             // Buttons switched off on the manage page stay stored but never render.
             if ([item[@"disabled"] boolValue]) continue;
-            // Defense in depth for legacy/manually-edited preferences: the top
-            // toolbar never renders more than sixteen enabled buttons even
-            // before Settings has normalized surplus entries to disabled.
-            if ([self.configuration isEqualToString:@"top"] &&
-                enabledTopButtons >= maxEnabledTopButtons) continue;
+            // Also clamp legacy settings before Settings has persisted disabled flags.
+            if (enabledButtons >= capacity) continue;
             if (item[@"images12"] && item[@"images13"] && selector) {
                 [self integrateShortcutItem:item intoImages12:images12 images13:images13 selectors:selectors names:customNames];
-                if ([self.configuration isEqualToString:@"top"]) enabledTopButtons++;
+                enabledButtons++;
             }
         }
         self.customNames = customNames;
     } else if (self.shortcutConfigurationAvailable && configuredValue == nil) {
-        NSUInteger count = MIN((NSUInteger)[self shortcutsPerSection],
+        NSUInteger count = MIN((NSUInteger)maxEnabledBottomButtons,
                                MIN(defaultImages12.count,
                                    MIN(defaultImages13.count, defaultSelectors.count)));
         for (NSUInteger index = 0; index < count; index++) {
@@ -829,10 +622,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     if ([activeFlowLayout isKindOfClass:[UICollectionViewFlowLayout class]]) {
         activeFlowLayout.minimumInteritemSpacing = [self buttonChromeActive] ? self.buttonSpacing : 0;
     }
-    self.pagingEnabled = YES;
-    self.indexArray = nil;
-    self.sectionOffsetForwardArray = nil;
-    self.sectionOffsetBackwardArray = nil;
+    self.pagingEnabled = NO;
+    self.scrollEnabled = NO;
 
     // 键盘每次弹出都会走带重载的路径，而偏好快照其实没变。无谓的整表
     // reloadData 会让复用 cell 跨位置换位，键盘装配期多次重布局里闪出一帧
@@ -977,7 +768,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 #pragma mark actions
 -(void)selectAllAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     
     if ([delegate respondsToSelector:@selector(selectAll:)]) {
@@ -989,29 +779,23 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         [kbImpl clearAnimations];
         [kbImpl setCaretBlinks:YES];
     }
-    [self autoPaginationControl];
 }
 
 -(void)selectLineAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     
     [delegate _moveToStartOfLine:NO withHistory:nil];
     [delegate _moveToEndOfLine:YES withHistory:nil];
-    [self autoPaginationControl];
 }
 
 -(void)selectParagraphAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     
     [delegate _moveToStartOfParagraph:NO withHistory:nil];
     [delegate _moveToEndOfParagraph:YES withHistory:nil];;
-    [self autoPaginationControl];
 }
 
 -(void)selectSentenceAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput, UITextInputTokenizer> *)delegate;
     
@@ -1027,16 +811,13 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         UITextRange *textRange = [tempDelegate textRangeFromPosition:startPositionSentence toPosition:endPositionSentence];
         [tempDelegate setSelectedTextRange:textRange];
     }
-    [self autoPaginationControl];
 }
 
 
 -(void)copyAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
 
     if (![delegate respondsToSelector:@selector(selectedTextRange)]) {
-        [self autoPaginationControl];
         return;
     }
 
@@ -1070,7 +851,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         [kbImpl clearAnimations];
         [kbImpl setCaretBlinks:YES];
     }
-    [self autoPaginationControl];
 }
 
 -(BOOL)isValidURL:(NSString *)urlString{
@@ -1081,7 +861,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 -(void)pasteAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     
     BOOL isUnifiedField = [delegate isKindOfClass:objc_getClass("UnifiedField")];
@@ -1118,11 +897,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
             
         }
     }
-    [self autoPaginationControl];
 }
 
 -(void)cutAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
 
     // With no selection, cut the whole content instead of doing nothing.
@@ -1150,11 +927,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         [kbImpl clearAnimations];
         [kbImpl setCaretBlinks:YES];
     }
-    [self autoPaginationControl];
 }
 
 -(void)undoAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     if ([[delegate undoManager] canUndo]) {
         [[delegate undoManager] undo];
@@ -1163,11 +938,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         [kbImpl clearAnimations];
         [kbImpl setCaretBlinks:YES];
     }
-    [self autoPaginationControl];
 }
 
 -(void)redoAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     if ([[delegate undoManager] canRedo]) {
         [[delegate undoManager] redo];
@@ -1176,11 +949,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         [kbImpl clearAnimations];
         [kbImpl setCaretBlinks:YES];
     }
-    [self autoPaginationControl];
 }
 
 -(void)selectAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     
     if ([delegate respondsToSelector:@selector(select:)]) {
@@ -1203,11 +974,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
             }
         }
     }
-    [self autoPaginationControl];
 }
 
 -(void)beginningAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
     
@@ -1220,11 +989,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     [kbImpl clearTransientState];
     [kbImpl clearAnimations];
     [kbImpl setCaretBlinks:YES];
-    [self autoPaginationControl];
 }
 
 -(void)endingAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
     
@@ -1238,24 +1005,20 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     [kbImpl clearTransientState];
     [kbImpl clearAnimations];
     [kbImpl setCaretBlinks:YES];
-    [self autoPaginationControl];
 }
 
 
 
 
 -(void)deleteAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     [kbImpl deleteBackward];
     [kbImpl clearTransientState];
     [kbImpl clearAnimations];
     [kbImpl setCaretBlinks:YES];
-    [self autoPaginationControl];
 }
 
 -(void)deleteForwardAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     NSString *selectedString = [delegate textInRange:[delegate selectedTextRange]];
     BOOL smartDelete = preferencesBool(kEnabledSmartDeleteForwardkey, NO);
@@ -1283,7 +1046,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         [kbImpl clearAnimations];
         [kbImpl setCaretBlinks:YES];
     }
-    [self autoPaginationControl];
     
 }
 
@@ -1313,19 +1075,15 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 -(void)deleteAllAction:(UIButton*)sender{
-    [self autoPaginationControl];
     self.hapticType = 2;
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     [self clearHostInputText];
-    [self autoPaginationControl];
 }
 
 -(void)dismissKeyboardAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self triggerImpactAndAnimationWithButton:sender];
     kbImpl = [objc_getClass("UIKeyboardImpl") activeInstance];
     [kbImpl dismissKeyboard];
-    [self autoPaginationControl];
 }
 
 // 截图按钮：ShellX 只注入 SpringBoard/assistivetouchd，键盘进程内其类不在内存，
@@ -1334,7 +1092,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 // 默认直接截图；用户开启“截图时隐藏键盘”后，先收起键盘并等待收起动画，
 // 再触发截图。该功能不恢复键盘。
 -(void)shellxScreenshotAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self triggerImpactAndAnimationWithButton:sender];
 
     if (preferencesBool(kShellXScreenshotHideKeyboardKey, NO)) {
@@ -1352,27 +1109,22 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         notify_post("com.iosdump.screenshotshell/AssistiveScreenshot");
     }
 
-    [self autoPaginationControl];
 }
 
 // 剪贴板按钮：Kayoko/KayokoX 只在自己注入的进程里挂 Darwin 观察者，键盘进程内
 // 没有可调用的类，dev.traurige.kayoko.core.show 就是它官方的唤起入口（同 ShellX
 // 截图按钮的跨进程套路）。未安装时通知无人接收，无害。
 -(void)clipboardAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self triggerImpactAndAnimationWithButton:sender];
     notify_post("dev.traurige.kayoko.core.show");
-    [self autoPaginationControl];
 }
 
 // 小把手按钮：PullOver X 在 SpringBoard 进程内常驻观察 external-wake 通知——
 // 面板展开时收起，把手缩点时展开把手并唤出常驻竖栏，其余状态不动作（收端有
 // externalWakeEnabled 开关与 1s 节流）。Darwin 通知系统级广播，键盘进程直发即达。
 -(void)pulloverWakeAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self triggerImpactAndAnimationWithButton:sender];
     notify_post("com.mlgm.pulloverx.external-wake");
-    [self autoPaginationControl];
 }
 
 // Match SquidGesturePro's PullOver integration: publish the target Bundle ID to
@@ -1416,7 +1168,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 // 通道交 SpringBoard 弹出（种子：输入框全文 > 剪贴板文本 > 剪贴板图片；app
 // 来源等回桌面再显示）。SB 端解析与桌面门控在 TypeX.xm。
 -(void)aiChatAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self triggerImpactAndAnimationWithButton:sender];
 
     BOOL inProcess = [objc_getClass("UIKeyboardImpl") activeInstance] != nil;
@@ -1430,7 +1181,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         // 移动语义：输入框全文带入面板后即清空宿主输入框（面板必开，
         // clearHostInputText 空输入时为无害空操作）
         if (seed.length > 0) [self clearHostInputText];
-        [self autoPaginationControl];
         return;
     }
 
@@ -1461,11 +1211,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
                               @"text": seed ?: @""};
     DXSetQuickActionSharedValue(request, TypeXAIChatRequestKey);
     notify_post(kAIChatRequestIdentifier.UTF8String);
-    [self autoPaginationControl];
 }
 
 -(void)moveCursorLeftAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     
     BOOL isWKContentView = [delegate isKindOfClass:objc_getClass("WKContentView")];
@@ -1479,11 +1227,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }else{
         [self moveCursorWithDelegate:delegate offset:-1];
     }
-    [self autoPaginationControl];
 }
 
 -(void)moveCursorRightAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     
     BOOL isWKContentView = [delegate isKindOfClass:objc_getClass("WKContentView")];
@@ -1497,11 +1243,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }else{
         [self moveCursorWithDelegate:delegate offset:1];
     }
-    [self autoPaginationControl];
 }
 
 -(void)moveCursorPreviousWordAction:(UIButton*)sender{
-    [self autoPaginationControl];
     if (sender || self.isWordSender){
         [self triggerImpactAndAnimationWithButton:sender];
     }
@@ -1528,11 +1272,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }
     self.moveCursorWithSelect = NO;
     self.isWordSender = NO;
-    [self autoPaginationControl];
 }
 
 -(void)moveCursorNextWordAction:(UIButton*)sender{
-    [self autoPaginationControl];
     if (sender || self.isWordSender){
         [self triggerImpactAndAnimationWithButton:sender];
     }
@@ -1559,11 +1301,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }
     self.moveCursorWithSelect = NO;
     self.isWordSender = NO;
-    [self autoPaginationControl];
 }
 
 -(void)moveCursorStartOfLineAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
     
@@ -1599,11 +1339,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         }
     }
     self.moveCursorWithSelect = NO;
-    [self autoPaginationControl];
 }
 
 -(void)moveCursorEndOfLineAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
     
@@ -1640,11 +1378,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         }
     }
     self.moveCursorWithSelect = NO;
-    [self autoPaginationControl];
 }
 
 -(void)moveCursorStartOfParagraphAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
     
@@ -1673,11 +1409,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         }
     }
     self.moveCursorWithSelect = NO;
-    [self autoPaginationControl];
 }
 
 -(void)moveCursorEndOfParagraphAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
     
@@ -1705,11 +1439,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         }
     }
     self.moveCursorWithSelect = NO;
-    [self autoPaginationControl];
 }
 
 -(void)moveCursorStartOfSentenceAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
     
@@ -1725,12 +1457,10 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }
     
     [delegate _setSelectionToPosition:((UITextRange * )[delegate _rangeOfSentenceEnclosingPosition:startPositionMovedTemp]).start];
-    [self autoPaginationControl];
     
 }
 
 -(void)moveCursorEndOfSentenceAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
     
@@ -1746,12 +1476,10 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         
     }
     [delegate _setSelectionToPosition:((UITextRange * )[delegate _rangeOfSentenceEnclosingPosition:startPositionMovedTemp]).end];
-    [self autoPaginationControl];
     
 }
 
 -(void)moveCursorUpAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     
     BOOL isWKContentView = [delegate isKindOfClass:objc_getClass("WKContentView")];
@@ -1760,11 +1488,9 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }else{
         [self moveCursorVerticalWithDelegate:delegate direction:UITextLayoutDirectionUp];
     }
-    [self autoPaginationControl];
 }
 
 -(void)moveCursorDownAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     
     BOOL isWKContentView = [delegate isKindOfClass:objc_getClass("WKContentView")];
@@ -1773,7 +1499,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }else{
         [self moveCursorVerticalWithDelegate:delegate direction:UITextLayoutDirectionDown];
     }
-    [self autoPaginationControl];
 }
 
 -(void)moveCursorContinuoslyWithDelegate:(id <UITextInput, UITextInputTokenizer>)delegate offset:(int)offset{
@@ -1781,7 +1506,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 -(void)defineAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
     
@@ -1807,7 +1531,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
             [tempDelegate _define:selectedString];
         }
     }
-    [self autoPaginationControl];
 }
 
 -(NSDictionary *)getItemWithID:(NSString *)snippetID forKey:(NSString *)keyName identifierKey:(NSString *)identifier{
@@ -1825,13 +1548,11 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 -(void)runCommandAction:(UIButton*)sender{
-    [self autoPaginationControl];
     NSDictionary *snippet = [self getItemWithID:NSStringFromSelector(_cmd) forKey:@"snippets" identifierKey:@"entryID"];
     [self triggerImpactAndAnimationWithButton:sender];
     if (snippet[@"command"]){
         [self runCommand:snippet[@"command"]];
     }
-    [self autoPaginationControl];
 }
 
 -(BOOL)boolWithProbability:(double)probability{
@@ -1894,7 +1615,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 -(void)spongebobAction:(UIButton*)sender{
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     NSString *selectedString = [delegate textInRange:[delegate selectedTextRange]];
     if (!selectedString.length) {
@@ -1936,28 +1656,19 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     [kbImpl clearTransientState];
     [kbImpl clearAnimations];
     [kbImpl setCaretBlinks:YES];
-    [self autoPaginationControl];
 }
 
 #pragma mark collectionview
 
 
--(NSInteger)numberOfSectionsInCollectionView:(UICollectionView *)collectionView
-{
-    if ([self multiRowActive]) return 1;
-    return ceil((float)(((NSArray *)_shortcuts[kbuttonsImages12]).count)/(float)[self shortcutsPerSection]);
+-(NSInteger)numberOfSectionsInCollectionView:(UICollectionView *)collectionView {
+    (void)collectionView;
+    return 1;
 }
-
--(NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section
-{
-    if ([self multiRowActive]) {
-        return [self multiRowVisibleItemCount];
-    }
-    if (([self numberOfSectionsInCollectionView:collectionView] -1) == section){
-        return ((NSArray *)_shortcuts[kbuttonsImages12]).count-[self shortcutsPerSection]*(section);
-    }else{
-        return ((NSArray *)_shortcuts[kbuttonsImages12]).count>[self shortcutsPerSection]?[self shortcutsPerSection]:((NSArray *)_shortcuts[kbuttonsImages12]).count;
-    }
+-(NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section {
+    (void)collectionView;
+    return section == 0 ? MIN(((NSArray *)self.shortcuts[kselectors]).count,
+        DXToolbarCapacityForPreferences([DXPrefsManager sharedInstance].prefs, self.configuration)) : 0;
 }
 
 // All six gestures share the same behavior: one action runs directly;
@@ -1965,7 +1676,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 -(void)runSubActionsForButton:(UIButton *)button gesture:(DXShortcutGestureType)gesture {
     if (![button isKindOfClass:[UIButton class]] || !button.window) return;
     [DXJavaScriptHost cancelActive];
-    [self autoPaginationControl];
     NSArray<NSString *> *subActions = preferencesGestureActionSelectors(button.accessibilityIdentifier, (int)gesture, self.configuration);
     if (subActions.count == 0) return;
 
@@ -2246,7 +1956,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     BOOL isWWWURL = [lowercaseLink hasPrefix:@"www."];
     if (!isHTTPURL && !isWWWURL) {
         [self showCustomActionLinkError];
-        [self autoPaginationControl];
         return YES;
     }
 
@@ -2257,7 +1966,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
          [url.scheme.lowercaseString isEqualToString:@"https"]);
     if (!validWebURL) {
         [self showCustomActionLinkError];
-        [self autoPaginationControl];
         return YES;
     }
 
@@ -2265,7 +1973,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     if (cutInputField) [self cutHostInputField];
 
     if (inApp && [self openURLInAppBrowser:url]) {
-        [self autoPaginationControl];
         return YES;
     }
     [self openCustomActionURL:url completion:^(BOOL success) {
@@ -2273,7 +1980,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
             [self showCustomActionLinkError];
         }
     }];
-    [self autoPaginationControl];
     return YES;
 }
 
@@ -2289,7 +1995,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
     NSString *type = [entry[kCustomActionTypeKey] isKindOfClass:[NSString class]] ? entry[kCustomActionTypeKey] : @"";
 
-    [self autoPaginationControl];
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
 
     if ([type isEqualToString:kCustomActionTypeJavaScript]) {
@@ -2337,7 +2042,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     if ([type isEqualToString:kCustomActionTypeOpenApp]) {
         if (!DXIsValidBundleIdentifier(link)) {
             [self showCustomActionLinkError];
-            [self autoPaginationControl];
             return YES;
         }
 
@@ -2349,13 +2053,11 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
                 if (!success) [self showCustomActionLinkError];
             }];
         }
-        [self autoPaginationControl];
         return YES;
     }
 
     if ([type isEqualToString:kCustomActionTypeText]) {
         [self performTextCustomAction:entry sender:sender];
-        [self autoPaginationControl];
         return YES;
     }
 
@@ -2373,7 +2075,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         NSString *payload = [self expandedCustomActionPayload:link escaped:YES];
         if (!DXIsOpenableSchemeURLString(payload)) {
             [self showCustomActionLinkError];
-            [self autoPaginationControl];
             return YES;
         }
         if ([self cutReplaceArmedForEntry:entry rawPayload:link]) [self cutHostInputField];
@@ -2383,7 +2084,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
                 [self showCustomActionLinkError];
             }
         }];
-        [self autoPaginationControl];
         return YES;
     }
 
@@ -2394,7 +2094,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     link = [self expandedCustomActionPayload:link escaped:YES];
     if (link.length == 0) {
         [self showCustomActionLinkError];
-        [self autoPaginationControl];
         return YES;
     }
 
@@ -2410,7 +2109,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     if (schemeRange.location == 0) {
         if (!DXIsOpenableSchemeURLString(link)) {
             [self showCustomActionLinkError];
-            [self autoPaginationControl];
             return YES;
         }
 
@@ -2421,7 +2119,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
                 [self showCustomActionLinkError];
             }
         }];
-        [self autoPaginationControl];
         return YES;
     }
 
@@ -2432,12 +2129,10 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
                 [self showCustomActionLinkError];
             }
         }];
-        [self autoPaginationControl];
         return YES;
     }
 
     [self showCustomActionLinkError];
-    [self autoPaginationControl];
     return YES;
 }
 
@@ -2648,6 +2343,7 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
     BOOL textMode = textRecords.count > 0;
     NSUInteger itemCount = textMode ? textRecords.count : selectors.count;
     if (!itemCount) return;
+    [[DXKeyboardPanel sharedInstance] dismiss];
     UIWindow *sourceWindow = button.window ?: self.window ?: [self keyWindow];
     if (!sourceWindow) return;
     if (DXActiveSubActionPanelOwner && DXActiveSubActionPanelOwner != self) {
@@ -2779,6 +2475,33 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
     } completion:nil];
 }
 
+- (void)toolbarHorizontalEnded:(DXToolbarHorizontalGesture *)gesture {
+    if (gesture.state != UIGestureRecognizerStateEnded || !self.window || self.hidden ||
+        gesture.sourceWindow != self.window || !self.shortcutConfigurationAvailable || isLandscape || isDictating || !toggledOn) return;
+    if (gesture.sourceButton && ![gesture.sourceIdentifier isEqual:gesture.sourceButton.accessibilityIdentifier]) return;
+    NSInteger result = gesture.result;
+    if (labs(result) == 2) {
+        [[DXKeyboardPanel sharedInstance] presentFromToolbar:self side:result < 0 ? @"left" : @"right"];
+    } else if (labs(result) == 1 && gesture.sourceButton.window == self.window) {
+        [self runSubActionsForButton:gesture.sourceButton gesture:result < 0 ? DXShortcutGestureSwipeLeft : DXShortcutGestureSwipeRight];
+    }
+}
+- (void)dismissKeyboardActionChooser { [self dismissSubActionPanelAnimated:NO completion:nil]; }
+- (BOOL)canExecuteKeyboardPanelSelector:(NSString *)selector {
+    if (![selector isKindOfClass:NSString.class] || !selector.length) return NO;
+    if (DXIsLinkActionSelector(selector)) return preferencesLinkActionForSelector(selector) != nil;
+    if (![DXShortcutsGenerator isVisibleShortcutSelector:selector] || ![self respondsToSelector:NSSelectorFromString(selector)]) return NO;
+    if ([selector isEqualToString:@"shellxScreenshotAction:"]) return [DXShortcutsGenerator isShellXScreenshotAvailable];
+    if ([selector isEqualToString:@"clipboardAction:"]) return [DXShortcutsGenerator isKayokoInstalled];
+    if ([selector isEqualToString:@"pulloverWakeAction:"]) return [DXShortcutsGenerator isPullOverXInstalled];
+    return YES;
+}
+- (void)dispatchKeyboardPanelSelector:(NSString *)selector sender:(UIButton *)sender {
+    if (![NSThread isMainThread] || !self.window || self.hidden || ![self canExecuteKeyboardPanelSelector:selector]) return;
+    [self beginUpdateDelegate];
+    [self dispatchConfiguredActionSelector:selector sender:sender];
+}
+
 - (void)activateSwipeActions:(UISwipeGestureRecognizer *)recognizer {
     if (recognizer.state != UIGestureRecognizerStateEnded) return;
 
@@ -2842,7 +2565,7 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
 - (UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath {
     DXCell *cell = [collectionView dequeueReusableCellWithReuseIdentifier:@"kTypeXCellID" forIndexPath:indexPath];
     //cell.transform = CGAffineTransformMakeScale(-1, 1);
-    int cellIndex = [self shortcutsPerSection]*indexPath.section + indexPath.row;
+    int cellIndex = (int)indexPath.item;
     //[cell.btn setTitle:_buttons[indexPath.row] forState:UIControlStateNormal];
     NSString* selectorName = ((NSArray *)_shortcuts[kselectors])[cellIndex];
     
@@ -2890,11 +2613,8 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
         [recognizers addObject:longPress];
     }
 
-    // Swipe recognizers are mounted only for directions with a configured
-    // action, mirroring the conditional double-tap approach: an always-mounted
-    // horizontal swipe would win over the paging pan on flicks that start on a
-    // button.
-    for (NSInteger gesture = DXShortcutGestureSwipeUp; gesture <= DXShortcutGestureSwipeRight; gesture++) {
+    // Horizontal gestures are routed once by the toolbar; only vertical swipes stay on buttons.
+    for (NSInteger gesture = DXShortcutGestureSwipeUp; gesture <= DXShortcutGestureSwipeDown; gesture++) {
         if ([preferencesGestureActionSelectors(cell.btn.accessibilityIdentifier, (int)gesture, self.configuration) count] == 0) continue;
 
         UISwipeGestureRecognizer *swipe = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(activateSwipeActions:)];
@@ -2935,27 +2655,11 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
 
 
 - (CGSize)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout sizeForItemAtIndexPath:(NSIndexPath *)indexPath {
-    //CGFloat useableWidth = collectionView.frame.size.width / ((NSArray *)_shortcuts[kbuttonsImages12]).count;
-    if ([self.configuration isEqualToString:@"top"]) {
-        if ([self multiRowActive]) {
-            // 与 DXMultiRowTopLayout 同一套几何：每行固定 buttonsPerRow 格，
-            // 供短标签自适应字号取槽宽。
-            NSInteger items = MAX(1, self.buttonsPerRow);
-            BOOL chrome = [self buttonChromeActive];
-            CGFloat halfGap = chrome ? self.buttonSpacing / 2.0 : 0.0;
-            CGFloat gaps = chrome ? self.buttonSpacing * (items - 1) : 0;
-            CGFloat width = MAX(0, (collectionView.frame.size.width - 2 * halfGap - gaps) / items);
-            return CGSizeMake(width, self.buttonHeight);
-        }
-        NSInteger items = MAX(1, [self numberOfItemsInSection:indexPath.section]);
-        CGFloat gaps = [self buttonChromeActive] ? self.buttonSpacing * (items - 1) : 0;
-        CGFloat width = MAX(0, (collectionView.frame.size.width - gaps) / items);
-        return CGSizeMake(width, self.buttonHeight);
-    }
-
-    CGFloat useableWidth = (([self buttonChromeActive] && collectionView.frame.size.width-4*self.buttonSpacing >0) ? collectionView.frame.size.width - 4*self.buttonSpacing : collectionView.frame.size.width) / ([self numberOfItemsInSection:indexPath.section] <= [self shortcutsPerSection] ? (((NSArray *)_shortcuts[kbuttonsImages12]).count <= [self shortcutsPerSection] ? ((NSArray *)_shortcuts[kbuttonsImages12]).count : [self shortcutsPerSection]) :  [self numberOfItemsInSection:indexPath.section]);
-
-    return CGSizeMake(useableWidth, self.buttonHeight);
+    NSInteger count = [self multiRowActive] ? self.buttonsPerRow : MAX(1, [self numberOfItemsInSection:0]);
+    UIEdgeInsets insets = [self collectionView:collectionView layout:collectionViewLayout insetForSectionAtIndex:0];
+    CGFloat gap = [self buttonChromeActive] ? self.buttonSpacing : 0;
+    CGFloat width = MAX(0, (CGRectGetWidth(collectionView.bounds) - insets.left - insets.right - gap * (count - 1)) / count);
+    return CGSizeMake(width, self.buttonHeight);
 }
 
 - (UIEdgeInsets)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout insetForSectionAtIndex:(NSInteger)section {

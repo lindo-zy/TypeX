@@ -28,8 +28,6 @@
 #define kShortcutskey @"shortcuts"
 #define kTopShortcutskey @"topshortcuts"
 #define kColorEnabledkey @"colorBOOL"
-#define kSpaceBarScrollingBOOL @"enabledSpaceBarScrollingBOOL"
-#define kGranularity @"granularityvalue"
 #define kToggledOnkey @"toggledOnBOOL"
 #define kDedicatedGestureButtonkey @"gesturebutton"
 #define kGestureTypekey @"gesturetype"
@@ -96,9 +94,8 @@
 #define buttonsPerRowDefault 6.0f
 #define multiRowSpacingDefault 4.0f
 #define maxMultiRowRows 2
-// The top toolbar may store any number of buttons, but at most sixteen may be
-// switched on at once. Multi-row mode can impose a smaller limit when its
-// configured column count cannot fit sixteen buttons into two rows.
+// A toolbar stores any number of records; its active capacity is one surface.
+// The top surface contains one or two rows of the configured column count.
 #define maxEnabledTopButtons 16
 #define maxMultiRowButtons maxEnabledTopButtons
 #define kSpongebobEntropyKey @"spongebobEntropy"
@@ -121,13 +118,8 @@
 
 #define tweakVersion @"1.3.1"
 #define maxdefaultshortcuts 6
-// Page size of the classic single-row horizontal paging layout on the bottom
-// toolbar only: with multi-row mode off the top toolbar pages by its configured
-// per-row count instead, and buttons beyond one page wrap into additional
-// horizontally paged sections. This is a page-size constant, not the
-// sixteen-button active limit above.
-#define maxshortcutpersection 8
-#define granularity 3
+// The fixed bottom toolbar has one surface with up to eight active buttons.
+#define maxEnabledBottomButtons 8
 
 
 #define heightOffsetDefault 60.0f
@@ -280,6 +272,33 @@ static inline BOOL DXMultiRowEnabledForPreferences(NSDictionary *preferences) {
 static inline NSInteger DXMultiRowCapacityForPreferences(NSDictionary *preferences) {
     return MIN(maxMultiRowButtons,
                DXMultiRowButtonsPerRowFromPreferences(preferences) * maxMultiRowRows);
+}
+
+// With paging removed, every enabled button must fit the current toolbar surface.
+static inline NSInteger DXToolbarCapacityForPreferences(NSDictionary *preferences, NSString *configuration) {
+    if (![configuration isEqualToString:@"top"]) return maxEnabledBottomButtons;
+    NSInteger columns = DXMultiRowButtonsPerRowFromPreferences(preferences);
+    return DXMultiRowEnabledForPreferences(preferences) ? DXMultiRowCapacityForPreferences(preferences) : columns;
+}
+
+static inline NSArray *DXToolbarOrderFittingCapacity(NSArray *order, NSDictionary *preferences, NSString *configuration) {
+    if (![order isKindOfClass:NSArray.class] || order.count < 2 ||
+        ![order[0] isKindOfClass:NSArray.class] || ![order[1] isKindOfClass:NSArray.class]) return order;
+    NSInteger remaining = DXToolbarCapacityForPreferences(preferences, configuration);
+    NSMutableArray *buttons = [NSMutableArray array];
+    for (id item in order[0]) {
+        if (![item isKindOfClass:NSDictionary.class] || [item[@"disabled"] boolValue]) {
+            [buttons addObject:item];
+            continue;
+        }
+        if (remaining-- > 0) [buttons addObject:item];
+        else {
+            NSMutableDictionary *disabled = [item mutableCopy];
+            disabled[@"disabled"] = @YES;
+            [buttons addObject:disabled];
+        }
+    }
+    return @[[buttons copy], order[1]];
 }
 
 // Fields whose text was set programmatically start editing with the caret at

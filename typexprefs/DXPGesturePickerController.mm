@@ -273,18 +273,11 @@ static NSBundle *tweakBundle;
     NSMutableArray *enabled = [mutableSections[0] isKindOfClass:[NSArray class]]
         ? [mutableSections[0] mutableCopy] : [NSMutableArray array];
 
-    BOOL disableNewEntry = NO;
-    if ([self.configuration isEqualToString:@"top"]) {
-        NSInteger enabledCount = 0;
-        for (NSDictionary *entry in enabled) {
-            if ([entry isKindOfClass:[NSDictionary class]] && ![entry[@"disabled"] boolValue]) enabledCount++;
-        }
-        NSInteger capacity = maxEnabledTopButtons;
-        if (DXMultiRowEnabledForPreferences(prefs)) {
-            capacity = MIN(capacity, DXMultiRowCapacityForPreferences(prefs));
-        }
-        disableNewEntry = enabledCount >= capacity;
+    NSInteger enabledCount = 0;
+    for (NSDictionary *entry in enabled) {
+        if ([entry isKindOfClass:[NSDictionary class]] && ![entry[@"disabled"] boolValue]) enabledCount++;
     }
+    BOOL disableNewEntry = enabledCount >= DXToolbarCapacityForPreferences(prefs, self.configuration);
 
     // Every saved button gets its own synthetic identifier (draft prefix), so
     // the same action can be added repeatedly while each copy keeps independent

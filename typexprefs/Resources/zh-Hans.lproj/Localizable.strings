@@ -228,8 +228,8 @@
 "MAX_BUTTONS_REACHED" = "顶部工具栏最多同时开启 %d 个按钮";
 "DUPLICATE_ACTION" = "该动作已添加到工具栏";
 "CHOOSE_TAP_FIRST" = "请先设置点按动作";
-"FOOTER_TOOLBAR_BUTTONS" = "点击按钮可编辑手势，拖动可调整顺序。按钮可无限添加，开关控制按钮是否显示。点击右上角“+”新建按钮。";
-"FOOTER_TOP_TOOLBAR_BUTTONS" = "点击按钮可编辑手势，拖动可调整顺序。按钮可无限添加；最多同时开启 16 个，超过容量的新按钮默认关闭。请先关闭一个已开启按钮，再开启新的按钮。";
+"FOOTER_TOOLBAR_BUTTONS" = "点击按钮编辑手势，拖动调整顺序。底部工具栏最多同时启用 8 个按钮，不支持翻页。超出的按钮保留配置并关闭。";
+"FOOTER_TOP_TOOLBAR_BUTTONS" = "按钮可无限保存，启用数量限定为当前一屏容量：单行按每行个数，双行按两行容量。减少容量时，超出的按钮会关闭，配置不会删除。";
 "ANSWER_OK" = "好";
 "ANSWER_CANCEL" = "取消";
 "SAVE" = "保存";
@@ -376,3 +376,34 @@
 "RESTORE_DONE" = "配置已恢复";
 "RESTORE_FAILED_TITLE" = "恢复失败";
 "RESTORE_FAILED_MESSAGE" = "无法读取有效的 TypeX 备份文件";
+
+// Keyboard-covering swipe panels
+"KEYBOARD_PANEL_SETTINGS" = "滑动面板";
+"KEYBOARD_PANEL_ENTRANCE" = "面板入口";
+"KEYBOARD_PANEL_GESTURE_FOOTER" = "在顶部或底部工具栏向左长滑打开左面板，向右长滑打开右面板。单个按钮内滑动保留按钮动作；工具栏不再翻页。";
+"KEYBOARD_PANEL_TOP" = "顶部工具栏长滑";
+"KEYBOARD_PANEL_BOTTOM" = "底部工具栏长滑";
+"KEYBOARD_PANEL_UNIFIED" = "合并为通用面板";
+"KEYBOARD_PANEL_CONTENT" = "面板内容";
+"KEYBOARD_PANEL_CONTENT_FOOTER" = "顶部与底部入口共用以下配置。开启通用模式后，两种方向都打开通用面板，左右配置仍会保留。";
+"KEYBOARD_PANEL_LEFT" = "左面板";
+"KEYBOARD_PANEL_RIGHT" = "右面板";
+"KEYBOARD_PANEL_COMMON" = "通用面板";
+"KEYBOARD_PANEL_APPEARANCE" = "面板外观";
+"KEYBOARD_PANEL_DARK" = "深色背景";
+"KEYBOARD_PANEL_SLIDERS" = "亮度与音量控制条";
+"KEYBOARD_PANEL_COLUMNS" = "每行图标数";
+"KEYBOARD_PANEL_SCALE" = "内容大小（%）";
+"KEYBOARD_PANEL_ITEMS_FOOTER" = "点击右上角 + 添加动作，拖动调整顺序，点击项目编辑名称、图标或动作。自定义动作支持原有链接、应用、文本及脚本等类型。删除全部项目后面板保持为空。";
+"KEYBOARD_PANEL_EDIT_HINT" = "点击编辑，拖动排序";
+"KEYBOARD_PANEL_ITEM_APPEARANCE" = "编辑名称与图标";
+"KEYBOARD_PANEL_NAME" = "名称（留空使用动作名称）";
+"KEYBOARD_PANEL_ICON" = "SF Symbol 或 App Bundle ID";
+"KEYBOARD_PANEL_SAVE" = "保存";
+"KEYBOARD_PANEL_REPLACE_ACTION" = "更换动作";
+"KEYBOARD_PANEL_EDIT_ACTION" = "编辑自定义动作";
+"KEYBOARD_PANEL_CLOSE" = "关闭面板";
+"KEYBOARD_PANEL_EMPTY" = "面板为空，请在 TypeX 设置中添加动作";
+"KEYBOARD_PANEL_BRIGHTNESS" = "亮度";
+"KEYBOARD_PANEL_VOLUME" = "音量";
+"KEYBOARD_TOOLBAR_CAPACITY" = "当前工具栏一屏最多显示 %ld 个按钮。请先关闭一个按钮，再启用新按钮。";

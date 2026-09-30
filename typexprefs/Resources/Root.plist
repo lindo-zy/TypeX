@@ -51,6 +51,14 @@
 			<string>底部设置</string>
 		</dict>
 		<dict>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>detail</key>
+			<string>DXPKeyboardPanelController</string>
+			<key>label</key>
+			<string>KEYBOARD_PANEL_SETTINGS</string>
+		</dict>
+		<dict>
 			<key>PostNotification</key>
 			<string>com.lindo.typex/prefschanged</string>
 			<key>cell</key>

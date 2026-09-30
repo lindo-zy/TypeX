@@ -200,8 +200,7 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
 
 // Row recovered from the switch's cell: rows move and delete, so a cached
 // index would go stale. The list itself is unlimited, but the top toolbar may
-// have at most sixteen enabled buttons. Multi-row mode can lower that active
-// capacity when the chosen column count only fits fewer buttons in two rows.
+// enable only the current one-screen capacity.
 - (void)buttonEnabledToggleChanged:(UISwitch *)sender {
     UIView *view = sender;
     while (view && ![view isKindOfClass:[UITableViewCell class]]) view = view.superview;
@@ -209,29 +208,14 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     if (!indexPath || indexPath.section != 0 || indexPath.row >= (NSInteger)[self.currentOrder[0] count]) return;
 
     NSDictionary *preferences = [[DXPrefsManager sharedInstance] readPrefs];
-    if (sender.isOn && self.topConfiguration) {
-        NSInteger enabledCount = [self enabledButtonCount];
-        if (enabledCount >= maxEnabledTopButtons) {
-            [sender setOn:NO animated:YES];
-            NSString *message = [NSString stringWithFormat:LOCALIZED(@"ENABLED_BUTTON_LIMIT_MESSAGE"),
-                                 maxEnabledTopButtons];
-            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"TypeX"
-                                                                           message:message
-                                                                    preferredStyle:UIAlertControllerStyleAlert];
-            [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK")
-                                                     style:UIAlertActionStyleCancel handler:nil]];
-            [self presentViewController:alert animated:YES completion:nil];
-            return;
-        }
-        if (DXMultiRowEnabledForPreferences(preferences)) {
-            NSInteger perRow = DXMultiRowButtonsPerRowFromPreferences(preferences);
-            NSInteger capacity = DXMultiRowCapacityForPreferences(preferences);
-            if (enabledCount >= capacity) {
-                [sender setOn:NO animated:YES];
-                [self showMultiRowLimitAlertForCapacity:capacity buttonsPerRow:perRow];
-                return;
-            }
-        }
+    NSInteger capacity = DXToolbarCapacityForPreferences(preferences, self.topConfiguration ? @"top" : @"bottom");
+    if (sender.isOn && [self enabledButtonCount] >= capacity) {
+        [sender setOn:NO animated:YES];
+        NSString *message = [NSString stringWithFormat:LOCALIZED(@"KEYBOARD_TOOLBAR_CAPACITY"), (long)capacity];
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"TypeX" message:message preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK") style:UIAlertActionStyleCancel handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+        return;
     }
 
     NSMutableDictionary *entry = [self.currentOrder[0][indexPath.row] mutableCopy];
@@ -446,17 +430,6 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     return count;
 }
 
-- (void)showMultiRowLimitAlertForCapacity:(NSInteger)capacity buttonsPerRow:(NSInteger)buttonsPerRow {
-    NSString *message = [NSString stringWithFormat:LOCALIZED(@"MULTI_ROW_LIMIT_MESSAGE"),
-                         (int)capacity, (int)buttonsPerRow];
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"TypeX"
-                                                                   message:message
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK")
-                                             style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
-}
-
 - (void)buildSettingsRows {
     // The runtime adds +5 to the unprefixed height fallback while the shared
     // background tint is on; mirror that so the slider shows the effective
@@ -494,8 +467,7 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
             [DXSettingsRow sliderRowWithKey:[self scopedAppearanceKey:kBottomSpacingKey]
                                       label:LOCALIZED(@"BOTTOM_SPACING") minValue:0 maxValue:20 step:0.1
                                   defaultValue:topBottomSpacingDefault]];
-        // 每行个数放在按钮设置分组（原多行布局分组迁入）：除多行换行外，它同时
-        // 是未开启多行模式时单行分页的页长，属于按钮布局基础项。
+        // Column count controls the one-row/two-row active capacity.
         [appearanceRows addObject:
             [DXSettingsRow sliderRowWithKey:[self scopedAppearanceKey:kButtonsPerRowKey]
                                       label:LOCALIZED(@"BUTTONS_PER_ROW") minValue:1 maxValue:8 step:1
@@ -663,18 +635,11 @@ static NSString *DXFormatSettingsValue(float value, float step, NSString *suffix
 
 - (void)settingsSwitchChanged:(UISwitch *)sender {
     DXSettingsRow *row = objc_getAssociatedObject(sender, @selector(key));
-    NSString *multiRowKey = DXScopedPreferenceKey(kMultiRowEnabledKey, @"top");
-    if (self.topConfiguration && sender.isOn && [row.key isEqualToString:multiRowKey]) {
-        NSDictionary *preferences = [[DXPrefsManager sharedInstance] readPrefs];
-        NSInteger perRow = DXMultiRowButtonsPerRowFromPreferences(preferences);
-        NSInteger capacity = DXMultiRowCapacityForPreferences(preferences);
-        if ([self enabledButtonCount] > capacity) {
-            [sender setOn:NO animated:YES];
-            [self showMultiRowLimitAlertForCapacity:capacity buttonsPerRow:perRow];
-            return;
-        }
-    }
     [[DXPrefsManager sharedInstance] setValue:@(sender.isOn) forKey:row.key];
+    if ([row.key isEqualToString:DXScopedPreferenceKey(kMultiRowEnabledKey, @"top")]) {
+        [self updateOrder:NO];
+        [self.tableView reloadData];
+    }
 }
 
 - (void)settingsSegmentChanged:(UISegmentedControl *)sender {
@@ -695,25 +660,14 @@ static NSString *DXFormatSettingsValue(float value, float step, NSString *suffix
     float stepped = row.minValue + roundf((sender.value - row.minValue) / row.step) * row.step;
     stepped = MIN(row.maxValue, MAX(row.minValue, stepped));
 
-    NSString *perRowKey = DXScopedPreferenceKey(kButtonsPerRowKey, @"top");
-    NSDictionary *preferences = [[DXPrefsManager sharedInstance] readPrefs];
-    if (self.topConfiguration && [row.key isEqualToString:perRowKey] &&
-        DXMultiRowEnabledForPreferences(preferences)) {
-        NSInteger perRow = MIN(8, MAX(1, (NSInteger)stepped));
-        NSInteger capacity = MIN(maxMultiRowButtons, perRow * maxMultiRowRows);
-        if ([self enabledButtonCount] > capacity) {
-            sender.value = [self storedFloatForRow:row];
-            UILabel *valueLabel = (UILabel *)[(UIView *)sender.superview viewWithTag:2];
-            valueLabel.text = DXFormatSettingsValue(sender.value, row.step, row.valueSuffix);
-            [self showMultiRowLimitAlertForCapacity:capacity buttonsPerRow:perRow];
-            return;
-        }
-    }
-
     sender.value = stepped;
     UILabel *valueLabel = (UILabel *)[(UIView *)sender.superview viewWithTag:2];
     valueLabel.text = DXFormatSettingsValue(stepped, row.step, row.valueSuffix);
     [self persistRowValue:row rawValue:sender.value];
+    if ([row.key isEqualToString:DXScopedPreferenceKey(kButtonsPerRowKey, @"top")]) {
+        [self updateOrder:NO];
+        [self.tableView reloadData];
+    }
 }
 
 #pragma mark - Add button
@@ -826,24 +780,9 @@ static NSString *DXFormatSettingsValue(float value, float step, NSString *suffix
         DXAppendUniqueShortcuts(fullOrderDict, enabled, seenSelectors, maxdefaultshortcuts);
     }
 
-    // Migrate legacy configurations without deleting buttons. The first
-    // sixteen enabled top buttons stay on; all later ones are persisted as
-    // disabled. Multi-row mode can lower this to its current two-row capacity.
-    if (self.topConfiguration) {
-        NSInteger capacity = maxEnabledTopButtons;
-        if (DXMultiRowEnabledForPreferences(prefs)) {
-            capacity = MIN(capacity, DXMultiRowCapacityForPreferences(prefs));
-        }
-        NSInteger activeCount = 0;
-        for (NSUInteger index = 0; index < enabled.count; index++) {
-            NSDictionary *entry = enabled[index];
-            if ([entry[@"disabled"] boolValue]) continue;
-            if (activeCount++ < capacity) continue;
-            NSMutableDictionary *disabledEntry = [entry mutableCopy];
-            disabledEntry[@"disabled"] = @YES;
-            enabled[index] = disabledEntry;
-        }
-    }
+    // Preserve every record while disabling only the overflow.
+    enabled = [DXToolbarOrderFittingCapacity(@[enabled, @[]], prefs,
+        self.topConfiguration ? @"top" : @"bottom")[0] mutableCopy];
 
     if (hasStoredOrder) {
         DXAppendUniqueShortcuts(storedDisabled, disabled, seenSelectors, NSUIntegerMax);

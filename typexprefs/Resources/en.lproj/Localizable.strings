@@ -229,8 +229,8 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "MAX_BUTTONS_REACHED" = "The top toolbar can have at most %d enabled buttons";
 "DUPLICATE_ACTION" = "This action is already in the toolbar";
 "CHOOSE_TAP_FIRST" = "Set the tap action first";
-"FOOTER_TOOLBAR_BUTTONS" = "Tap a button to edit its gestures and drag to reorder. You can add any number of buttons, and the switch controls whether each button is shown. Use “+” to add a new button.";
-"FOOTER_TOP_TOOLBAR_BUTTONS" = "Tap a button to edit its gestures and drag to reorder. You can add any number of buttons; at most 16 can be enabled at once, and new buttons beyond the active capacity default to off. Disable one before enabling another.";
+"FOOTER_TOOLBAR_BUTTONS" = "Tap to edit gestures and drag to reorder. The bottom toolbar supports up to eight enabled buttons without paging. Excess buttons are retained and disabled.";
+"FOOTER_TOP_TOOLBAR_BUTTONS" = "Store any number of buttons; only one surface can be enabled: one row or two rows at the configured column count. Reducing capacity disables excess buttons without deleting them.";
 "ANSWER_OK" = "OK";
 "ANSWER_CANCEL" = "Cancel";
 "SAVE" = "Save";
@@ -377,3 +377,34 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "RESTORE_DONE" = "Configuration restored";
 "RESTORE_FAILED_TITLE" = "Restore Failed";
 "RESTORE_FAILED_MESSAGE" = "The file is not a valid TypeX backup";
+
+// Keyboard-covering swipe panels
+"KEYBOARD_PANEL_SETTINGS" = "Swipe panels";
+"KEYBOARD_PANEL_ENTRANCE" = "Panel entrances";
+"KEYBOARD_PANEL_GESTURE_FOOTER" = "Long swipe left or right across either toolbar to open its panel. Swipes confined to one button keep that button’s action. Toolbars no longer page.";
+"KEYBOARD_PANEL_TOP" = "Top toolbar long swipe";
+"KEYBOARD_PANEL_BOTTOM" = "Bottom toolbar long swipe";
+"KEYBOARD_PANEL_UNIFIED" = "Use one common panel";
+"KEYBOARD_PANEL_CONTENT" = "Panel content";
+"KEYBOARD_PANEL_CONTENT_FOOTER" = "Both toolbar entrances share these profiles. Common mode uses the common profile for either direction and preserves both side profiles.";
+"KEYBOARD_PANEL_LEFT" = "Left panel";
+"KEYBOARD_PANEL_RIGHT" = "Right panel";
+"KEYBOARD_PANEL_COMMON" = "Common panel";
+"KEYBOARD_PANEL_APPEARANCE" = "Panel appearance";
+"KEYBOARD_PANEL_DARK" = "Dark background";
+"KEYBOARD_PANEL_SLIDERS" = "Brightness and volume controls";
+"KEYBOARD_PANEL_COLUMNS" = "Icons per row";
+"KEYBOARD_PANEL_SCALE" = "Content size (%)";
+"KEYBOARD_PANEL_ITEMS_FOOTER" = "Use + to add actions, drag to reorder, and tap an item to edit its name, icon or action. Existing custom action types are supported. Removing every item leaves the panel empty.";
+"KEYBOARD_PANEL_EDIT_HINT" = "Tap to edit, drag to reorder";
+"KEYBOARD_PANEL_ITEM_APPEARANCE" = "Edit name and icon";
+"KEYBOARD_PANEL_NAME" = "Name (empty uses action name)";
+"KEYBOARD_PANEL_ICON" = "SF Symbol or App Bundle ID";
+"KEYBOARD_PANEL_SAVE" = "Save";
+"KEYBOARD_PANEL_REPLACE_ACTION" = "Choose another action";
+"KEYBOARD_PANEL_EDIT_ACTION" = "Edit custom action";
+"KEYBOARD_PANEL_CLOSE" = "Close panel";
+"KEYBOARD_PANEL_EMPTY" = "This panel is empty. Add actions in TypeX Settings.";
+"KEYBOARD_PANEL_BRIGHTNESS" = "Brightness";
+"KEYBOARD_PANEL_VOLUME" = "Volume";
+"KEYBOARD_TOOLBAR_CAPACITY" = "This toolbar fits %ld enabled buttons. Disable a button before enabling another.";

@@ -1,4 +1,5 @@
 #import "DXPCustomActionViewController.h"
+#import "../DXKeyboardPanelPreferences.h"
 #import "DXPSubActionPickerController.h"
 #import "DXPLinkActionEditorController.h"
 #import "../DXHelper.h"
@@ -83,6 +84,8 @@ static NSBundle *tweakBundle;
         }
         [keys addObject:DXScopedPreferenceKey(kSubActionskey, configuration)];
     }
+
+    [keys addObjectsFromArray:@[kDXPanelLeftItems, kDXPanelRightItems, kDXPanelCommonItems]];
 
     for (NSString *key in keys) {
         NSArray *stored = preferences[key];

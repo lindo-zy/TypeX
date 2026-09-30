@@ -20,18 +20,12 @@ typedef NS_ENUM(NSInteger, direction) {
 @property (nonatomic, assign) NSInteger hapticType;
 
 @property (nonatomic, assign) BOOL refreshView;
-@property (nonatomic, assign) BOOL firstCellVisible;
-@property (nonatomic, assign) BOOL firstInit;
 @property (nonatomic, strong) dispatch_block_t retestDispatchBlock;
-@property (nonatomic, strong) dispatch_block_t autoPaginationDispatchBlock;
 @property (nonatomic, assign) NSTimer *cursorTimer;
 @property (nonatomic, assign) NSTimer *cursorTimerRetest;
 @property (nonatomic, assign) NSInteger cursorMovingFactor;
 @property (nonatomic, assign) float cursorTimerSpeed;
 @property (nonatomic, assign) float t;
-@property (strong, nonatomic) NSArray *indexArray;
-@property (strong, nonatomic) NSArray *sectionOffsetForwardArray;
-@property (strong, nonatomic) NSArray *sectionOffsetBackwardArray;
 
 @property (nonatomic, assign) BOOL moveCursorWithSelect;
 @property (nonatomic, assign) BOOL isWordSender;
@@ -112,7 +106,6 @@ typedef NS_ENUM(NSInteger, direction) {
 
 -(void)moveCursorContinuoslyWithDelegate:(id <UITextInput, UITextInputTokenizer>)delegate offset:(int)offset;
 -(void)triggerImpactAndAnimationWithButton:(UIButton *)sender;
--(NSArray *)synthesizeIndexingForIndexOrOffset:(BOOL)offset descendingOffset:(BOOL)reverse numberOfItems:(int)itemsCount;
 - (NSInteger)currentCursorPosition:(id <UITextInput, UITextInputTokenizer>)delegate;
 -(void)moveCursorWithDelegate:(id <UITextInput, UITextInputTokenizer>)delegate offset:(int)offset;
 -(void)moveCursorVerticalWithDelegate:(id<UITextInput>)delegate direction:(UITextLayoutDirection)direction;
@@ -130,4 +123,9 @@ typedef NS_ENUM(NSInteger, direction) {
 -(void)runCommand:(NSString *)cmd;
 -(BOOL)isValidURL:(NSString *)urlString;
 
+- (void)dismissKeyboardActionChooser;
+- (BOOL)canExecuteKeyboardPanelSelector:(NSString *)selector;
+- (void)dispatchKeyboardPanelSelector:(NSString *)selector sender:(UIButton *)sender;
+- (NSString *)subActionPanelTitleForSelector:(NSString *)selector;
+- (UIImage *)subActionPanelImageForSelector:(NSString *)selector;
 @end
