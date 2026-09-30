@@ -144,7 +144,8 @@ git diff
 
 ## 6. 编译和打包
 
-只能使用项目已有的构建脚本，比如build_roothide.sh，不要自己去执行打包编译。
+打包编译只能使用项目根目录下的构建脚本（本项目的唯一入口是 `./build-roothide-ios.sh`），禁止手动 make 或绕过脚本直接调用 theos 打包。
+脚本每次构建会自动推进 control 版本号并推送 Bark 通知（`项目名-版本-状态`），不要手动预改版本号。
 打包编译失败需要定位分析解决。
 
 ## 7. 发布前审查
@@ -173,4 +174,10 @@ git diff
 ```
 
 ## 8. 完成标准
-每次完成后，提交commit，但是不要上库。
+
+开发完成后按以下顺序收尾：
+
+1. 提交 commit（本地提交，不要 push 上库）。
+2. 归档 deb 到 iCloud 云盘：把本次构建生成的两套 deb 分别 cp 到 `~/Library/Mobile Documents/com~apple~CloudDocs/Downloads/TypeX/ios16` 和 `.../Downloads/TypeX/ios17`，旧版本保留不删除，归档后 shasum 抽查两端一致。
+3. 同步坚果云：执行 `python3 webdav-sync.py TypeX`（脚本在项目根目录，凭据在 `~/.netrc`），同步后确认对账一致。
+4. 报告中明确设备功能验证状态：编译成功不代表设备验证成功，未验证项如实标注。
