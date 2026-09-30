@@ -5,3 +5,4 @@ FOUNDATION_EXPORT void DXOpenSystemApplication(NSString *bundleIdentifier, DXSys
 FOUNDATION_EXPORT void DXOpenSensitiveSystemURL(NSURL *url, DXSystemOpenReply reply);
 FOUNDATION_EXPORT void DXOpenSystemShortcut(NSString *bundleIdentifier, NSString *shortcutType, DXSystemOpenReply reply);
 FOUNDATION_EXPORT BOOL DXStartSystemOpenBroker(void);
+FOUNDATION_EXPORT void DXRunSystemAction(NSString *identifier, DXSystemOpenReply reply);

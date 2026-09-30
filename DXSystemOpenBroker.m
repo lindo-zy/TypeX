@@ -1,6 +1,8 @@
 #import "DXSystemOpenBroker.h"
 #import "DXSensitiveURLExecutor.h"
 #import "DXQuickActionProvider.h"
+#import "DXSystemActionCatalog.h"
+#import "DXSystemActionExecutor.h"
 #import "common.h"
 #import <objc/message.h>
 #import <dlfcn.h>
@@ -21,6 +23,7 @@ static NSProgress *DXCurrentSystemOpenRequest;
 
 static NSProgress *DXBeginSystemOpenOperation(void) {
     [DXCurrentSystemOpenRequest cancel];
+    DXCancelSystemActionConfirmation();
     DXCurrentSystemOpenRequest = [NSProgress discreteProgressWithTotalUnitCount:1];
     return DXCurrentSystemOpenRequest;
 }
@@ -55,6 +58,30 @@ static void DXPerformSystemOpen(NSDictionary *request, DXSystemOpenReply reply) 
     NSString *payload = request[@"payload"];
     if (![kind isKindOfClass:NSString.class] || ![payload isKindOfClass:NSString.class] || !payload.length) {
         reply(DXSystemOpenInvalid);
+        return;
+    }
+    if ([kind isEqualToString:@"system-action"]) {
+        NSDictionary *definition = DXSystemActionDefinition(payload);
+        if (!definition) { reply(DXSystemOpenInvalid); return; }
+        NSTimeInterval age = NSDate.date.timeIntervalSince1970 - [request[@"created"] doubleValue];
+        if (!(age >= 0 && age <= DXSystemOpenRequestTTL)) { reply(DXSystemOpenExpired); return; }
+        DXPrefsManager *manager = DXPrefsManager.sharedInstance;
+        if (!manager.preferencesAvailable) [manager reload];
+        if (!manager.preferencesAvailable) { reply(DXSystemOpenUnavailable); return; }
+        if (!DXSystemActionIsConfigured(manager.prefs[kLinkActionskey], payload, kLinkActionSelectorPrefix)) {
+            reply(DXSystemOpenInvalid); return;
+        }
+        NSProgress *operation = DXBeginSystemOpenOperation();
+        if ([definition[@"destructive"] boolValue]) {
+            // A transport success acknowledges the trusted SpringBoard prompt.
+            // Execution requires a fresh user choice inside that prompt; callers
+            // cannot bypass it by forging a client-side "confirmed" flag.
+            reply(DXConfirmSystemExitAction(payload, operation) ? DXSystemOpenSucceeded : DXSystemOpenUnavailable);
+        } else {
+            DXSystemOpenResult result = DXPerformSystemAction(payload);
+            NSLog(@"[TypeX][SystemAction] id=%@ result=%llu", payload, (unsigned long long)result);
+            reply(result);
+        }
         return;
     }
     if ([kind isEqualToString:@"quick-action"]) {
@@ -124,6 +151,14 @@ static void DXSubmitSystemOpen(NSString *kind, NSString *payload, DXSystemOpenRe
 
 void DXOpenSystemApplication(NSString *bundleIdentifier, DXSystemOpenReply reply) {
     DXSubmitSystemOpen(@"application", bundleIdentifier, reply);
+}
+
+void DXRunSystemAction(NSString *identifier, DXSystemOpenReply reply) {
+    if (!DXSystemActionDefinition(identifier)) {
+        if (reply) dispatch_async(dispatch_get_main_queue(), ^{ reply(DXSystemOpenInvalid); });
+        return;
+    }
+    DXSubmitSystemOpen(@"system-action", identifier, reply);
 }
 
 void DXOpenSensitiveSystemURL(NSURL *url, DXSystemOpenReply reply) {

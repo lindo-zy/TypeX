@@ -1997,6 +1997,22 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
 
+    if ([type isEqualToString:kCustomActionTypeSystem]) {
+        __weak DXCollectionView *weakSelf = self;
+        __weak id originalInput = delegate;
+        DXCustomActionOpenCompletion completion = [self guardedCustomOpenCompletion:^(BOOL success) {
+            DXCollectionView *view = weakSelf;
+            if (!view || success || !originalInput) return;
+            Class keyboardClass = NSClassFromString(@"UIKeyboardImpl");
+            if (![keyboardClass respondsToSelector:@selector(activeInstance)] ||
+                DXKeyboardInputDelegate([keyboardClass activeInstance]) != originalInput) return;
+            [view showCustomActionMessage:LOCALIZED(@"SYSTEM_ACTION_UNAVAILABLE")];
+        }];
+        DXRunSystemAction(entry[kCustomActionSystemIdentifierKey], ^(DXSystemOpenResult result) {
+            completion(result == DXSystemOpenSucceeded);
+        });
+        return YES;
+    }
     if ([type isEqualToString:kCustomActionTypeJavaScript]) {
         __weak DXCollectionView *weakSelf = self;
         [DXJavaScriptHost startEntry:entry sourceView:self inputProvider:^id{

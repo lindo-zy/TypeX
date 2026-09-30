@@ -124,6 +124,11 @@ static NSBundle *tweakBundle;
         @"link": @"",
         kCustomActionTypeKey: type,
     } mutableCopy];
+    if ([type isEqualToString:kCustomActionTypeSystem]) {
+        entry[@"name"] = LOCALIZED(@"ACTION_TYPE_SYSTEM");
+        entry[@"icon"] = @"gearshape";
+        [entry removeObjectForKey:@"link"];
+    }
     if ([type isEqualToString:kCustomActionTypeText]) {
         entry[@"icon"] = @"doc.text";
         entry[kCustomActionTextRecordsKey] = @[@""];

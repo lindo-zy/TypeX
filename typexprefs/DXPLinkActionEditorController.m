@@ -2,6 +2,8 @@
 #import "DXPAppInfo.h"
 #import "DXPOpenAppPickerController.h"
 #import "DXPAppShortcutPickerController.h"
+#import "DXPSystemActionPickerController.h"
+#import "../DXSystemActionCatalog.h"
 #import "DXPJavaScriptTestController.h"
 #import "../DXHelper.h"
 #import "../common.h"
@@ -165,6 +167,7 @@ static NSInteger const DXLegacyRowLink = 2;
     if ([type isEqualToString:kCustomActionTypeURL]) return LOCALIZED(@"ACTION_TYPE_URL");
     if ([type isEqualToString:kCustomActionTypeOpenApp]) return LOCALIZED(@"ACTION_TYPE_OPEN_APP");
     if ([type isEqualToString:kCustomActionTypeShortcut]) return LOCALIZED(@"ACTION_TYPE_SHORTCUT");
+    if ([type isEqualToString:kCustomActionTypeSystem]) return LOCALIZED(@"ACTION_TYPE_SYSTEM");
     return type;
 }
 
@@ -174,6 +177,7 @@ static NSInteger const DXLegacyRowLink = 2;
     if ([type isEqualToString:kCustomActionTypeURL]) return @"globe";
     if ([type isEqualToString:kCustomActionTypeOpenApp]) return @"app";
     if ([type isEqualToString:kCustomActionTypeShortcut]) return @"bolt.fill";
+    if ([type isEqualToString:kCustomActionTypeSystem]) return @"gearshape";
     return @"link";
 }
 
@@ -193,6 +197,7 @@ static NSInteger const DXLegacyRowLink = 2;
         kCustomActionTypeURL,
         kCustomActionTypeOpenApp,
         kCustomActionTypeShortcut,
+        kCustomActionTypeSystem,
         kCustomActionTypeJavaScript,
     ];
     for (NSString *type in types) {
@@ -213,6 +218,8 @@ static NSInteger const DXLegacyRowLink = 2;
 - (BOOL)isLegacyEntry {
     return _displayedType.length == 0;
 }
+
+- (BOOL)isSystemEntry { return [_displayedType isEqualToString:kCustomActionTypeSystem]; }
 
 - (BOOL)isTextEntry { return [_displayedType isEqualToString:kCustomActionTypeText]; }
 
@@ -266,6 +273,7 @@ static NSInteger const DXLegacyRowLink = 2;
     if ([_displayedType isEqualToString:kCustomActionTypeURL]) return LOCALIZED(@"TYPE_FOOTER_URL");
     if (self.isOpenAppEntry) return LOCALIZED(@"TYPE_FOOTER_OPEN_APP");
     if (self.isShortcutEntry) return LOCALIZED(@"TYPE_FOOTER_SHORTCUT");
+    if (self.isSystemEntry) return LOCALIZED(@"TYPE_FOOTER_SYSTEM");
     return nil;
 }
 
@@ -278,7 +286,7 @@ static NSInteger const DXLegacyRowLink = 2;
     }
     if (row == DXActionRowName) return self.nameField;
     if (row == DXActionRowIcon) return self.iconField;
-    if (row == DXActionRowPayload && !self.isOpenAppEntry && !self.isShortcutEntry) return self.linkField;
+    if (row == DXActionRowPayload && !self.isOpenAppEntry && !self.isShortcutEntry && !self.isSystemEntry) return self.linkField;
     return nil;
 }
 
@@ -297,6 +305,7 @@ static NSInteger const DXLegacyRowLink = 2;
         if ([_displayedType isEqualToString:kCustomActionTypeURL]) return LOCALIZED(@"URL_SETTINGS");
         if (self.isOpenAppEntry) return LOCALIZED(@"SELECT_APP");
         if (self.isShortcutEntry) return LOCALIZED(@"SELECT_SHORTCUT");
+        if (self.isSystemEntry) return LOCALIZED(@"SELECT_SYSTEM_ACTION");
     }
     if (row == DXActionRowInApp) {
         return self.isOpenAppEntry ? LOCALIZED(@"OPEN_WITH_PULLOVER") : LOCALIZED(@"OPEN_IN_APP");
@@ -326,7 +335,7 @@ static NSInteger const DXLegacyRowLink = 2;
 // The payload value lives in the box for box types, in the small field
 // elsewhere; both trim the same way on save.
 - (NSString *)payloadCurrentValue {
-    if (self.isTextEntry) return @"";
+    if (self.isTextEntry || self.isSystemEntry) return @"";
     if (self.isJavaScriptEntry) return self.payloadBoxCell.textView.text ?: self.entry[@"script"] ?: @"";
     if (self.usesLargePayloadBox) return [self trimmedValue:self.payloadBoxCell.textView.text];
     return [self trimmedValue:self.linkField.text];
@@ -538,6 +547,17 @@ static NSInteger const DXLegacyRowLink = 2;
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         return cell;
     }
+    if (row == DXActionRowPayload && self.isSystemEntry) {
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPLinkActionValueCell" forIndexPath:indexPath];
+        NSDictionary *action = DXSystemActionDefinition(self.entry[kCustomActionSystemIdentifierKey]);
+        cell.textLabel.text = LOCALIZED(@"SELECT_SYSTEM_ACTION");
+        cell.detailTextLabel.text = action ? LOCALIZED(action[@"title"]) : LOCALIZED(@"UNSELECTED");
+        cell.imageView.image = action ? [UIImage systemImageNamed:action[@"icon"]] : nil;
+        cell.accessoryView = nil;
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+        return cell;
+    }
     if (row == DXActionRowInApp && !self.isLegacyEntry) {
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPLinkActionFieldCell" forIndexPath:indexPath];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
@@ -588,6 +608,29 @@ static NSInteger const DXLegacyRowLink = 2;
 
     // The payload box row handles its own taps (the text view takes focus).
     if ([self usesLargePayloadBox] && indexPath.section == 1) return;
+    if (self.isSystemEntry && indexPath.row == DXActionRowPayload) {
+        [self.view endEditing:YES];
+        DXPSystemActionPickerController *picker = [DXPSystemActionPickerController new];
+        picker.selectedIdentifier = self.entry[kCustomActionSystemIdentifierKey];
+        __weak typeof(self) weakSelf = self;
+        picker.completion = ^(NSDictionary *action) {
+            typeof(self) owner = weakSelf;
+            if (!owner || !DXSystemActionDefinition(action[@"id"])) return;
+            NSDictionary *old = DXSystemActionDefinition(owner.entry[kCustomActionSystemIdentifierKey]);
+            NSString *name = [owner trimmedValue:owner.nameField.text];
+            if (!name.length || [name isEqual:LOCALIZED(@"DEFAULT_BUTTON_NAME")] ||
+                [name isEqual:LOCALIZED(@"ACTION_TYPE_SYSTEM")] || (old && [name isEqual:LOCALIZED(old[@"title"])]))
+                owner.nameField.text = LOCALIZED(action[@"title"]);
+            owner.entry[kCustomActionSystemIdentifierKey] = action[@"id"];
+            owner.iconField.text = action[@"icon"];
+            [owner refreshIconPreview];
+            [owner.tableView reloadData];
+        };
+        [picker setRootController:[self rootController]];
+        [picker setParentController:[self parentController]];
+        [self pushController:picker];
+        return;
+    }
     if (self.isShortcutEntry && indexPath.row == DXActionRowPayload) {
         [self.view endEditing:YES];
         DXPAppShortcutPickerController *picker = [DXPAppShortcutPickerController new];
@@ -741,6 +784,13 @@ static NSInteger const DXLegacyRowLink = 2;
     NSString *name = [self trimmedValue:self.nameField.text];
     NSString *icon = [self trimmedValue:self.iconField.text];
     NSString *link = [self payloadCurrentValue];
+    if (self.isSystemEntry && !DXSystemActionDefinition(self.entry[kCustomActionSystemIdentifierKey])) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:LOCALIZED(@"SELECT_SYSTEM_ACTION")
+            message:LOCALIZED(@"SELECT_SYSTEM_ACTION_REQUIRED") preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK") style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+        return;
+    }
     if (self.isTextEntry) {
         for (NSString *record in self.textRecords) {
             if (record.length) continue;
@@ -788,6 +838,8 @@ static NSInteger const DXLegacyRowLink = 2;
     updated[@"name"] = name;
     updated[@"icon"] = icon;
     updated[@"link"] = link;
+    if (self.isSystemEntry) [updated removeObjectForKey:@"link"];
+    else [updated removeObjectForKey:kCustomActionSystemIdentifierKey];
     if (self.isTextEntry) {
         updated[kCustomActionTextRecordsKey] = [self.textRecords copy];
         [updated removeObjectForKey:@"link"];
@@ -900,6 +952,7 @@ static NSInteger const DXLegacyRowLink = 2;
                        [storedType isEqualToString:kCustomActionTypeURL] ||
                        [storedType isEqualToString:kCustomActionTypeOpenApp] ||
                        [storedType isEqualToString:kCustomActionTypeShortcut] ||
+                       [storedType isEqualToString:kCustomActionTypeSystem] ||
                        [storedType isEqualToString:kCustomActionTypeJavaScript])) ? storedType : @"";
 
     if (self.isTextEntry) {

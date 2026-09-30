@@ -2,7 +2,6 @@
 #import "DXPSubActionPickerController.h"
 #import "DXPLinkActionEditorController.h"
 #import "../DXKeyboardPanelPreferences.h"
-#import "../DXShortcutsGenerator.h"
 #import "../DXHelper.h"
 #import "../common.h"
 #import <Preferences/PSSpecifier.h>
@@ -10,6 +9,14 @@
 static NSString *DXPanelLocalized(NSString *key) {
     return [[NSBundle bundleWithPath:bundlePath] localizedStringForKey:key value:key table:nil];
 }
+
+// Hide the basic-action section while retaining picker selection and in-place
+// creation. customActionsOnly belongs to management mode and would edit rows.
+@interface DXPKeyboardPanelActionPicker : DXPSubActionPickerController
+@end
+@implementation DXPKeyboardPanelActionPicker
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { (void)tableView; return 1; }
+@end
 
 @implementation DXPKeyboardPanelController
 - (PSSpecifier *)setting:(NSString *)label key:(NSString *)key defaultValue:(id)value cell:(PSCellType)cell {
@@ -66,10 +73,14 @@ static NSString *DXPanelLocalized(NSString *key) {
 @property(nonatomic, strong) UITableView *table;
 @property(nonatomic, copy) NSString *side;
 @property(nonatomic, strong) NSMutableArray<NSDictionary *> *entries;
-@property(nonatomic, strong) NSArray *catalog;
 @end
 
 @implementation DXPKeyboardPanelItemsController
+- (NSMutableArray *)configuredEntries {
+    NSDictionary *preferences = [[DXPrefsManager sharedInstance] readPrefs];
+    return [DXKeyboardPanelFilterCustomItems(DXKeyboardPanelItems(preferences, self.side),
+        preferences[kLinkActionskey], kLinkActionSelectorPrefix) mutableCopy];
+}
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.side = [self.specifier propertyForKey:@"panelSide"] ?: @"left";
@@ -80,29 +91,13 @@ static NSString *DXPanelLocalized(NSString *key) {
     self.table.dataSource = self;
     [self.view addSubview:self.table];
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addActions)];
-    self.entries = [DXKeyboardPanelItems([[DXPrefsManager sharedInstance] readPrefs], self.side) mutableCopy];
-    DXShortcutsGenerator *generator = DXShortcutsGenerator.sharedInstance;
-    NSArray *selectors = generator.selectorNames;
-    NSArray *labels = generator.labelName;
-    NSArray *images12 = [generator imageNameArrayForiOS:0];
-    NSArray *images13 = [generator imageNameArrayForiOS:1];
-    NSMutableArray *catalog = [NSMutableArray array];
-    NSUInteger count = MIN(MIN(selectors.count, labels.count), MIN(images12.count, images13.count));
-    for (NSUInteger index = 0; index < count; index++) {
-        NSString *selector = selectors[index];
-        if (![DXShortcutsGenerator isVisibleShortcutSelector:selector]) continue;
-        if ([selector isEqualToString:@"shellxScreenshotAction:"] && ![DXShortcutsGenerator isShellXScreenshotAvailable]) continue;
-        if ([selector isEqualToString:@"clipboardAction:"] && ![DXShortcutsGenerator isKayokoInstalled]) continue;
-        if ([selector isEqualToString:@"pulloverWakeAction:"] && ![DXShortcutsGenerator isPullOverXInstalled]) continue;
-        [catalog addObject:@{@"selector": selector, @"label": labels[index], @"images12": images12[index], @"images13": images13[index]}];
-    }
-    self.catalog = catalog;
+    self.entries = [self configuredEntries];
     [self.table setEditing:YES animated:NO];
     self.table.allowsSelectionDuringEditing = YES;
 }
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    self.entries = [DXKeyboardPanelItems([[DXPrefsManager sharedInstance] readPrefs], self.side) mutableCopy];
+    self.entries = [self configuredEntries];
     [self.table reloadData];
 }
 - (void)save {
@@ -124,9 +119,6 @@ static NSString *DXPanelLocalized(NSString *key) {
     NSString *icon = entry[@"icon"];
     if (!icon.length) icon = [self definitionForSelector:entry[@"selector"]][@"icon"];
     if (icon.length) return [DXHelper imageForIconConfig:icon defaultSymbolName:@"link"];
-    for (NSDictionary *item in self.catalog) {
-        if ([item[@"selector"] isEqual:entry[@"selector"]]) return [DXHelper imageForName:item[@"images13"] withSystemColor:YES completion:nil];
-    }
     return [UIImage systemImageNamed:@"square.grid.2x2"];
 }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -164,20 +156,23 @@ static NSString *DXPanelLocalized(NSString *key) {
     [self save];
 }
 - (void)pushPicker:(DXPSubActionPickerController *)picker {
-    picker.fullOrder = self.catalog;
+    picker.fullOrder = @[];
     picker.title = DXPanelLocalized(@"CHOOSE_ACTION");
     [picker setRootController:[self rootController]];
     [picker setParentController:[self parentController]];
     [self pushController:picker];
 }
 - (void)addActions {
-    DXPSubActionPickerController *picker = [[DXPSubActionPickerController alloc] init];
+    DXPSubActionPickerController *picker = [[DXPKeyboardPanelActionPicker alloc] init];
     picker.allowsMultipleSelection = YES;
     __weak typeof(self) weakSelf = self;
     picker.multiSelectionCompletion = ^(NSArray<NSString *> *selectors) {
         __strong typeof(weakSelf) self = weakSelf;
         if (!self) return;
-        for (NSString *selector in selectors) [self.entries addObject:@{@"id": NSUUID.UUID.UUIDString, @"selector": selector}];
+        for (NSString *selector in selectors) {
+            if (DXIsLinkActionSelector(selector) && [self definitionForSelector:selector])
+                [self.entries addObject:@{@"id": NSUUID.UUID.UUIDString, @"selector": selector}];
+        }
         [self save];
         [self.table reloadData];
     };
@@ -186,12 +181,13 @@ static NSString *DXPanelLocalized(NSString *key) {
 - (void)replaceActionAtRow:(NSInteger)row {
     if (row >= (NSInteger)self.entries.count) return;
     NSDictionary *original = self.entries[row];
-    DXPSubActionPickerController *picker = [[DXPSubActionPickerController alloc] init];
+    DXPSubActionPickerController *picker = [[DXPKeyboardPanelActionPicker alloc] init];
     picker.selectedSelector = original[@"selector"];
     __weak typeof(self) weakSelf = self;
     picker.completion = ^(NSString *selector) {
         __strong typeof(weakSelf) self = weakSelf;
-        if (!self || row >= (NSInteger)self.entries.count || ![self.entries[row] isEqual:original]) return;
+        if (!self || row >= (NSInteger)self.entries.count || ![self.entries[row] isEqual:original] ||
+            !DXIsLinkActionSelector(selector) || ![self definitionForSelector:selector]) return;
         NSMutableDictionary *entry = [original mutableCopy];
         entry[@"selector"] = selector;
         self.entries[row] = entry;

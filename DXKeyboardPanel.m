@@ -1,15 +1,18 @@
 #import "DXKeyboardPanel.h"
 #import "DXKeyboardPanelPreferences.h"
 #import "DXKeyboardPanelGeometry.h"
+#import "DXKeyboardPanelHostPolicy.h"
 #import "DXCollectionView.h"
 #import "DXHelper.h"
 #import "DXShared.h"
 #import "common.h"
+#import <objc/message.h>
+#import <objc/runtime.h>
 
-@interface DXKeyboardPanelWindow : UIWindow
+@interface DXKeyboardPanelOverlay : UIView
 @property(nonatomic, assign) CGRect panelRect;
 @end
-@implementation DXKeyboardPanelWindow
+@implementation DXKeyboardPanelOverlay
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     if (!CGRectContainsPoint(self.panelRect, point)) return nil;
     return [super hitTest:point withEvent:event];
@@ -30,7 +33,9 @@
 
 @interface DXKeyboardPanel ()
 @property(nonatomic, strong) NSHashTable<DXCollectionView *> *toolbars;
-@property(nonatomic, strong) DXKeyboardPanelWindow *window;
+@property(nonatomic, weak) UIWindow *window;
+@property(nonatomic, weak) UIWindowScene *sessionScene;
+@property(nonatomic, strong) DXKeyboardPanelOverlay *overlay;
 @property(nonatomic, strong) UIView *panel;
 @property(nonatomic, strong) UIScrollView *scroll;
 @property(nonatomic, strong) UILabel *titleLabel;
@@ -92,13 +97,15 @@
     else if (self.window) [self layoutPanel];
 }
 - (void)toolbarDetached:(DXCollectionView *)toolbar {
+    if (![NSThread isMainThread]) return;
     [self.toolbars removeObject:toolbar];
     if (self.source == toolbar) [self dismiss];
 }
 - (BOOL)validSession {
     return [self visibleToolbar:self.source] && self.source.window == self.sourceWindow &&
         self.input && self.input == [self currentInput] &&
-        self.window.windowScene.activationState == UISceneActivationStateForegroundActive;
+        self.window && !self.window.hidden && self.overlay.superview == self.window &&
+        self.sessionScene.activationState == UISceneActivationStateForegroundActive;
 }
 - (void)keyboardChanged:(NSNotification *)note {
     if (![NSThread isMainThread]) {
@@ -150,15 +157,63 @@
     }
     return DXKeyboardPanelFullWidthCoverage(rect, window.bounds);
 }
-- (void)updateWindowLevel {
-    // iOS 17's remote keyboard is not necessarily listed in the app scene's
-    // windows. Use the same independent-window floor as the existing AI and
-    // subaction panels, then account for any higher visible local windows.
-    CGFloat level = MAX(1000000.0, self.sourceWindow.windowLevel + 1);
-    for (UIWindow *existing in self.window.windowScene.windows) {
-        if (existing != self.window && !existing.hidden) level = MAX(level, existing.windowLevel + 1);
+- (UIWindow *)keyboardHostForScene:(UIWindowScene *)scene {
+    Class cls = NSClassFromString(@"UIKeyboardImpl");
+    UIKeyboardImpl *keyboard = [cls respondsToSelector:@selector(activeInstance)] ? [cls activeInstance] : nil;
+    UIWindow *activeWindow = [keyboard isKindOfClass:UIView.class] ? keyboard.window : nil;
+    // Locate an already-created remote surface even when it is omitted from
+    // UIApplication.windows. Never create a UIKit keyboard window ourselves.
+    Class remoteClass = NSClassFromString(@"UIRemoteKeyboardWindow");
+    SEL remoteSelector = NSSelectorFromString(@"remoteKeyboardWindowForScreen:create:");
+    NSMethodSignature *signature = [remoteClass respondsToSelector:remoteSelector] ? [remoteClass methodSignatureForSelector:remoteSelector] : nil;
+    UIWindow *remoteWindow = nil;
+    if (signature.numberOfArguments == 4 && !strcmp(signature.methodReturnType, "@") &&
+        !strcmp([signature getArgumentTypeAtIndex:2], "@") &&
+        (!strcmp([signature getArgumentTypeAtIndex:3], @encode(BOOL)) || !strcmp([signature getArgumentTypeAtIndex:3], "B"))) {
+        id found = ((id (*)(id, SEL, id, BOOL))objc_msgSend)(remoteClass, remoteSelector, self.sourceWindow.screen, NO);
+        if ([found isKindOfClass:UIWindow.class]) remoteWindow = found;
     }
-    self.window.windowLevel = level;
+    NSMutableOrderedSet<UIWindow *> *candidates = [NSMutableOrderedSet orderedSet];
+    if (remoteWindow) [candidates addObject:remoteWindow];
+    if (activeWindow) [candidates addObject:activeWindow];
+    [candidates addObject:self.sourceWindow];
+    for (DXCollectionView *toolbar in self.toolbars) {
+        if ([self visibleToolbar:toolbar]) [candidates addObject:toolbar.window];
+    }
+    [candidates addObjectsFromArray:scene.windows ?: @[]];
+    [candidates addObjectsFromArray:self.sourceWindow.windowScene.windows ?: @[]];
+    // Keyboard windows can belong to a separate UIKit scene. UIApplication's
+    // legacy window inventory is still needed to locate that system surface.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    [candidates addObjectsFromArray:UIApplication.sharedApplication.windows];
+#pragma clang diagnostic pop
+    UIWindow *host = nil;
+    NSInteger bestRank = 0;
+    for (UIWindow *candidate in candidates) {
+        if (candidate.hidden || candidate.alpha < 0.01 || candidate.screen != self.sourceWindow.screen) continue;
+        UIWindowScene *candidateScene = candidate.windowScene;
+        if (candidateScene && candidateScene != scene && candidateScene != self.sourceWindow.windowScene &&
+            candidateScene != activeWindow.windowScene && candidate != remoteWindow) continue;
+        NSInteger rank = 0;
+        for (Class windowClass = candidate.class; windowClass; windowClass = class_getSuperclass(windowClass))
+            rank = MAX(rank, DXKeyboardPanelHostRank(NSStringFromClass(windowClass), candidate == activeWindow));
+        if (rank > bestRank || (rank && rank == bestRank && candidate.windowLevel > host.windowLevel)) {
+            bestRank = rank;
+            host = candidate;
+        }
+    }
+    return host;
+}
+- (void)raiseOverlay {
+    if (!self.window || self.overlay.superview != self.window) return;
+    CGFloat z = 1;
+    for (UIView *sibling in self.window.subviews) {
+        if (sibling == self.overlay || !isfinite(sibling.layer.zPosition)) continue;
+        z = MAX(z, sibling.layer.zPosition + 1);
+    }
+    self.overlay.layer.zPosition = z;
+    [self.window bringSubviewToFront:self.overlay];
 }
 - (void)presentFromToolbar:(DXCollectionView *)toolbar side:(NSString *)side {
     if (![NSThread isMainThread]) return;
@@ -179,28 +234,36 @@
     self.source = toolbar;
     self.sourceWindow = toolbar.window;
     self.input = input;
+    self.sessionScene = scene;
     [self.toolbars addObject:toolbar];
     NSString *profile = DXKeyboardPanelBool(preferences, kDXPanelUnified, NO) ? @"common" : side;
-    NSArray *items = DXKeyboardPanelItems(preferences, profile);
+    NSArray *items = DXKeyboardPanelFilterCustomItems(DXKeyboardPanelItems(preferences, profile),
+        preferences[kLinkActionskey], kLinkActionSelectorPrefix);
     self.scale = DXKeyboardPanelNumber(preferences, kDXPanelScale, 100, 70, 120) / 100;
     self.columns = (NSInteger)DXKeyboardPanelNumber(preferences, kDXPanelColumns, 4, 3, 5);
     self.dark = DXKeyboardPanelBool(preferences, kDXPanelDark, YES);
 
-    DXKeyboardPanelWindow *window = [[DXKeyboardPanelWindow alloc] initWithWindowScene:scene];
-    window.frame = scene.coordinateSpace.bounds;
-    window.backgroundColor = UIColor.clearColor;
-    UIViewController *root = [[UIViewController alloc] init];
-    root.view.frame = window.bounds;
-    root.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    root.view.backgroundColor = UIColor.clearColor;
-    window.rootViewController = root;
+    UIWindow *window = [self keyboardHostForScene:scene];
+    if (!window) {
+        NSLog(@"[TypeX][KeyboardPanel] open cancelled: no keyboard host window");
+        [self dismiss];
+        return;
+    }
     self.window = window;
-    [self updateWindowLevel];
+    self.overlay = [[DXKeyboardPanelOverlay alloc] initWithFrame:window.bounds];
+    self.overlay.backgroundColor = UIColor.clearColor;
+    self.overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    // Join the keyboard's existing render surface, above its content siblings.
+    // Do not create/make-key/hide a UIKit keyboard window or alter its root VC.
+    [window addSubview:self.overlay];
     UIView *panel = [[UIView alloc] init];
+    // A remote keyboard backdrop may not be sampled by UIVisualEffectView.
+    // Keep an opaque base so its keys cannot bleed through on SpringBoard.
+    panel.backgroundColor = self.dark ? [UIColor colorWithWhite:0.10 alpha:1] : UIColor.systemBackgroundColor;
     panel.layer.cornerRadius = 22;
     panel.clipsToBounds = YES;
     self.panel = panel;
-    [root.view addSubview:panel];
+    [self.overlay addSubview:panel];
     UIVisualEffectView *blur = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:
         self.dark ? UIBlurEffectStyleSystemMaterialDark : UIBlurEffectStyleSystemMaterialLight]];
     blur.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
@@ -242,7 +305,7 @@
     NSMutableArray *buttons = [NSMutableArray array];
     for (NSDictionary *entry in items) {
         NSString *selector = entry[@"selector"];
-        if (![toolbar canExecuteKeyboardPanelSelector:selector]) continue;
+        if (!DXIsLinkActionSelector(selector) || ![toolbar canExecuteKeyboardPanelSelector:selector]) continue;
         DXKeyboardPanelButton *button = [DXKeyboardPanelButton buttonWithType:UIButtonTypeCustom];
         button.actionSelector = selector;
         button.actionImage = [[UIImageView alloc] init];
@@ -282,10 +345,9 @@
     }
     [self layoutPanel];
     if (!self.window) return;
-    window.hidden = NO; // Never makeKeyWindow: the host input retains focus.
-    NSLog(@"[TypeX][KeyboardPanel] open side=%@ toolbar=%@ items=%lu rect=%@ level=%.0f source=%@",
-        profile, toolbar.configuration, (unsigned long)buttons.count, NSStringFromCGRect(window.panelRect),
-        (double)window.windowLevel, NSStringFromClass(toolbar.window.class));
+    NSLog(@"[TypeX][KeyboardPanel] open side=%@ toolbar=%@ items=%lu rect=%@ host=%@ source=%@",
+        profile, toolbar.configuration, (unsigned long)buttons.count, NSStringFromCGRect(self.overlay.panelRect),
+        NSStringFromClass(window.class), NSStringFromClass(toolbar.window.class));
 }
 - (void)layoutPanel {
     if (!self.window) return;
@@ -295,8 +357,10 @@
         [self dismiss];
         return;
     }
-    [self updateWindowLevel];
-    self.window.panelRect = coverage;
+    self.overlay.frame = self.window.bounds;
+    self.overlay.bounds = self.window.bounds;
+    [self raiseOverlay];
+    self.overlay.panelRect = coverage;
     self.panel.frame = coverage;
     CGFloat width = coverage.size.width, height = coverage.size.height;
     [self.panel viewWithTag:30].frame = CGRectMake(0, 0, width, 46);
@@ -334,7 +398,7 @@
     if (![self validSession] || ![self.buttons containsObject:button]) { [self dismiss]; return; }
     DXCollectionView *source = self.source;
     NSString *selector = [button.actionSelector copy];
-    if (![source canExecuteKeyboardPanelSelector:selector]) { [self dismiss]; return; }
+    if (!DXIsLinkActionSelector(selector) || ![source canExecuteKeyboardPanelSelector:selector]) { [self dismiss]; return; }
     // Synchronous dismissal leaves no animation callback that could target a new input session.
     [self dismiss];
     [source dispatchKeyboardPanelSelector:selector sender:button];
@@ -344,9 +408,10 @@
         dispatch_async(dispatch_get_main_queue(), ^{ [self dismiss]; });
         return;
     }
-    self.window.hidden = YES;
-    self.window.rootViewController = nil;
+    [self.overlay removeFromSuperview];
+    self.overlay = nil;
     self.window = nil;
+    self.sessionScene = nil;
     self.panel = nil;
     self.scroll = nil;
     self.buttons = nil;
