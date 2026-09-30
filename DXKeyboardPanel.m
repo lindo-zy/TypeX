@@ -2,6 +2,8 @@
 #import "DXKeyboardPanelPreferences.h"
 #import "DXKeyboardPanelGeometry.h"
 #import "DXKeyboardPanelLayout.h"
+#import "DXPanelSystemControlsView.h"
+#import "DXPanelControlSession.h"
 #import "DXKeyboardPanelHostPolicy.h"
 #import "DXCollectionView.h"
 #import "DXHelper.h"
@@ -39,6 +41,8 @@
 @property(nonatomic, strong) DXKeyboardPanelOverlay *overlay;
 @property(nonatomic, strong) UIView *panel;
 @property(nonatomic, strong) UIScrollView *scroll;
+@property(nonatomic, strong) DXPanelSystemControlsView *systemControls;
+@property(nonatomic, strong) DXPanelControlSession *controlSession;
 @property(nonatomic, strong) UILabel *titleLabel;
 @property(nonatomic, strong) UIButton *closeButton;
 @property(nonatomic, strong) NSArray<DXKeyboardPanelButton *> *buttons;
@@ -300,9 +304,35 @@
     [self.closeButton addTarget:self action:@selector(dismiss) forControlEvents:UIControlEventTouchUpInside];
     [panel addSubview:self.closeButton];
 
+    self.systemControls = [DXPanelSystemControlsView new];
+    [self.systemControls configureDark:self.dark preview:NO];
+    __weak typeof(self) weakSelf = self;
+    __weak DXPanelSystemControlsView *controls = self.systemControls;
+    NSString *configuration = [toolbar.configuration copy];
+    self.controlSession = [[DXPanelControlSession alloc] initWithRequester:^NSProgress *(NSString *action, NSNumber *value, DXPanelSystemControlReply reply) {
+        return DXRequestPanelSystemControl(action, value, configuration, reply);
+    } validity:^BOOL {
+        DXKeyboardPanel *owner = weakSelf;
+        return owner && controls && owner.systemControls == controls && [owner validSession];
+    } update:^(DXSystemOpenResult result, NSDictionary *state, BOOL busy, NSString *action) {
+        [controls applyState:state busy:busy];
+        if (result == DXSystemOpenSucceeded) [controls showMessage:nil];
+        else {
+            NSString *key = result == DXSystemOpenTimedOut ? @"SYSTEM_ACTION_TIMEOUT" :
+                (result == DXSystemOpenFailed ? @"SYSTEM_ACTION_FAILED" : @"SYSTEM_ACTION_UNAVAILABLE");
+            [controls showMessage:[bundle localizedStringForKey:key value:@"系统操作不可用" table:nil]];
+        }
+    }];
+    self.systemControls.actionHandler = ^(NSString *action, NSNumber *value) {
+        DXKeyboardPanel *owner = weakSelf;
+        if (owner.systemControls != controls || ![owner validSession]) { [owner dismiss]; return; }
+        [owner.controlSession enqueueAction:action value:value];
+    };
+
     self.scroll = [[UIScrollView alloc] init];
     self.scroll.showsVerticalScrollIndicator = NO;
     [panel addSubview:self.scroll];
+    [self.scroll addSubview:self.systemControls];
     NSMutableArray *buttons = [NSMutableArray array];
     for (NSDictionary *entry in items) {
         NSString *selector = entry[@"selector"];
@@ -346,6 +376,7 @@
     }
     [self layoutPanel];
     if (!self.window) return;
+    [self.controlSession enqueueAction:@"state" value:nil];
     NSLog(@"[TypeX][KeyboardPanel] open side=%@ toolbar=%@ items=%lu rect=%@ host=%@ source=%@",
         profile, toolbar.configuration, (unsigned long)buttons.count, NSStringFromCGRect(self.overlay.panelRect),
         NSStringFromClass(window.class), NSStringFromClass(toolbar.window.class));
@@ -368,13 +399,16 @@
     [self.panel viewWithTag:31].frame = CGRectMake((width - 38) / 2, 3, 38, 4);
     self.titleLabel.frame = CGRectMake(16, 10, MAX(0, width - 68), 28);
     self.closeButton.frame = CGRectMake(width - 48, 2, 44, 44);
-    CGFloat contentTop = 46;
-    self.scroll.frame = CGRectMake(8, contentTop, width - 16, MAX(0, height - contentTop - 8));
+    CGFloat controlsHeight = DXPanelSystemControlsHeight(MAX(0, width - 16));
+    self.scroll.frame = CGRectMake(8, 46, MAX(0, width - 16), MAX(0, height - 54));
+    self.systemControls.frame = CGRectMake(0, 0, self.scroll.bounds.size.width, controlsHeight);
     CGFloat itemWidth = self.scroll.bounds.size.width / self.columns;
     CGFloat circle = DXKeyboardPanelCircle(self.scroll.bounds.size.width, self.columns, self.scale);
     [self.buttons enumerateObjectsUsingBlock:^(DXKeyboardPanelButton *button, NSUInteger index, BOOL *stop) {
         (void)stop;
-        button.frame = DXKeyboardPanelItemFrame(index, self.scroll.bounds.size.width, self.columns, self.scale);
+        CGRect frame = DXKeyboardPanelItemFrame(index, self.scroll.bounds.size.width, self.columns, self.scale);
+        frame.origin.y += controlsHeight;
+        button.frame = frame;
         UIView *circleView = [button viewWithTag:10];
         if (!circleView) {
             circleView = [[UIView alloc] init];
@@ -389,10 +423,11 @@
         button.actionImage.frame = CGRectMake((itemWidth - icon) / 2, 4 + (circle - icon) / 2, icon, icon);
         button.actionLabel.frame = CGRectMake(3, circle + 9, itemWidth - 6, 30 * self.scale);
     }];
-    CGFloat contentHeight = MAX(self.scroll.bounds.size.height, DXKeyboardPanelContentHeight(self.buttons.count, self.scroll.bounds.size.width, self.columns, self.scale));
+    CGFloat gridHeight = self.buttons.count ? DXKeyboardPanelContentHeight(self.buttons.count, self.scroll.bounds.size.width, self.columns, self.scale) : 70;
+    CGFloat contentHeight = MAX(self.scroll.bounds.size.height, controlsHeight + gridHeight);
     self.scroll.contentSize = CGSizeMake(self.scroll.bounds.size.width, contentHeight);
     [self.scroll viewWithTag:20].frame = CGRectMake(0, 0, self.scroll.bounds.size.width, contentHeight);
-    [self.scroll viewWithTag:21].frame = self.scroll.bounds;
+    [self.scroll viewWithTag:21].frame = CGRectMake(0, controlsHeight, self.scroll.bounds.size.width, MAX(70, self.scroll.bounds.size.height - controlsHeight));
 }
 - (void)itemTapped:(DXKeyboardPanelButton *)button {
     if (![self validSession] || ![self.buttons containsObject:button]) { [self dismiss]; return; }
@@ -408,6 +443,10 @@
         dispatch_async(dispatch_get_main_queue(), ^{ [self dismiss]; });
         return;
     }
+    [self.controlSession invalidate];
+    self.controlSession = nil;
+    self.systemControls.actionHandler = nil;
+    self.systemControls = nil;
     [self.overlay removeFromSuperview];
     self.overlay = nil;
     self.window = nil;

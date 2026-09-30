@@ -30,7 +30,7 @@ static NSString *DXPanelLocalized(NSString *key) {
     self.title = @"滑动面板";
     NSString *side = DXKeyboardPanelBool([DXPrefsManager.sharedInstance readPrefs], kDXPanelUnified, NO) ? @"common" : @"left";
     self.previewHeader = [[DXPKeyboardPanelPreviewHeader alloc] initWithSide:side allowsSelection:YES];
-    self.previewHeader.frame = CGRectMake(0, 0, self.table.bounds.size.width, 366);
+    self.previewHeader.frame = CGRectMake(0, 0, self.table.bounds.size.width, self.previewHeader.bounds.size.height);
     self.table.tableHeaderView = self.previewHeader;
     self.keyboardTestSearch = [[UISearchController alloc] initWithSearchResultsController:nil];
     self.keyboardTestSearch.obscuresBackgroundDuringPresentation = NO;
@@ -129,7 +129,7 @@ static NSString *DXPanelLocalized(NSString *key) {
     self.table.dataSource = self;
     [self.view addSubview:self.table];
     self.previewHeader = [[DXPKeyboardPanelPreviewHeader alloc] initWithSide:self.side allowsSelection:NO];
-    self.previewHeader.frame = CGRectMake(0, 0, self.table.bounds.size.width, 326);
+    self.previewHeader.frame = CGRectMake(0, 0, self.table.bounds.size.width, self.previewHeader.bounds.size.height);
     self.table.tableHeaderView = self.previewHeader;
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addActions)];
     self.entries = [self configuredEntries];

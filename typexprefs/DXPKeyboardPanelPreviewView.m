@@ -1,6 +1,7 @@
 #import "DXPKeyboardPanelPreviewView.h"
 #import "../DXKeyboardPanelPreferences.h"
 #import "../DXKeyboardPanelLayout.h"
+#import "../DXPanelSystemControlsView.h"
 #import "../DXHelper.h"
 #import "../common.h"
 
@@ -8,6 +9,7 @@
 @property(nonatomic, strong) UILabel *titleLabel;
 @property(nonatomic, strong) UILabel *emptyLabel;
 @property(nonatomic, strong) UIScrollView *scroll;
+@property(nonatomic, strong) DXPanelSystemControlsView *systemControls;
 @property(nonatomic, copy) NSArray<UIView *> *items;
 @property(nonatomic) NSInteger columns;
 @property(nonatomic) CGFloat scale;
@@ -20,9 +22,11 @@
         self.titleLabel = [UILabel new];
         self.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
         [self addSubview:self.titleLabel];
+        self.systemControls = [DXPanelSystemControlsView new];
         self.scroll = [UIScrollView new];
         self.scroll.showsVerticalScrollIndicator = YES;
         [self addSubview:self.scroll];
+        [self.scroll addSubview:self.systemControls];
         self.emptyLabel = [UILabel new];
         self.emptyLabel.numberOfLines = 0;
         self.emptyLabel.textAlignment = NSTextAlignmentCenter;
@@ -40,6 +44,7 @@
     BOOL dark = DXKeyboardPanelBool(preferences, kDXPanelDark, YES);
     UIColor *textColor = dark ? UIColor.whiteColor : UIColor.labelColor;
     self.backgroundColor = dark ? [UIColor colorWithWhite:0.10 alpha:1] : UIColor.systemBackgroundColor;
+    [self.systemControls configureDark:dark preview:YES];
     self.titleLabel.textColor = textColor;
     self.emptyLabel.textColor = textColor;
     self.columns = (NSInteger)DXKeyboardPanelNumber(preferences, kDXPanelColumns, 4, 3, 5);
@@ -92,11 +97,15 @@
     [super layoutSubviews];
     CGFloat width = self.bounds.size.width;
     self.titleLabel.frame = CGRectMake(16, 10, MAX(0, width - 32), 28);
+    CGFloat controlsHeight = DXPanelSystemControlsHeight(MAX(0, width - 16));
     self.scroll.frame = CGRectMake(8, 46, MAX(0, width - 16), MAX(0, self.bounds.size.height - 54));
+    self.systemControls.frame = CGRectMake(0, 0, self.scroll.bounds.size.width, controlsHeight);
     CGFloat contentWidth = self.scroll.bounds.size.width;
     CGFloat circleSize = DXKeyboardPanelCircle(contentWidth, self.columns, self.scale);
     [self.items enumerateObjectsUsingBlock:^(UIView *item, NSUInteger index, BOOL *stop) {
-        item.frame = DXKeyboardPanelItemFrame(index, contentWidth, self.columns, self.scale);
+        CGRect frame = DXKeyboardPanelItemFrame(index, contentWidth, self.columns, self.scale);
+        frame.origin.y += controlsHeight;
+        item.frame = frame;
         CGFloat itemWidth = item.bounds.size.width;
         UIView *circle = [item viewWithTag:1];
         circle.frame = CGRectMake((itemWidth - circleSize) / 2, 4, circleSize, circleSize);
@@ -105,7 +114,8 @@
         [item viewWithTag:2].frame = CGRectMake((itemWidth - iconSize) / 2, 4 + (circleSize - iconSize) / 2, iconSize, iconSize);
         [item viewWithTag:3].frame = CGRectMake(3, circleSize + 9, MAX(0, itemWidth - 6), 30 * self.scale);
     }];
-    self.scroll.contentSize = CGSizeMake(contentWidth, MAX(self.scroll.bounds.size.height, DXKeyboardPanelContentHeight(self.items.count, contentWidth, self.columns, self.scale)));
-    self.emptyLabel.frame = self.scroll.bounds;
+    CGFloat gridHeight = self.items.count ? DXKeyboardPanelContentHeight(self.items.count, contentWidth, self.columns, self.scale) : 70;
+    self.scroll.contentSize = CGSizeMake(contentWidth, MAX(self.scroll.bounds.size.height, controlsHeight + gridHeight));
+    self.emptyLabel.frame = CGRectMake(0, controlsHeight, contentWidth, MAX(70, self.scroll.bounds.size.height - controlsHeight));
 }
 @end

@@ -9,7 +9,7 @@ BUNDLE_NAME = TypeXPrefs
 
 # Vendored AltList (com.opa334.altlist, MIT) — app-list controllers for the
 # 生效应用/打开应用 pages; see AltList/README-TypeX-vendor.md.
-TypeXPrefs_FILES = $(wildcard *.m) $(wildcard *.mm) $(wildcard AltList/*.m) ../DXPrefsManager.m ../DXShortcutsGenerator.m ../DXHelper.m ../DXAIEngine.m ../DXJavaScriptEngine.m
+TypeXPrefs_FILES = $(wildcard *.m) $(wildcard *.mm) $(wildcard AltList/*.m) ../DXPrefsManager.m ../DXShortcutsGenerator.m ../DXHelper.m ../DXAIEngine.m ../DXJavaScriptEngine.m ../DXPanelSystemControlsView.m
 TypeXPrefs_INSTALL_PATH = /Library/PreferenceBundles
 TypeXPrefs_FRAMEWORKS = UIKit CoreGraphics SwiftUI MobileCoreServices JavaScriptCore UniformTypeIdentifiers
 TypeXPrefs_PRIVATE_FRAMEWORKS = Preferences AppSupport

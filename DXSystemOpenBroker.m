@@ -3,6 +3,9 @@
 #import "DXQuickActionProvider.h"
 #import "DXSystemActionCatalog.h"
 #import "DXSystemActionExecutor.h"
+#import "DXPanelControlState.h"
+#import "DXKeyboardPanelPreferences.h"
+#import <notify.h>
 #import "common.h"
 #import <objc/message.h>
 #import <dlfcn.h>
@@ -58,6 +61,36 @@ static void DXPerformSystemOpen(NSDictionary *request, DXSystemOpenReply reply) 
     NSString *payload = request[@"payload"];
     if (![kind isKindOfClass:NSString.class] || ![payload isKindOfClass:NSString.class] || !payload.length) {
         reply(DXSystemOpenInvalid);
+        return;
+    }
+    if ([kind isEqual:@"panel-control"]) {
+        NSData *data = [payload dataUsingEncoding:NSUTF8StringEncoding];
+        NSDictionary *control = data.length <= 1024 ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+        if (!DXPanelControlRequestValid(control)) { reply(DXSystemOpenInvalid); return; }
+        NSTimeInterval age = NSDate.date.timeIntervalSince1970 - [request[@"created"] doubleValue];
+        // A drag queued behind a busy SpringBoard must not be applied later.
+        if (!(age >= 0 && age <= 1.5)) { reply(DXSystemOpenExpired); return; }
+        DXPrefsManager *manager = DXPrefsManager.sharedInstance;
+        if (!manager.preferencesAvailable) [manager reload];
+        NSString *enabledKey = [control[@"source"] isEqual:@"top"] ? kDXPanelTopEnabled : kDXPanelBottomEnabled;
+        if (!manager.preferencesAvailable || !DXKeyboardPanelBool(manager.prefs, enabledKey, YES)) { reply(DXSystemOpenUnavailable); return; }
+        int token = NOTIFY_TOKEN_INVALID;
+        NSString *slot = DXPanelControlStateSlot(control[@"token"]);
+        uint64_t word = 0;
+        if (notify_register_check(slot.UTF8String, &token) != NOTIFY_STATUS_OK) { reply(DXSystemOpenUnavailable); return; }
+        if (notify_get_state(token, &word) != NOTIFY_STATUS_OK || word != DXPanelControlPendingWord) {
+            notify_cancel(token); reply(DXSystemOpenExpired); return;
+        }
+        DXSystemOpenResult result = DXSystemOpenFailed;
+        @try {
+            result = DXPerformPanelSystemControl(control[@"action"], control[@"value"]);
+            NSDictionary *state = DXReadPanelSystemControlState();
+            if (!state || notify_set_state(token, DXPanelControlEncodeState(state)) != NOTIFY_STATUS_OK)
+                result = DXSystemOpenUnavailable;
+        } @finally { notify_cancel(token); }
+        if (![control[@"action"] isEqual:@"state"] || result != DXSystemOpenSucceeded)
+            NSLog(@"[TypeX][PanelControl] action=%@ result=%llu", control[@"action"], (unsigned long long)result);
+        reply(result);
         return;
     }
     if ([kind isEqualToString:@"system-action"]) {
@@ -185,4 +218,63 @@ void DXOpenSystemShortcut(NSString *bundleIdentifier, NSString *shortcutType, DX
         return;
     }
     DXSubmitSystemOpen(@"quick-action", [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding], reply);
+}
+
+// NSProgress may dispatch cancellationHandler asynchronously. Revoke the
+// request-owned slot synchronously when the keyboard panel closes on main.
+@interface DXPanelControlOperation : NSProgress
+@property(nonatomic, copy) void (^invalidateSlot)(void);
+@end
+@implementation DXPanelControlOperation
+- (void)cancel {
+    void (^invalidate)(void) = self.invalidateSlot;
+    if (invalidate) {
+        if (NSThread.isMainThread) invalidate();
+        else dispatch_async(dispatch_get_main_queue(), invalidate);
+    }
+    [super cancel];
+}
+@end
+
+NSProgress *DXRequestPanelSystemControl(NSString *action, NSNumber *value, NSString *source, DXPanelSystemControlReply reply) {
+    DXPanelControlOperation *operation = [[DXPanelControlOperation alloc] initWithParent:nil userInfo:nil];
+    operation.totalUnitCount = 1;
+    if (!NSThread.isMainThread) {
+        if (reply) dispatch_async(dispatch_get_main_queue(), ^{ reply(DXSystemOpenUnavailable, nil); });
+        return operation;
+    }
+    NSMutableDictionary *request = [@{@"action": action ?: @"", @"source": source ?: @"", @"token": NSUUID.UUID.UUIDString} mutableCopy];
+    if (value) request[@"value"] = value;
+    if (!DXPanelControlRequestValid(request)) {
+        if (reply) dispatch_async(dispatch_get_main_queue(), ^{ if (!operation.cancelled) reply(DXSystemOpenInvalid, nil); });
+        return operation;
+    }
+    int token = NOTIFY_TOKEN_INVALID;
+    NSString *slot = DXPanelControlStateSlot(request[@"token"]);
+    if (notify_register_check(slot.UTF8String, &token) != NOTIFY_STATUS_OK) {
+        if (reply) dispatch_async(dispatch_get_main_queue(), ^{ if (!operation.cancelled) reply(DXSystemOpenUnavailable, nil); });
+        return operation;
+    }
+    __block BOOL cleaned = NO;
+    void (^cleanup)(void) = ^{
+        if (cleaned) return;
+        cleaned = YES;
+        notify_set_state(token, 0);
+        notify_cancel(token);
+    };
+    operation.invalidateSlot = cleanup;
+    if (notify_set_state(token, DXPanelControlPendingWord) != NOTIFY_STATUS_OK) {
+        cleanup();
+        if (reply) dispatch_async(dispatch_get_main_queue(), ^{ if (!operation.cancelled) reply(DXSystemOpenUnavailable, nil); });
+        return operation;
+    }
+    NSData *data = [NSJSONSerialization dataWithJSONObject:request options:0 error:nil];
+    DXSubmitSystemOpen(@"panel-control", [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding], ^(DXSystemOpenResult result) {
+        uint64_t word = 0;
+        NSDictionary *state = !cleaned && notify_get_state(token, &word) == NOTIFY_STATUS_OK ? DXPanelControlDecodeState(word) : nil;
+        cleanup();
+        if (result == DXSystemOpenSucceeded && !state) result = DXSystemOpenUnavailable;
+        if (!operation.cancelled && reply) reply(result, state);
+    });
+    return operation;
 }

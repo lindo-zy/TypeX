@@ -91,6 +91,46 @@ static id DXSystemShared(NSString *className, NSString *selector) {
     return DXSystemInvoke(NSClassFromString(className), selector, @[], &result) ? result : nil;
 }
 
+static id DXSystemObjectIvar(id owner, const char *name) {
+    Ivar ivar = owner ? class_getInstanceVariable([owner class], name) : NULL;
+    const char *type = ivar ? ivar_getTypeEncoding(ivar) : NULL;
+    return type && type[0] == '@' ? object_getIvar(owner, ivar) : nil;
+}
+static id DXSystemVolumeControl(void) {
+    Class cls = NSClassFromString(@"SBVolumeControl");
+    if ([cls respondsToSelector:NSSelectorFromString(@"sharedInstance")]) {
+        id control = DXSystemShared(@"SBVolumeControl", @"sharedInstance");
+        if (control) return control;
+    }
+    return DXSystemObjectIvar(DXSystemShared(@"SBMediaController", @"sharedInstance"), "_volumeControl") ?:
+        DXSystemObjectIvar(DXSystemShared(@"SBUIController", @"sharedInstance"), "_volumeControl");
+}
+static id DXSystemFlashlight(void) {
+    static id flashlight;
+    if (!flashlight) flashlight = [NSClassFromString(@"AVFlashlight") new];
+    return flashlight;
+}
+static id DXSystemRingerControl(void) {
+    id workspace = DXSystemShared(@"SBMainWorkspace", @"sharedInstance"), ringer = nil;
+    if ([workspace respondsToSelector:NSSelectorFromString(@"ringerControl")])
+        DXSystemInvoke(workspace, @"ringerControl", @[], &ringer);
+    return ringer ?: DXSystemObjectIvar(DXSystemVolumeControl(), "_ringerControl");
+}
+static NSString *DXSystemAvailableGetter(id target, NSArray<NSString *> *names) {
+    for (NSString *name in names) if ([target respondsToSelector:NSSelectorFromString(name)]) return name;
+    return nil;
+}
+static NSNumber *DXSystemPanelValue(id target, NSString *getter) {
+    id value = nil;
+    return getter && [target respondsToSelector:NSSelectorFromString(getter)] &&
+        DXSystemInvoke(target, getter, @[], &value) && [value isKindOfClass:NSNumber.class] ? value : nil;
+}
+static id DXSystemPanelVolumeTarget(void) {
+    id media = DXSystemShared(@"SBMediaController", @"sharedInstance");
+    if ([media respondsToSelector:NSSelectorFromString(@"volume")] && [media respondsToSelector:NSSelectorFromString(@"setVolume:")]) return media;
+    return DXSystemVolumeControl();
+}
+
 static DXSystemOpenResult DXSystemToggle(id target, NSString *getter, NSString *setter) {
     id state = nil;
     if (!DXSystemInvoke(target, getter, @[], &state) || ![state isKindOfClass:NSNumber.class]) return DXSystemOpenUnavailable;
@@ -187,19 +227,11 @@ DXSystemOpenResult DXPerformSystemAction(NSString *action) {
         return DXSystemOpenSucceeded;
     }
     if ([action isEqual:@"volume-up"] || [action isEqual:@"volume-down"]) {
-        id media = DXSystemShared(@"SBMediaController", @"sharedInstance");
-        id volume = nil;
-        for (id owner in @[media ?: NSNull.null, DXSystemShared(@"SBUIController", @"sharedInstance") ?: NSNull.null]) {
-            Ivar ivar = class_getInstanceVariable([owner class], "_volumeControl");
-            const char *type = ivar ? ivar_getTypeEncoding(ivar) : NULL;
-            if (type && type[0] == '@') volume = object_getIvar(owner, ivar);
-            if (volume) break;
-        }
+        id volume = DXSystemVolumeControl();
         return DXSystemCall(volume, [action isEqual:@"volume-up"] ? @"increaseVolume" : @"decreaseVolume", @[]);
     }
     if ([action isEqual:@"flashlight"]) {
-        static id flashlight;
-        if (!flashlight) flashlight = [NSClassFromString(@"AVFlashlight") new];
+        id flashlight = DXSystemFlashlight();
         id level = nil;
         if (!DXSystemInvoke(flashlight, @"flashlightLevel", @[], &level) || ![level isKindOfClass:NSNumber.class]) return DXSystemOpenUnavailable;
         return DXSystemCall(flashlight, @"setFlashlightLevel:withError:", @[@([level floatValue] > 0 ? 0.0f : 1.0f), NSNull.null]);
@@ -221,4 +253,58 @@ DXSystemOpenResult DXPerformSystemAction(NSString *action) {
         return DXSystemCall(service, @"sendActions:withResult:", @[[NSSet setWithObject:relaunch], NSNull.null]);
     }
     return DXSystemCall(service, [action isEqual:@"shutdown"] ? @"shutdown" : @"reboot", @[]);
+}
+
+// Fixed safe controls use their own whitelist in the broker. They do not add
+// definitions to the custom-action directory or expose destructive actions.
+NSDictionary *DXReadPanelSystemControlState(void) {
+    if (!NSThread.isMainThread || ![NSProcessInfo.processInfo.processName isEqual:@"SpringBoard"]) return nil;
+    DXLoadSystemActionFrameworks();
+    NSMutableDictionary *state = [NSMutableDictionary dictionary];
+    id flashlight = DXSystemFlashlight();
+    NSNumber *level = DXSystemPanelValue(flashlight, @"flashlightLevel");
+    if (level && [flashlight respondsToSelector:NSSelectorFromString(@"setFlashlightLevel:withError:")]) state[@"flashlight"] = @(level.floatValue > 0);
+    id wifi = DXSystemShared(@"SBWiFiManager", @"sharedInstance");
+    NSNumber *enabled = DXSystemPanelValue(wifi, @"wiFiEnabled");
+    if (enabled && [wifi respondsToSelector:NSSelectorFromString(@"setWiFiEnabled:")]) state[@"wifi"] = @([enabled boolValue]);
+    id arbiter = DXSystemShared(@"UIUserInterfaceStyleArbiter", @"sharedInstance");
+    NSNumber *style = DXSystemPanelValue(arbiter, @"currentStyle");
+    if (style && [arbiter respondsToSelector:NSSelectorFromString(@"toggleCurrentStyle")]) state[@"dark-mode"] = @(style.integerValue == UIUserInterfaceStyleDark);
+    id lock = DXSystemShared(@"SBOrientationLockManager", @"sharedInstance");
+    NSNumber *locked = DXSystemPanelValue(lock, @"isUserLocked");
+    if (locked && [lock respondsToSelector:NSSelectorFromString(@"unlock")] &&
+        ([lock respondsToSelector:NSSelectorFromString(@"lock")] || [lock respondsToSelector:NSSelectorFromString(@"lock:")])) state[@"orientation-lock"] = @([locked boolValue]);
+    id ringer = DXSystemRingerControl();
+    NSString *getter = DXSystemAvailableGetter(ringer, @[@"isRingerMuted", @"_accessibilityIsRingerMuted"]);
+    NSNumber *muted = DXSystemPanelValue(ringer, getter);
+    if (muted && ([ringer respondsToSelector:NSSelectorFromString(@"setRingerMuted:")] ||
+        [ringer respondsToSelector:NSSelectorFromString(@"setRingerMuted:withFeedback:reason:clientType:")])) state[@"silent"] = @([muted boolValue]);
+    id volume = DXSystemPanelVolumeTarget();
+    getter = DXSystemAvailableGetter(volume, @[@"_getMediaVolumeForIAP", @"getMediaVolume", @"volume"]);
+    NSNumber *mediaLevel = DXSystemPanelValue(volume, getter);
+    if (mediaLevel && ([volume respondsToSelector:NSSelectorFromString(@"_setMediaVolumeForIAP:")] ||
+        [volume respondsToSelector:NSSelectorFromString(@"setMediaVolume:")] || [volume respondsToSelector:NSSelectorFromString(@"setVolume:")])) state[@"volume"] = mediaLevel;
+    state[@"brightness"] = @(UIScreen.mainScreen.brightness);
+    return state;
+}
+DXSystemOpenResult DXPerformPanelSystemControl(NSString *action, NSNumber *value) {
+    if (!NSThread.isMainThread || ![NSProcessInfo.processInfo.processName isEqual:@"SpringBoard"]) return DXSystemOpenUnavailable;
+    DXLoadSystemActionFrameworks();
+    if ([action isEqual:@"state"]) return DXSystemOpenSucceeded;
+    if ([action isEqual:@"brightness"] || [action isEqual:@"volume"]) {
+        if (![value isKindOfClass:NSNumber.class] || !isfinite(value.doubleValue) || value.doubleValue < 0 || value.doubleValue > 1) return DXSystemOpenInvalid;
+        if ([action isEqual:@"brightness"]) { UIScreen.mainScreen.brightness = value.doubleValue; return DXSystemOpenSucceeded; }
+        return DXSystemCallFirstAvailable(DXSystemPanelVolumeTarget(), @[@[@"_setMediaVolumeForIAP:", @[value]],
+            @[@"setMediaVolume:", @[value]], @[@"setVolume:", @[value]]]);
+    }
+    if ([action isEqual:@"silent"]) {
+        id ringer = DXSystemRingerControl();
+        NSNumber *muted = DXSystemPanelValue(ringer, DXSystemAvailableGetter(ringer, @[@"isRingerMuted", @"_accessibilityIsRingerMuted"]));
+        if (!muted) return DXSystemOpenUnavailable;
+        NSNumber *next = @(!muted.boolValue);
+        return DXSystemCallFirstAvailable(ringer, @[@[@"setRingerMuted:", @[next]],
+            @[@"setRingerMuted:withFeedback:reason:clientType:", @[next, @NO, @"TypeXPanel", @0]]]);
+    }
+    if ([@[@"flashlight", @"wifi", @"dark-mode", @"orientation-lock"] containsObject:action]) return DXPerformSystemAction(action);
+    return DXSystemOpenInvalid;
 }

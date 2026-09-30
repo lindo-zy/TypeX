@@ -11,11 +11,11 @@
 @end
 @implementation DXPKeyboardPanelPreviewHeader
 - (instancetype)initWithSide:(NSString *)side allowsSelection:(BOOL)allowsSelection {
-    if ((self = [super initWithFrame:CGRectMake(0, 0, 320, allowsSelection ? 366 : 326)])) {
+    if ((self = [super initWithFrame:CGRectMake(0, 0, 320, allowsSelection ? 476 : 436)])) {
         self.side = side;
         self.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         self.caption = [UILabel new];
-        self.caption.text = @"面板预览";
+        self.caption.text = @"面板预览（顶部状态为示意）";
         self.caption.textColor = UIColor.secondaryLabelColor;
         self.caption.font = [UIFont systemFontOfSize:13];
         [self addSubview:self.caption];
@@ -44,6 +44,6 @@
     self.caption.frame = CGRectMake(20, 12, width, 20);
     CGFloat top = 40;
     if (self.selector) { self.selector.frame = CGRectMake(16, top, width, 32); top += 40; }
-    self.preview.frame = CGRectMake(16, top, width, 270);
+    self.preview.frame = CGRectMake(16, top, width, 380);
 }
 @end
