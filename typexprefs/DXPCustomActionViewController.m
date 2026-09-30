@@ -388,19 +388,17 @@ static NSBundle *tweakBundle;
 #pragma mark - Edit and delete
 
 - (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
-    return self.customActionsOnly && indexPath.section == self.customActionsSection &&
-        indexPath.row < (NSInteger)self.linkActions.count;
+    return (self.customActionsOnly || self.allowsDeletingCustomActions) && indexPath.section == self.customActionsSection &&
+        indexPath.row >= 0 && indexPath.row < (NSInteger)self.linkActions.count;
 }
 
 - (UITableViewCellEditingStyle)tableView:(UITableView *)tableView editingStyleForRowAtIndexPath:(NSIndexPath *)indexPath {
-    return self.customActionsOnly && indexPath.section == self.customActionsSection &&
-        indexPath.row < (NSInteger)self.linkActions.count
+    return [self tableView:tableView canEditRowAtIndexPath:indexPath]
         ? UITableViewCellEditingStyleDelete : UITableViewCellEditingStyleNone;
 }
 
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (editingStyle != UITableViewCellEditingStyleDelete || indexPath.section != self.customActionsSection ||
-        indexPath.row >= (NSInteger)self.linkActions.count) return;
+    if (editingStyle != UITableViewCellEditingStyleDelete || ![self tableView:tableView canEditRowAtIndexPath:indexPath]) return;
     NSString *selector = self.linkActions[indexPath.row][@"selector"];
     [self.linkActions removeObjectAtIndex:indexPath.row];
     self.prefs[kLinkActionskey] = self.linkActions;
@@ -411,12 +409,11 @@ static NSBundle *tweakBundle;
     [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
 }
 
-// Management page only: the picker keeps delete reachable through edit mode.
-// There is no leading-swipe 编辑 any more — tapping a row already opens its
-// editor.
+// Delete is available in normal browsing, without an edit/sort mode. Capture
+// the stable selector so reloads cannot turn an old swipe into another deletion.
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (!self.customActionsOnly || indexPath.section != self.customActionsSection ||
-        indexPath.row >= (NSInteger)self.linkActions.count) return nil;
+    if (![self tableView:tableView canEditRowAtIndexPath:indexPath]) return nil;
+    NSString *selector = self.linkActions[indexPath.row][@"selector"];
     __weak typeof(self) weakSelf = self;
     UIContextualAction *delete = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive
                                                                          title:LOCALIZED(@"DELETE")
@@ -424,12 +421,15 @@ static NSBundle *tweakBundle;
                                                                                  __unused UIView *sourceView,
                                                                                  void (^completionHandler)(BOOL)) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (strongSelf) [strongSelf tableView:strongSelf.tableView
-                            commitEditingStyle:UITableViewCellEditingStyleDelete
-                             forRowAtIndexPath:indexPath];
-        completionHandler(strongSelf != nil);
+        NSIndexPath *currentPath = [strongSelf indexPathForSelector:selector];
+        BOOL canDelete = strongSelf && currentPath && [strongSelf tableView:strongSelf.tableView canEditRowAtIndexPath:currentPath];
+        if (canDelete) [strongSelf tableView:strongSelf.tableView
+            commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:currentPath];
+        completionHandler(canDelete);
     }];
-    return [UISwipeActionsConfiguration configurationWithActions:@[delete]];
+    UISwipeActionsConfiguration *configuration = [UISwipeActionsConfiguration configurationWithActions:@[delete]];
+    configuration.performsFirstActionWithFullSwipe = NO;
+    return configuration;
 }
 
 #pragma mark - Lifecycle

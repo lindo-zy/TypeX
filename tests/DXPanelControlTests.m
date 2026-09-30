@@ -109,6 +109,29 @@ int main(void) {
         DXPanelControlSession *invalidated = [[DXPanelControlSession alloc] initWithRequester:^NSProgress *(__unused NSString *action, __unused NSNumber *value, __unused DXPanelSystemControlReply reply) { check(NO); return nil; }
             validity:^BOOL { return valid; } update:nil];
         valid = NO; [invalidated enqueueAction:@"state" value:nil]; check(!invalidated.busy);
+        // Idle state polling must never send a busy/disabled UI marker. The
+        // transport stays single-flight, and a queued real toggle still locks
+        // the buttons when it is submitted.
+        NSMutableArray *pollCalls = [NSMutableArray array], *pollReplies = [NSMutableArray array], *uiBusy = [NSMutableArray array];
+        DXPanelControlSession *polling = [[DXPanelControlSession alloc] initWithRequester:^NSProgress *(NSString *action, __unused NSNumber *value, DXPanelSystemControlReply reply) {
+            [pollCalls addObject:action]; [pollReplies addObject:[reply copy]];
+            return [NSProgress discreteProgressWithTotalUnitCount:1];
+        } validity:^BOOL { return YES; } update:^(__unused DXSystemOpenResult result, __unused NSDictionary *state, BOOL busy, __unused NSString *action) {
+            [uiBusy addObject:@(busy)];
+        }];
+        [polling enqueueAction:@"state" value:nil];
+        check(polling.busy && pollCalls.count == 1 && !uiBusy.count);
+        ((DXPanelSystemControlReply)pollReplies[0])(DXSystemOpenSucceeded, @{@"wifi": @YES}); drain(0.03);
+        check(uiBusy.count == 1 && ![uiBusy.lastObject boolValue]);
+        drain(1.1);
+        check(polling.busy && pollCalls.count == 2 && uiBusy.count == 1);
+        [polling enqueueAction:@"wifi" value:nil];
+        check(pollCalls.count == 2 && uiBusy.count == 1);
+        ((DXPanelSystemControlReply)pollReplies[1])(DXSystemOpenSucceeded, @{@"wifi": @YES}); drain(0.03);
+        check(pollCalls.count == 3 && [pollCalls.lastObject isEqual:@"wifi"] && [uiBusy.lastObject boolValue]);
+        ((DXPanelSystemControlReply)pollReplies[2])(DXSystemOpenSucceeded, @{@"wifi": @NO}); drain(0.03);
+        check(!polling.busy && ![uiBusy.lastObject boolValue]);
+        [polling invalidate];
         NSProgress *operation = DXRequestPanelSystemControl(@"state", nil, @"top", ^(DXSystemOpenResult result, NSDictionary *state) {
             mockCallbacks++; check(result == DXSystemOpenSucceeded && [state[@"wifi"] boolValue]);
         });

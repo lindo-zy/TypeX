@@ -21,6 +21,12 @@
 }
 - (void)setValue:(float)value { _value = MIN(1, MAX(0, value)); [self setNeedsLayout]; }
 - (void)setEnabled:(BOOL)enabled { [super setEnabled:enabled]; self.alpha = enabled ? 1 : 0.35; }
+- (void)configureDark:(BOOL)dark {
+    // The white fill needs a fixed capsule outline against a light panel,
+    // including at 100%, when no unfilled track remains visible.
+    self.layer.borderWidth = dark ? 0 : 1;
+    self.layer.borderColor = dark ? NULL : [UIColor colorWithWhite:0.35 alpha:0.8].CGColor;
+}
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat width = self.bounds.size.width, height = self.bounds.size.height;
@@ -90,6 +96,7 @@
 }
 - (void)configureDark:(BOOL)dark preview:(BOOL)preview {
     self.dark = dark; self.preview = preview; self.userInteractionEnabled = !preview;
+    [self.brightness configureDark:dark]; [self.volume configureDark:dark];
     if (preview) self.state = @{@"flashlight": @NO, @"wifi": @YES, @"silent": @YES, @"dark-mode": @NO, @"orientation-lock": @YES, @"brightness": @0.62, @"volume": @0.38};
     [self applyState:self.state ?: @{} busy:NO];
 }
@@ -106,7 +113,9 @@
         BOOL known = [value isKindOfClass:NSNumber.class], on = known && value.boolValue;
         button.backgroundColor = on ? UIColor.systemBlueColor : (self.dark ? [UIColor colorWithWhite:0 alpha:0.5] : [UIColor colorWithWhite:0.8 alpha:0.65]);
         button.tintColor = on || self.dark ? UIColor.whiteColor : UIColor.labelColor;
-        button.alpha = known ? 1 : 0.35; button.enabled = known && !busy;
+        button.alpha = known ? 1 : 0.35;
+        BOOL enabled = known && !busy;
+        if (button.enabled != enabled) button.enabled = enabled;
         button.accessibilityValue = known ? (on ? @"已开启" : @"已关闭") : @"不可用";
         self.labels[index].textColor = self.dark ? UIColor.whiteColor : UIColor.labelColor;
     }

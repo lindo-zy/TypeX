@@ -3,6 +3,7 @@
 #import "DXPOpenAppPickerController.h"
 #import "DXPAppShortcutPickerController.h"
 #import "DXPSystemActionPickerController.h"
+#import "DXPKeyboardAvoider.h"
 #import "../DXSystemActionCatalog.h"
 #import "DXPJavaScriptTestController.h"
 #import "../DXHelper.h"
@@ -144,6 +145,10 @@ static NSInteger const DXLegacyRowLink = 2;
 @property (nonatomic, strong) NSMutableArray<NSString *> *textRecords;
 @property (nonatomic, strong) UISegmentedControl *jsInputControl;
 @property (nonatomic, strong) UISegmentedControl *jsOutputControl;
+// Keeps the 脚本源码 / URL Scheme payload box and the field rows above the
+// keyboard: this controller builds its own UITableView, so Preferences does
+// no automatic keyboard avoidance for it.
+@property (nonatomic, strong) DXPKeyboardAvoider *keyboardAvoider;
 @end
 
 @implementation DXPLinkActionEditorController {
@@ -1019,6 +1024,8 @@ static NSInteger const DXLegacyRowLink = 2;
     [self.tableView registerClass:[DXPLinkActionValueCell class] forCellReuseIdentifier:@"DXPLinkActionValueCell"];
     [self.tableView registerClass:[DXPLinkActionTextCell class] forCellReuseIdentifier:@"DXPLinkActionTextCell"];
     self.view = self.tableView;
+    self.keyboardAvoider = [[DXPKeyboardAvoider alloc] initWithTableView:self.tableView];
+    [self.keyboardAvoider start];
 
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:LOCALIZED(@"SAVE")
                                                                               style:UIBarButtonItemStyleDone

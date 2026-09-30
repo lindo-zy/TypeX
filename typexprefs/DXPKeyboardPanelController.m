@@ -17,7 +17,15 @@ static NSString *DXPanelLocalized(NSString *key) {
 @interface DXPKeyboardPanelActionPicker : DXPSubActionPickerController
 @end
 @implementation DXPKeyboardPanelActionPicker
+- (void)viewDidLoad {
+    self.allowsDeletingCustomActions = YES;
+    [super viewDidLoad];
+}
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { (void)tableView; return 1; }
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+    (void)tableView; (void)section;
+    return DXPanelLocalized(@"KEYBOARD_PANEL_PICKER_DELETE_FOOTER");
+}
 @end
 
 @interface DXPKeyboardPanelController ()
@@ -254,6 +262,9 @@ static NSString *DXPanelLocalized(NSString *key) {
     picker.multiSelectionCompletion = ^(NSArray<NSString *> *selectors) {
         __strong typeof(weakSelf) self = weakSelf;
         if (!self) return;
+        // The picker can delete definitions and saved panel references. Start
+        // from that latest configuration instead of restoring the parent's copy.
+        self.entries = [self configuredEntries];
         for (NSString *selector in selectors) {
             if (DXIsLinkActionSelector(selector) && [self definitionForSelector:selector])
                 [self.entries addObject:@{@"id": NSUUID.UUID.UUIDString, @"selector": selector}];
@@ -271,11 +282,13 @@ static NSString *DXPanelLocalized(NSString *key) {
     __weak typeof(self) weakSelf = self;
     picker.completion = ^(NSString *selector) {
         __strong typeof(weakSelf) self = weakSelf;
-        if (!self || row >= (NSInteger)self.entries.count || ![self.entries[row] isEqual:original] ||
-            !DXIsLinkActionSelector(selector) || ![self definitionForSelector:selector]) return;
+        if (!self || !DXIsLinkActionSelector(selector) || ![self definitionForSelector:selector]) return;
+        self.entries = [self configuredEntries];
+        NSUInteger currentRow = [self.entries indexOfObject:original];
+        if (currentRow == NSNotFound) return;
         NSMutableDictionary *entry = [original mutableCopy];
         entry[@"selector"] = selector;
-        self.entries[row] = entry;
+        self.entries[currentRow] = entry;
         [self save];
         [self.table reloadData];
     };

@@ -54,7 +54,9 @@
     self.busy = YES;
     NSUInteger serial = ++self.serial;
     self.nextWrite = NSProcessInfo.processInfo.systemUptime + 0.1;
-    if (self.update) self.update(DXSystemOpenSucceeded, nil, YES, @"state");
+    // Background reads share the transport flight guard, but must not put the
+    // UI into its disabled state every second. Only writes block further taps.
+    if (self.update && ![action isEqual:@"state"]) self.update(DXSystemOpenSucceeded, nil, YES, @"state");
     __weak typeof(self) weakSelf = self;
     NSProgress *operation = self.requester(action, value == NSNull.null ? nil : value, ^(DXSystemOpenResult result, NSDictionary *state) {
         dispatch_async(dispatch_get_main_queue(), ^{

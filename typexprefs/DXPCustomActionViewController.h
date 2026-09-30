@@ -17,11 +17,12 @@
 // multiSelectionCompletion when the Done button taps out.
 @property (nonatomic, assign) BOOL allowsMultipleSelection;
 @property (nonatomic, copy) void (^multiSelectionCompletion)(NSArray<NSString *> *selectors);
-// Standalone 自定义动作 management mode: the ONLY place custom actions are
-// added or edited. The built-in action section is hidden, tapping a custom
-// row opens its editor, and custom rows gain swipe delete. Picker modes list
-// custom actions for selection only — no add row, no editing.
+// Standalone management mode hides built-ins and opens a row's editor on tap.
+// Picker extensions opt into in-place creation/deletion separately.
 @property (nonatomic, assign) BOOL customActionsOnly;
+// Delete custom definitions and their saved references from an opted-in picker.
+// This does not enable edit mode, dragging, or deletion of built-in/add rows.
+@property (nonatomic, assign) BOOL allowsDeletingCustomActions;
 // Picker-mode extension for sub-action picking: the custom-action group stays
 // visible even with zero actions and grows a trailing "添加" row, so a missing
 // definition can be created in place instead of detouring through the
