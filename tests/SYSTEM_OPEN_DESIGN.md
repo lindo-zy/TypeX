@@ -97,7 +97,7 @@ activation/reply, failure and exception paths, cancellation before/during delive
 expiry before/during delivery, and `itms-services:` without Settings activation.
 These tests verify scheduling and lifecycle logic, not Apple's private API behavior.
 
-Run `./build-roothide-ios.sh` for the project's two RootHide artifacts. Tests
+Run `./build.sh` for the project's two RootHide artifacts. Tests
 under this directory are not included by the tweak's root-level source wildcard.
 
 These checks establish source, transport and package behavior. They do not

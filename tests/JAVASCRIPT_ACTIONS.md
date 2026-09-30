@@ -81,7 +81,7 @@ CPU 限制使用运行时查找的 `JSContextGroupSetExecutionTimeLimit`；接�
 
 已有打开动作回归：`python3 tests/run-darwin-open-channel.py`、`python3 tests/run-sensitive-url-executor.py`。这些验证跨进程通道/调度，不代表设备 URL 或 App 行为已经验证。
 
-只用项目 `build-roothide-ios.sh` 打包。`TYPEX_SKIP_BUILD_NOTIFICATION=1` 可在本地验证时关闭构建通知，不修改既有通知配置；普通调用默认行为保持原样。
+只用项目 `build.sh` 打包。`TYPEX_SKIP_BUILD_NOTIFICATION=1` 可在本地验证时关闭构建通知，不修改既有通知配置；普通调用默认行为保持原样。
 
 设备验收（iOS 16 和 iOS 17 均需逐项进行，目前未验证）：
 

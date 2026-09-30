@@ -277,7 +277,7 @@ async function roll() {
 依赖 [Theos](https://github.com/theos/theos)（含 iPhoneOS 16.5 SDK）。执行：
 
 ```bash
-./build-roothide-ios.sh
+./build.sh
 ```
 
 脚本会依次构建 `ios16`、`ios17` 两个变体，产物输出到 `packages/ios16/`、`packages/ios17/`，并在两次构建完成后自动推进 `control` 中的版本号（PATCH 满 10 进位到 MINOR）。测试引擎等纯逻辑模块可用 `tests/run-*.py` 本地运行。

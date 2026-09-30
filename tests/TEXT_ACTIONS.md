@@ -6,7 +6,7 @@
 
 - `python3 tests/run-text-actions.py`：提取实际运行时分派方法，用 Foundation spy 验证原样文本、单条直插、多条有序列表、重复内容、异常配置和旧格式拒绝；不验证 UIKit。
 - `python3 tests/run-gesture-actions.py`：现有手势绑定、上下工具栏隔离、顺序及删除回归。
-- `TYPEX_SKIP_BUILD_NOTIFICATION=1 ./build-roothide-ios.sh`：项目脚本生成 iOS 16/17 RootHide 包。
+- `TYPEX_SKIP_BUILD_NOTIFICATION=1 ./build.sh`：项目脚本生成 iOS 16/17 RootHide 包。
 - 检查包内 TypeX / TypeXPrefs 的 arm64、arm64e 架构，新的记录编辑器及分派符号，中英文资源；确认旧文本模板符号已移除。
 
 ## 真机步骤（尚未验证）

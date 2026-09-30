@@ -45,7 +45,7 @@ jobs:
           test -x "${THEOS}/bin/ldid" || command -v ldid
           xcodebuild -version
           make --version | head -n 1
-          bash -n build-roothide-ios.sh
+          bash -n build.sh
           echo "Using THEOS=${THEOS}"
 
       - name: Build package
@@ -54,7 +54,7 @@ jobs:
           THEOS_PACKAGE_SCHEME: roothide
         run: |
           set -euo pipefail
-          ./build-roothide-ios.sh
+          ./build.sh
 
       - name: Verify and rename packages
         shell: bash
