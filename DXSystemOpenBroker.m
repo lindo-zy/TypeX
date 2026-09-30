@@ -104,6 +104,12 @@ static void DXPerformSystemOpen(NSDictionary *request, DXSystemOpenReply reply) 
         if (!DXSystemActionIsConfigured(manager.prefs[kLinkActionskey], payload, kLinkActionSelectorPrefix)) {
             reply(DXSystemOpenInvalid); return;
         }
+        if (DXSystemActionIsRecording(payload)) {
+            // ReplayKit acknowledges asynchronously. Its separate flight guard
+            // survives unrelated foreground requests and never retries on timeout.
+            DXPerformSystemRecordingAction(payload, reply);
+            return;
+        }
         NSProgress *operation = DXBeginSystemOpenOperation();
         if ([definition[@"destructive"] boolValue]) {
             // A transport success acknowledges the trusted SpringBoard prompt.

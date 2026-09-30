@@ -26,11 +26,12 @@
 | 设备 | 关机、重启设备 | FBSSystemService |
 | 设备 | 重启用户空间 | reboot3 指定 userspace 标志；不降级为整机重启 |
 | 控制中心 | 打开控制中心、方向锁定 | SBControlCenterController、SBOrientationLockManager |
+| 控制中心 | 录屏、开麦录屏 | SpringBoard 的 ReplayKit sharedRecorder 系统录屏接口，异步回复 |
 | 控制中心 | 手电筒、Wi-Fi、蓝牙、飞行、蜂窝 | AVFlashlight、SBWiFiManager、BluetoothManager、SBAirplaneModeController、CoreTelephony |
 | 控制中心 | 勿扰、深色模式 | DNDStateService + DNDToggleManager、UIUserInterfaceStyleArbiter |
 | 控制中心 | 亮度增减、音量增减 | UIScreen 每次 0.1（钳制 0–1）、SBVolumeControl 每次一档 |
 
-共 24 项。控制开关反转当前状态，Wi-Fi/蓝牙对应系统开关，不承诺与控制中心
+共 26 项。控制开关反转当前状态，Wi-Fi/蓝牙对应系统开关，不承诺与控制中心
 临时断连语义完全相同。勿扰只切换系统勿扰标识，不新增/管理其他专注模式。
 
 运行时检测类、selector、参数数量和 ABI；NSInvocation 按实际标量类型传参，
@@ -116,3 +117,60 @@ control 的既有 firmware>=14.0 元数据未变；实际 Mach-O deployment 为 
 核心功能未真机验证：本次没有安装或执行设备系统动作，也未验证 iOS 16/17 的权限、
 设置页实际显示/交互、预览即时刷新、搜索弹出键盘或远程键盘覆盖。自动检查使用生产代码和替身，
 不能证明这批私有 API 在两个目标版本均存在或所有动作已恢复。复测失败时需收集固定动作 ID 与对应 syslog。
+
+
+## 录屏动作与面板左滑删除
+
+问题：用户需要“录屏”“开麦录屏”，面板配置只有增加/排序入口，左滑无法删除。
+根因：系统目录与执行器未包含 ReplayKit；面板内容列表永久处于排序编辑模式，
+虽然存在 commitEditingStyle 删除回调，却没有正常浏览模式的滑动入口。
+涉及文件：DXSystemActionCatalog.h、DXSystemActionExecutor、DXSystemOpenBroker、
+DXSystemRecordingSession、面板内容控制器、系统选择器、本地化和相关测试。
+修改边界：仅添加两个固定系统动作及当前面板引用删除/排序入口；保留已存在的
+DXPLinkActionEditorController.m 未提交修改。不修改其他插件、基础动作、面板顶部控件、
+Darwin 协议或自定义动作定义的删除规则。
+
+实现：录屏动作经过既有配置白名单与时效校验，只有 SpringBoard 主线程加载公开
+ReplayKit framework 并获取 RPScreenRecorder.sharedRecorder。未录制时使用
+startSystemRecordingWithMicrophoneEnabled:handler:，传 NO / YES 区分两个动作；
+已有系统录制时，两者均调用 stopSystemRecording:，采用系统停止/保存路径，不调用
+返回临时 URL 的 stop，也不创建本地视频文件。普通 App 不执行 ReplayKit 权限调用。
+接口存在性、void 返回类型、BOOL 参数及 block 参数 ABI 不符则返回不可用。
+isRecording/systemRecording 不一致时拒绝，避免中断应用捕获/广播或未完成的切换。
+
+异步会话单独串行：原生回调后才回复成功/失败；启动/停止期间再次触发返回忙碌。
+7.5 秒无回调回复超时（结果未知）；主线程排队较久时传输可能先超时。两种超时均不重试，
+保留单次执行保护直到原生完成，或下一次
+用户触发时观察到目标终态。迟到/重复回调根据 generation 忽略，不更新新请求。
+回调回主线程，不持有 UI/window/Scene，使用弱会话引用避免 recorder/block 互相持有。
+仅记录 [TypeX][SystemRecording] 固定阶段、代次、麦克风标志与错误 domain/code；
+不记录路径、输入内容或写设备日志文件。系统已接受的原生录制不会因宿主切换而被擅自停止。
+
+参考 [ReplayKit 运行时头文件](https://raw.githubusercontent.com/userlandkernel/ios17-dyld-headers/master/ReplayKit/RPScreenRecorder.h)。
+该文件实际标注 iOS 18.2，提供接口形状参考，不能证明 iOS 16/17 可用性；运行时必须检测。
+同时参考 [iOS 16 ReplayKit 服务协议](https://raw.githubusercontent.com/lechium/iPhoneOS_16.0_20A5303f/master/System/Library/Frameworks/ReplayKit/RPDaemonProtocol-Protocol.h)，
+其中普通系统 start/stop 回调使用 NSError，URL 返回 stop 是独立接口；服务协议不等于
+RPScreenRecorder 类方法在目标设备可用的证明。
+目标系统的 native completion block 参数语义、SpringBoard entitlement、麦克风授权、
+系统状态初始化和自动相册保存仍需真机验证；方法存在不等同于系统允许执行。
+
+验证步骤：
+
+1. iOS 16/17 RootHide 冷/热启动后分别创建两个系统动作，保存并重进，加入面板/工具栏。
+2. 未录制时点击“录屏”，确认录制开始且麦克风关闭；再次点击停止，检查相册视频。
+3. 点击“开麦录屏”，确认麦克风开启并有声音；再次点击任一录屏动作停止，检查保存结果。
+4. 先在控制中心启动录屏，再从动作停止；应用捕获/广播期间不误停或开启另一录制。
+5. 启动/停止期间快速重复点击，切 App/收键盘，检查没有重复请求、旧提示或崩溃。
+6. 录屏受限制、麦克风不可用/未授权、接口缺失/系统服务拒绝时，应收到对应失败而非假成功。
+7. 左右/通用配置左滑删除，预览与重进结果一致；定义和其他面板引用保留，可重新添加。
+
+自动测试实际编译 DXSystemRecordingSession.m，以原生录屏替身验证麦克风参数、
+异步回复、错误、重复/过期回调、签名拒绝、忙碌和超时不重试。它不会录制设备屏幕，
+也不能验证 UIKit 左滑、麦克风音轨或系统相册保存。
+
+
+本次结果（3.9.7）：源码与 diff 检查通过；67 项系统/面板逻辑、39 项异步录屏
+检查通过。既有设置/布局、面板控制、手势/几何、文本和 Darwin 通道回归通过。
+./build.sh 成功构建 iOS 16/17 两套包，版本由 3.9.6 推进至 3.9.7。
+真机未安装或录屏：麦克风授权/音轨、照片保存、外部控制中心录屏同步、冷/热启动
+及左滑删除/排序真实 UIKit 交互均未验证。

@@ -1,6 +1,7 @@
 #import "DXSystemActionExecutor.h"
 #import "DXSystemActionCatalog.h"
 #import "DXSystemActionCompatibility.h"
+#import "DXSystemRecordingSession.h"
 #import "common.h"
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
@@ -89,6 +90,23 @@ static void DXLoadSystemActionFrameworks(void) {
 static id DXSystemShared(NSString *className, NSString *selector) {
     id result = nil;
     return DXSystemInvoke(NSClassFromString(className), selector, @[], &result) ? result : nil;
+}
+
+void DXPerformSystemRecordingAction(NSString *action, DXSystemOpenReply reply) {
+    if (!DXSystemActionIsRecording(action)) { if (reply) reply(DXSystemOpenInvalid); return; }
+    if (![NSProcessInfo.processInfo.processName isEqualToString:@"SpringBoard"] || !NSThread.isMainThread) {
+        if (reply) reply(DXSystemOpenUnavailable);
+        return;
+    }
+    static dispatch_once_t once;
+    static DXSystemRecordingSession *session;
+    dispatch_once(&once, ^{
+        if (!dlopen("/System/Library/Frameworks/ReplayKit.framework/ReplayKit", RTLD_LAZY | RTLD_GLOBAL))
+            NSLog(@"[TypeX][SystemRecording] framework unavailable name=ReplayKit");
+        session = [DXSystemRecordingSession new];
+    });
+    [session toggleRecorder:DXSystemShared(@"RPScreenRecorder", @"sharedRecorder")
+        microphoneEnabled:[action isEqual:@"screen-recording-microphone"] reply:reply];
 }
 
 static id DXSystemObjectIvar(id owner, const char *name) {

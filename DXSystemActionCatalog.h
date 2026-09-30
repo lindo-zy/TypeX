@@ -18,6 +18,8 @@ static inline NSArray<NSDictionary *> *DXSystemActionCatalog(void) {
             @[@"home", @"SYSTEM_HOME", @"house.fill", @"device"],
             @[@"switcher", @"SYSTEM_SWITCHER", @"square.stack", @"device"],
             @[@"control-center", @"SYSTEM_CONTROL_CENTER", @"switch.2", @"control"],
+            @[@"screen-recording", @"SYSTEM_SCREEN_RECORDING", @"record.circle", @"control"],
+            @[@"screen-recording-microphone", @"SYSTEM_SCREEN_RECORDING_MICROPHONE", @"mic.circle.fill", @"control"],
             @[@"flashlight", @"SYSTEM_FLASHLIGHT", @"flashlight.on.fill", @"control"],
             @[@"wifi", @"SYSTEM_WIFI", @"wifi", @"control"],
             @[@"bluetooth", @"SYSTEM_BLUETOOTH", @"antenna.radiowaves.left.and.right", @"control"],
@@ -37,6 +39,10 @@ static inline NSArray<NSDictionary *> *DXSystemActionCatalog(void) {
         catalog = [items copy];
     });
     return catalog;
+}
+
+static inline BOOL DXSystemActionIsRecording(NSString *action) {
+    return [action isEqual:@"screen-recording"] || [action isEqual:@"screen-recording-microphone"];
 }
 
 static inline NSDictionary *DXSystemActionDefinition(id action) {

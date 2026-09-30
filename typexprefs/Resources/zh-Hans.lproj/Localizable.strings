@@ -393,8 +393,8 @@
 "KEYBOARD_PANEL_DARK" = "深色背景";
 "KEYBOARD_PANEL_COLUMNS" = "每行图标数";
 "KEYBOARD_PANEL_SCALE" = "内容大小（%）";
-"KEYBOARD_PANEL_ITEMS_FOOTER" = "只允许添加自定义动作，不支持基础动作。可先在自定义动作中创建系统动作、链接、应用、文本或脚本，再添加到面板。拖动调整顺序，点击项目编辑。";
-"KEYBOARD_PANEL_EDIT_HINT" = "点击编辑，拖动排序";
+"KEYBOARD_PANEL_ITEMS_FOOTER" = "只允许添加自定义动作，不支持基础动作。可先在自定义动作中创建系统动作、链接、应用、文本或脚本，再添加到面板。左滑删除，点击项目编辑；点右上角“编辑”后可拖动排序。删除仅移除本面板项目，自定义动作仍保留。";
+"KEYBOARD_PANEL_EDIT_HINT" = "左滑删除，点击编辑；编辑模式可拖动排序";
 "KEYBOARD_PANEL_ITEM_APPEARANCE" = "编辑名称与图标";
 "KEYBOARD_PANEL_NAME" = "名称（留空使用动作名称）";
 "KEYBOARD_PANEL_ICON" = "系统图标名称或应用标识";
@@ -428,6 +428,9 @@
 "SYSTEM_HOME" = "返回桌面";
 "SYSTEM_SWITCHER" = "打开后台";
 "SYSTEM_CONTROL_CENTER" = "打开控制中心";
+"SYSTEM_SCREEN_RECORDING" = "录屏";
+"SYSTEM_SCREEN_RECORDING_MICROPHONE" = "开麦录屏";
+"SYSTEM_RECORDING_FOOTER" = "录屏关闭麦克风，开麦录屏开启麦克风。录制中再次执行任一录屏动作会停止并由系统保存。启动、停止期间请等待；超时结果未知，不会自动重试。";
 "SYSTEM_FLASHLIGHT" = "手电筒";
 "SYSTEM_WIFI" = "Wi-Fi";
 "SYSTEM_BLUETOOTH" = "蓝牙";

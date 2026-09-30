@@ -111,6 +111,7 @@ static NSString *DXPanelLocalized(NSString *key) {
 @property(nonatomic, strong) DXPKeyboardPanelPreviewHeader *previewHeader;
 @property(nonatomic, copy) NSString *side;
 @property(nonatomic, strong) NSMutableArray<NSDictionary *> *entries;
+@property(nonatomic, strong) UIBarButtonItem *sortButton;
 @end
 
 @implementation DXPKeyboardPanelItemsController
@@ -131,10 +132,16 @@ static NSString *DXPanelLocalized(NSString *key) {
     self.previewHeader = [[DXPKeyboardPanelPreviewHeader alloc] initWithSide:self.side allowsSelection:NO];
     self.previewHeader.frame = CGRectMake(0, 0, self.table.bounds.size.width, self.previewHeader.bounds.size.height);
     self.table.tableHeaderView = self.previewHeader;
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addActions)];
+    UIBarButtonItem *addButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addActions)];
+    self.sortButton = [[UIBarButtonItem alloc] initWithTitle:DXPanelLocalized(@"EDIT") style:UIBarButtonItemStylePlain target:self action:@selector(toggleSorting)];
+    self.navigationItem.rightBarButtonItems = @[addButton, self.sortButton];
     self.entries = [self configuredEntries];
-    [self.table setEditing:YES animated:NO];
     self.table.allowsSelectionDuringEditing = YES;
+}
+- (void)toggleSorting {
+    BOOL editing = !self.table.editing;
+    [self.table setEditing:editing animated:YES];
+    self.sortButton.title = DXPanelLocalized(editing ? @"DONE" : @"EDIT");
 }
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
@@ -183,10 +190,45 @@ static NSString *DXPanelLocalized(NSString *key) {
     return cell;
 }
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (editingStyle != UITableViewCellEditingStyleDelete) return;
-    [self.entries removeObjectAtIndex:indexPath.row];
+    if (editingStyle != UITableViewCellEditingStyleDelete || indexPath.section != 0 || indexPath.row < 0 || indexPath.row >= (NSInteger)self.entries.count) return;
+    [self removeEntry:self.entries[indexPath.row] fromTable:tableView];
+}
+- (BOOL)removeEntry:(NSDictionary *)entry fromTable:(UITableView *)tableView {
+    // Resolve the captured item again, so a stale swipe cannot delete a different
+    // item after reload/reorder. Delete only this panel's reference, not its definition.
+    NSUInteger row = [self.entries indexOfObjectIdenticalTo:entry];
+    if (row == NSNotFound) return NO;
+    [self.entries removeObjectAtIndex:row];
     [self save];
-    [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+    [tableView deleteRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:row inSection:0]] withRowAnimation:UITableViewRowAnimationAutomatic];
+    return YES;
+}
+- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
+    (void)tableView;
+    return indexPath.section == 0 && indexPath.row >= 0 && indexPath.row < (NSInteger)self.entries.count;
+}
+- (UITableViewCellEditingStyle)tableView:(UITableView *)tableView editingStyleForRowAtIndexPath:(NSIndexPath *)indexPath {
+    (void)tableView; (void)indexPath;
+    return UITableViewCellEditingStyleDelete;
+}
+- (NSString *)tableView:(UITableView *)tableView titleForDeleteConfirmationButtonForRowAtIndexPath:(NSIndexPath *)indexPath {
+    (void)tableView; (void)indexPath;
+    return DXPanelLocalized(@"DELETE");
+}
+- (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (indexPath.section != 0 || indexPath.row < 0 || indexPath.row >= (NSInteger)self.entries.count) return nil;
+    NSDictionary *entry = self.entries[indexPath.row];
+    __weak typeof(self) weakSelf = self;
+    __weak UITableView *weakTable = tableView;
+    UIContextualAction *remove = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive
+        title:DXPanelLocalized(@"DELETE") handler:^(__unused UIContextualAction *action, __unused UIView *view, void (^completion)(BOOL)) {
+            __strong typeof(weakSelf) self = weakSelf;
+            UITableView *table = weakTable;
+            completion(self && table && [self removeEntry:entry fromTable:table]);
+        }];
+    UISwipeActionsConfiguration *configuration = [UISwipeActionsConfiguration configurationWithActions:@[remove]];
+    configuration.performsFirstActionWithFullSwipe = NO;
+    return configuration;
 }
 - (BOOL)tableView:(UITableView *)tableView canMoveRowAtIndexPath:(NSIndexPath *)indexPath {
     (void)tableView; (void)indexPath; return YES;
