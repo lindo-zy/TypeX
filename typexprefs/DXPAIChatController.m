@@ -1,4 +1,5 @@
 #import "DXPAIChatController.h"
+#import "DXPKeyboardAvoider.h"
 #import "../common.h"
 #import "../DXHelper.h"
 #import "../DXAIEngine.h"
@@ -185,6 +186,8 @@ static NSString *DXAITrim(NSString *text) {
 
 @interface DXPAIChatController ()
 @property (nonatomic, assign) BOOL fetching;
+// API Key / 模型列表等输入行滚动到键盘上方（自建 UITableView 无自动避让）。
+@property (nonatomic, strong) DXPKeyboardAvoider *keyboardAvoider;
 @end
 
 @implementation DXPAIChatController
@@ -201,6 +204,8 @@ static NSString *DXAITrim(NSString *text) {
     self.tableView.dataSource = self;
     self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [self.view addSubview:self.tableView];
+    self.keyboardAvoider = [[DXPKeyboardAvoider alloc] initWithTableView:self.tableView];
+    [self.keyboardAvoider start];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -594,6 +599,8 @@ static NSString *DXAITrim(NSString *text) {
 @property (nonatomic, copy) NSString *keyValue;
 @property (nonatomic, copy) NSString *modelsValue;
 @property (nonatomic, assign) BOOL fetching;
+// 接口地址 / API Key / 模型列表等输入行滚动到键盘上方。
+@property (nonatomic, strong) DXPKeyboardAvoider *keyboardAvoider;
 @end
 
 @implementation DXPAICustomEngineEditorController
@@ -635,6 +642,8 @@ static NSString *DXAITrim(NSString *text) {
     self.tableView.dataSource = self;
     self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [self.view addSubview:self.tableView];
+    self.keyboardAvoider = [[DXPKeyboardAvoider alloc] initWithTableView:self.tableView];
+    [self.keyboardAvoider start];
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -880,6 +889,8 @@ static NSString *DXAITrim(NSString *text) {
 @property (nonatomic, copy) NSString *storedContent;
 @property (nonatomic, strong) UITextField *nameField;
 @property (nonatomic, strong) UITextView *contentTextView;
+// 人设内容大文本框滚动到键盘上方。
+@property (nonatomic, strong) DXPKeyboardAvoider *keyboardAvoider;
 @end
 
 @implementation DXPAIPersonaEditorController
@@ -911,6 +922,8 @@ static NSString *DXAITrim(NSString *text) {
     self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.tableView.alwaysBounceVertical = NO;
     [self.view addSubview:self.tableView];
+    self.keyboardAvoider = [[DXPKeyboardAvoider alloc] initWithTableView:self.tableView];
+    [self.keyboardAvoider start];
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
