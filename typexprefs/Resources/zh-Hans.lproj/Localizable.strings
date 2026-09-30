@@ -385,13 +385,12 @@
 "KEYBOARD_PANEL_BOTTOM" = "底部工具栏长滑";
 "KEYBOARD_PANEL_UNIFIED" = "合并为通用面板";
 "KEYBOARD_PANEL_CONTENT" = "面板内容";
-"KEYBOARD_PANEL_CONTENT_FOOTER" = "顶部与底部入口共用以下配置。开启通用模式后，两种方向都打开通用面板，左右配置仍会保留。";
+"KEYBOARD_PANEL_CONTENT_FOOTER" = "面板只显示你添加的项目，未配置时保持为空。顶部与底部入口共用以下配置。开启通用模式后，两种方向都打开通用面板，左右配置仍会保留。";
 "KEYBOARD_PANEL_LEFT" = "左面板";
 "KEYBOARD_PANEL_RIGHT" = "右面板";
 "KEYBOARD_PANEL_COMMON" = "通用面板";
 "KEYBOARD_PANEL_APPEARANCE" = "面板外观";
 "KEYBOARD_PANEL_DARK" = "深色背景";
-"KEYBOARD_PANEL_SLIDERS" = "亮度与音量控制条";
 "KEYBOARD_PANEL_COLUMNS" = "每行图标数";
 "KEYBOARD_PANEL_SCALE" = "内容大小（%）";
 "KEYBOARD_PANEL_ITEMS_FOOTER" = "点击右上角 + 添加动作，拖动调整顺序，点击项目编辑名称、图标或动作。自定义动作支持原有链接、应用、文本及脚本等类型。删除全部项目后面板保持为空。";
@@ -404,6 +403,4 @@
 "KEYBOARD_PANEL_EDIT_ACTION" = "编辑自定义动作";
 "KEYBOARD_PANEL_CLOSE" = "关闭面板";
 "KEYBOARD_PANEL_EMPTY" = "面板为空，请在 TypeX 设置中添加动作";
-"KEYBOARD_PANEL_BRIGHTNESS" = "亮度";
-"KEYBOARD_PANEL_VOLUME" = "音量";
 "KEYBOARD_TOOLBAR_CAPACITY" = "当前工具栏一屏最多显示 %ld 个按钮。请先关闭一个按钮，再启用新按钮。";

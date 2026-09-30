@@ -33,6 +33,12 @@ with tempfile.TemporaryDirectory(prefix="typex-gesture-tests-") as tmp:
                     str(ROOT / "tests/DXGestureActionTests.m"), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True, timeout=15)
 
+    geometry_binary = tmp / "keyboard-geometry-tests"
+    subprocess.run(["xcrun", "clang", "-fobjc-arc", "-Wall", "-Wextra", "-Werror",
+                    "-framework", "Foundation", "-framework", "CoreGraphics", "-I", str(ROOT),
+                    str(ROOT / "tests/DXKeyboardPanelGeometryTests.m"), "-o", str(geometry_binary)], check=True)
+    subprocess.run([str(geometry_binary)], check=True, timeout=15)
+
     # Compile the actual UIKit recognizer against narrow view/event doubles.
     # UIKit's own event arbitration still needs a device check.
     (tmp / "UIKit").mkdir()

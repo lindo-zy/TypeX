@@ -1,10 +1,10 @@
 #import "DXKeyboardPanel.h"
 #import "DXKeyboardPanelPreferences.h"
+#import "DXKeyboardPanelGeometry.h"
 #import "DXCollectionView.h"
 #import "DXHelper.h"
 #import "DXShared.h"
 #import "common.h"
-#import <MediaPlayer/MediaPlayer.h>
 
 @interface DXKeyboardPanelWindow : UIWindow
 @property(nonatomic, assign) CGRect panelRect;
@@ -35,8 +35,6 @@
 @property(nonatomic, strong) UIScrollView *scroll;
 @property(nonatomic, strong) UILabel *titleLabel;
 @property(nonatomic, strong) UIButton *closeButton;
-@property(nonatomic, strong) UISlider *brightness;
-@property(nonatomic, strong) UIView *sliderRow;
 @property(nonatomic, strong) NSArray<DXKeyboardPanelButton *> *buttons;
 @property(nonatomic, weak) DXCollectionView *source;
 @property(nonatomic, weak) UIWindow *sourceWindow;
@@ -71,7 +69,6 @@
         [center addObserver:self selector:@selector(invalidated:) name:UITextFieldTextDidEndEditingNotification object:nil];
         [center addObserver:self selector:@selector(invalidated:) name:UITextViewTextDidBeginEditingNotification object:nil];
         [center addObserver:self selector:@selector(invalidated:) name:UITextViewTextDidEndEditingNotification object:nil];
-        [center addObserver:self selector:@selector(brightnessChanged:) name:UIScreenBrightnessDidChangeNotification object:nil];
     }
     return self;
 }
@@ -111,7 +108,7 @@
     NSValue *value = note.userInfo[UIKeyboardFrameEndUserInfoKey];
     if (![value isKindOfClass:NSValue.class]) return;
     self.keyboardFrame = value.CGRectValue;
-    self.keyboardScreen = [note.object isKindOfClass:UIScreen.class] ? note.object : self.sourceWindow.screen;
+    self.keyboardScreen = [note.object isKindOfClass:UIScreen.class] ? note.object : (self.sourceWindow.screen ?: UIScreen.mainScreen);
     self.hasKeyboardFrame = !CGRectIsEmpty(self.keyboardFrame);
     if (self.window && ![self validSession]) [self dismiss];
     else if (self.window) [self layoutPanel];
@@ -125,45 +122,43 @@
     [self dismiss];
 }
 - (void)invalidated:(NSNotification *)note { (void)note; [self dismiss]; }
-- (void)brightnessChanged:(NSNotification *)note {
-    if (![NSThread isMainThread]) {
-        dispatch_async(dispatch_get_main_queue(), ^{ [self brightnessChanged:note]; });
-        return;
-    }
-    if (!self.brightness.tracking && note.object == self.window.screen) self.brightness.value = self.window.screen.brightness;
-}
-- (void)brightnessAdjusted:(UISlider *)slider {
-    if (![self validSession]) { [self dismiss]; return; }
-    self.window.screen.brightness = slider.value;
-}
 - (CGRect)coverageInWindow:(UIWindow *)window {
     CGRect rect = CGRectNull;
     UIScreen *screen = self.sourceWindow.screen;
     if (self.hasKeyboardFrame && (!self.keyboardScreen || self.keyboardScreen == screen)) {
         CGRect keyboard = [window convertRect:self.keyboardFrame fromCoordinateSpace:screen.coordinateSpace];
-        keyboard = CGRectIntersection(keyboard, window.bounds);
-        if (!CGRectIsEmpty(keyboard) && CGRectGetMinY(keyboard) > CGRectGetHeight(window.bounds) * 0.25)
-            rect = keyboard;
+        rect = DXKeyboardPanelUnionCoverage(rect, keyboard, window.bounds, YES);
     }
     for (DXCollectionView *toolbar in self.toolbars) {
         if (![self visibleToolbar:toolbar] || toolbar.window.screen != screen) continue;
         // Only combine the currently attached keyboard hierarchy, never another scene's toolbar.
-        if (toolbar.window != self.sourceWindow && toolbar.window.windowScene != window.windowScene) continue;
+        if (toolbar.window != self.sourceWindow && toolbar.window.windowScene != self.sourceWindow.windowScene &&
+            toolbar.window.windowScene != window.windowScene) continue;
         CGRect local = [toolbar convertRect:toolbar.bounds toView:toolbar.window];
         CGRect frame = [window convertRect:local fromWindow:toolbar.window];
-        if (!CGRectIsEmpty(frame)) rect = CGRectIsNull(rect) ? frame : CGRectUnion(rect, frame);
-        // The dock's enclosing input surface includes its globe, dictation and bottom inset.
-        if ([toolbar.configuration isEqualToString:@"bottom"] && toolbar.superview) {
-            CGRect dock = [toolbar.superview convertRect:toolbar.superview.bounds toView:toolbar.window];
-            dock = [window convertRect:dock fromWindow:toolbar.window];
-            if (!CGRectIsEmpty(dock)) rect = CGRectUnion(rect, dock);
+        rect = DXKeyboardPanelUnionCoverage(rect, frame, window.bounds, NO);
+        // Notifications may precede toolbar registration. Measure live keyboard
+        // ancestors too, including the candidate row and the dock's bottom inset.
+        // Do not use arbitrary app ancestors that could cover the whole screen.
+        for (UIView *ancestor = toolbar.superview; ancestor && ancestor != toolbar.window; ancestor = ancestor.superview) {
+            NSString *className = NSStringFromClass(ancestor.class);
+            if (![className hasPrefix:@"UIInputSet"] && ![className hasPrefix:@"UIKeyboard"]) continue;
+            CGRect surface = [ancestor convertRect:ancestor.bounds toView:toolbar.window];
+            surface = [window convertRect:surface fromWindow:toolbar.window];
+            rect = DXKeyboardPanelUnionCoverage(rect, surface, window.bounds, YES);
         }
     }
-    if (CGRectIsNull(rect) || CGRectGetHeight(rect) < 100) return CGRectNull;
-    // Preserve the measured vertical extent; use the keyboard's full width, including dock ends.
-    rect.origin.x = 0;
-    rect.size.width = CGRectGetWidth(window.bounds);
-    return CGRectIntersection(rect, window.bounds);
+    return DXKeyboardPanelFullWidthCoverage(rect, window.bounds);
+}
+- (void)updateWindowLevel {
+    // iOS 17's remote keyboard is not necessarily listed in the app scene's
+    // windows. Use the same independent-window floor as the existing AI and
+    // subaction panels, then account for any higher visible local windows.
+    CGFloat level = MAX(1000000.0, self.sourceWindow.windowLevel + 1);
+    for (UIWindow *existing in self.window.windowScene.windows) {
+        if (existing != self.window && !existing.hidden) level = MAX(level, existing.windowLevel + 1);
+    }
+    self.window.windowLevel = level;
 }
 - (void)presentFromToolbar:(DXCollectionView *)toolbar side:(NSString *)side {
     if (![NSThread isMainThread]) return;
@@ -193,14 +188,14 @@
 
     DXKeyboardPanelWindow *window = [[DXKeyboardPanelWindow alloc] initWithWindowScene:scene];
     window.frame = scene.coordinateSpace.bounds;
-    CGFloat level = MAX(UIWindowLevelAlert, toolbar.window.windowLevel);
-    for (UIWindow *existing in scene.windows) if (!existing.hidden) level = MAX(level, existing.windowLevel);
-    window.windowLevel = level + 1;
     window.backgroundColor = UIColor.clearColor;
     UIViewController *root = [[UIViewController alloc] init];
+    root.view.frame = window.bounds;
+    root.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     root.view.backgroundColor = UIColor.clearColor;
     window.rootViewController = root;
     self.window = window;
+    [self updateWindowLevel];
     UIView *panel = [[UIView alloc] init];
     panel.layer.cornerRadius = 22;
     panel.clipsToBounds = YES;
@@ -241,35 +236,6 @@
     [self.closeButton addTarget:self action:@selector(dismiss) forControlEvents:UIControlEventTouchUpInside];
     [panel addSubview:self.closeButton];
 
-    BOOL sliders = DXKeyboardPanelBool(preferences, kDXPanelSliders, YES);
-    if (sliders) {
-        self.sliderRow = [[UIView alloc] init];
-        [panel addSubview:self.sliderRow];
-        UIImageView *sun = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"sun.max.fill"]];
-        sun.tintColor = text;
-        sun.tag = 1;
-        [self.sliderRow addSubview:sun];
-        self.brightness = [[UISlider alloc] init];
-        self.brightness.minimumValue = 0;
-        self.brightness.maximumValue = 1;
-        self.brightness.value = window.screen.brightness;
-        self.brightness.accessibilityLabel = [bundle localizedStringForKey:@"KEYBOARD_PANEL_BRIGHTNESS" value:@"Brightness" table:nil];
-        [self.brightness addTarget:self action:@selector(brightnessAdjusted:) forControlEvents:UIControlEventValueChanged];
-        [self.sliderRow addSubview:self.brightness];
-        MPVolumeView *volume = [[MPVolumeView alloc] init];
-        // MPVolumeView still supplies the public system-volume slider. Hide its legacy route UI only.
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-        volume.showsRouteButton = NO;
-#pragma clang diagnostic pop
-        volume.tag = 2;
-        volume.accessibilityLabel = [bundle localizedStringForKey:@"KEYBOARD_PANEL_VOLUME" value:@"Volume" table:nil];
-        [self.sliderRow addSubview:volume];
-        UIImageView *speaker = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"speaker.wave.2.fill"]];
-        speaker.tintColor = text;
-        speaker.tag = 3;
-        [self.sliderRow addSubview:speaker];
-    }
     self.scroll = [[UIScrollView alloc] init];
     self.scroll.showsVerticalScrollIndicator = NO;
     [panel addSubview:self.scroll];
@@ -317,7 +283,9 @@
     [self layoutPanel];
     if (!self.window) return;
     window.hidden = NO; // Never makeKeyWindow: the host input retains focus.
-    NSLog(@"[TypeX][KeyboardPanel] open side=%@ toolbar=%@ items=%lu", profile, toolbar.configuration, (unsigned long)buttons.count);
+    NSLog(@"[TypeX][KeyboardPanel] open side=%@ toolbar=%@ items=%lu rect=%@ level=%.0f source=%@",
+        profile, toolbar.configuration, (unsigned long)buttons.count, NSStringFromCGRect(window.panelRect),
+        (double)window.windowLevel, NSStringFromClass(toolbar.window.class));
 }
 - (void)layoutPanel {
     if (!self.window) return;
@@ -327,6 +295,7 @@
         [self dismiss];
         return;
     }
+    [self updateWindowLevel];
     self.window.panelRect = coverage;
     self.panel.frame = coverage;
     CGFloat width = coverage.size.width, height = coverage.size.height;
@@ -335,15 +304,6 @@
     self.titleLabel.frame = CGRectMake(16, 10, MAX(0, width - 68), 28);
     self.closeButton.frame = CGRectMake(width - 48, 2, 44, 44);
     CGFloat contentTop = 46;
-    if (self.sliderRow) {
-        self.sliderRow.frame = CGRectMake(16, contentTop, width - 32, 44);
-        CGFloat half = (width - 44) / 2;
-        [self.sliderRow viewWithTag:1].frame = CGRectMake(0, 11, 22, 22);
-        self.brightness.frame = CGRectMake(30, 5, MAX(0, half - 32), 34);
-        [self.sliderRow viewWithTag:3].frame = CGRectMake(half + 12, 11, 22, 22);
-        [self.sliderRow viewWithTag:2].frame = CGRectMake(half + 42, 7, MAX(0, half - 32), 34);
-        contentTop += 50;
-    }
     self.scroll.frame = CGRectMake(8, contentTop, width - 16, MAX(0, height - contentTop - 8));
     CGFloat itemWidth = self.scroll.bounds.size.width / self.columns;
     CGFloat circle = MIN(54 * self.scale, itemWidth - 16);
@@ -390,8 +350,6 @@
     self.panel = nil;
     self.scroll = nil;
     self.buttons = nil;
-    self.sliderRow = nil;
-    self.brightness = nil;
     self.titleLabel = nil;
     self.closeButton = nil;
     self.source = nil;

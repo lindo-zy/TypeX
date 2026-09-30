@@ -33,9 +33,9 @@ int main(void) {
             kDXPanelCommonItems: @"malformed", kDXPanelScale: @(NAN)} mutableCopy];
         if (DXKeyboardPanelItems(nil, @"left").count || DXKeyboardPanelItems(panelPrefs, @"left").count ||
             DXKeyboardPanelItems(panelPrefs, @"common").count || DXKeyboardPanelItems(panelPrefs, @"right").count != 1 ||
-            DXKeyboardPanelItems(@{}, @"left").count != 6 || DXKeyboardPanelNumber(panelPrefs, kDXPanelScale, 100, 70, 120) != 100) return 1;
+            DXKeyboardPanelItems(@{}, @"left").count != 0 || DXKeyboardPanelNumber(panelPrefs, kDXPanelScale, 100, 70, 120) != 100) return 1;
         [panelPrefs removeObjectForKey:kDXPanelCommonItems];
-        if (DXKeyboardPanelItems(panelPrefs, @"common").count != 6 || DXKeyboardPanelItems(panelPrefs, @"left").count != 0) return 1;
+        if (DXKeyboardPanelItems(panelPrefs, @"common").count != 0 || DXKeyboardPanelItems(panelPrefs, @"left").count != 0) return 1;
         checks += 7;
         NSMutableArray *savedButtons = [NSMutableArray array];
         for (NSInteger i = 0; i < 20; i++) [savedButtons addObject:@{@"selector": [NSString stringWithFormat:@"button%ld", (long)i], @"name": @"kept"}];

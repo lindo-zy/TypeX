@@ -40,7 +40,6 @@ static NSString *DXPanelLocalized(NSString *key) {
     }
     [items addObject:[PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"KEYBOARD_PANEL_APPEARANCE")]];
     [items addObject:[self setting:@"KEYBOARD_PANEL_DARK" key:kDXPanelDark defaultValue:@YES cell:PSSwitchCell]];
-    [items addObject:[self setting:@"KEYBOARD_PANEL_SLIDERS" key:kDXPanelSliders defaultValue:@YES cell:PSSwitchCell]];
     for (NSArray *row in @[@[@"KEYBOARD_PANEL_COLUMNS", kDXPanelColumns, @4, @3, @5],
                           @[@"KEYBOARD_PANEL_SCALE", kDXPanelScale, @100, @70, @120]]) {
         PSSpecifier *slider = [self setting:row[0] key:row[1] defaultValue:row[2] cell:PSSliderCell];

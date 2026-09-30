@@ -386,13 +386,12 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "KEYBOARD_PANEL_BOTTOM" = "Bottom toolbar long swipe";
 "KEYBOARD_PANEL_UNIFIED" = "Use one common panel";
 "KEYBOARD_PANEL_CONTENT" = "Panel content";
-"KEYBOARD_PANEL_CONTENT_FOOTER" = "Both toolbar entrances share these profiles. Common mode uses the common profile for either direction and preserves both side profiles.";
+"KEYBOARD_PANEL_CONTENT_FOOTER" = "Only your configured actions are shown; unconfigured panels stay empty. Both toolbar entrances share these profiles. Common mode uses the common profile for either direction and preserves both side profiles.";
 "KEYBOARD_PANEL_LEFT" = "Left panel";
 "KEYBOARD_PANEL_RIGHT" = "Right panel";
 "KEYBOARD_PANEL_COMMON" = "Common panel";
 "KEYBOARD_PANEL_APPEARANCE" = "Panel appearance";
 "KEYBOARD_PANEL_DARK" = "Dark background";
-"KEYBOARD_PANEL_SLIDERS" = "Brightness and volume controls";
 "KEYBOARD_PANEL_COLUMNS" = "Icons per row";
 "KEYBOARD_PANEL_SCALE" = "Content size (%)";
 "KEYBOARD_PANEL_ITEMS_FOOTER" = "Use + to add actions, drag to reorder, and tap an item to edit its name, icon or action. Existing custom action types are supported. Removing every item leaves the panel empty.";
@@ -405,6 +404,4 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "KEYBOARD_PANEL_EDIT_ACTION" = "Edit custom action";
 "KEYBOARD_PANEL_CLOSE" = "Close panel";
 "KEYBOARD_PANEL_EMPTY" = "This panel is empty. Add actions in TypeX Settings.";
-"KEYBOARD_PANEL_BRIGHTNESS" = "Brightness";
-"KEYBOARD_PANEL_VOLUME" = "Volume";
 "KEYBOARD_TOOLBAR_CAPACITY" = "This toolbar fits %ld enabled buttons. Disable a button before enabling another.";

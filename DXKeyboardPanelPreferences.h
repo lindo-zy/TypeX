@@ -7,7 +7,6 @@
 #define kDXPanelColumns @"keyboardpanelcolumns"
 #define kDXPanelScale @"keyboardpanelscale"
 #define kDXPanelDark @"keyboardpaneldarkBOOL"
-#define kDXPanelSliders @"keyboardpanelslidersBOOL"
 #define kDXPanelLeftItems @"keyboardpanelleftitems"
 #define kDXPanelRightItems @"keyboardpanelrightitems"
 #define kDXPanelCommonItems @"keyboardpanelcommonitems"
@@ -21,14 +20,6 @@ static inline NSString *DXKeyboardPanelItemsKey(NSString *side) {
 static inline NSArray<NSDictionary *> *DXKeyboardPanelItems(NSDictionary *preferences, NSString *side) {
     if (![preferences isKindOfClass:NSDictionary.class]) return @[];
     id stored = preferences[DXKeyboardPanelItemsKey(side)];
-    if (!stored) {
-        NSArray *selectors = [side isEqualToString:@"right"]
-            ? @[@"aiChatAction:", @"copyAction:", @"pasteAction:", @"undoAction:", @"redoAction:", @"deleteAllAction:"]
-            : @[@"selectAllAction:", @"copyAction:", @"pasteAction:", @"cutAction:", @"undoAction:", @"dismissKeyboardAction:"];
-        NSMutableArray *defaults = [NSMutableArray array];
-        for (NSString *selector in selectors) [defaults addObject:@{@"id": selector, @"selector": selector}];
-        return defaults;
-    }
     if (![stored isKindOfClass:NSArray.class]) return @[];
     NSMutableArray *items = [NSMutableArray array];
     for (id entry in stored) {
