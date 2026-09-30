@@ -257,6 +257,9 @@ static void DXInstallTopAccessoryForResponder(UIResponder *responder, BOOL reloa
                                                                                kDXTopToolbarHeight)
                                                      inputViewStyle:UIInputViewStyleDefault];
         container.allowsSelfSizing = YES;
+        // 与工具栏同源的方向钉扎：外层 trait 方向瞬态变化会让内部布局镜像，
+        // 把容器钉在 LTR，工具栏继承到的 trait 方向随之稳定。
+        container.semanticContentAttribute = UISemanticContentAttributeForceLeftToRight;
         container.clipsToBounds = YES;
         container.toolbar = [[DXCollectionView alloc] initWithConfiguration:@"top"];
         container.toolbar.clipsToBounds = YES;
@@ -269,15 +272,19 @@ static void DXInstallTopAccessoryForResponder(UIResponder *responder, BOOL reloa
 
     if ((reloadConfiguration || preferencesRecovered) && !createdContainer) {
         CGFloat previousToolbarHeight = CGRectGetHeight(container.toolbar.frame);
-        [container.toolbar reloadShortcutConfiguration];
-        [container.toolbar.collectionViewLayout invalidateLayout];
-        [container.toolbar reloadData];
-        // 多行模式增减行数会改变工具栏自身高度：失效容器高度并让输入视图重新
-        // 测量，否则新行数要等键盘下一次重建才生效。
-        if (fabs([container dxToolbarHeight] - previousToolbarHeight) > 0.01) {
-            [container dxSynchronizeHeight];
-            [container layoutIfNeeded];
-            if (responder.isFirstResponder) [responder reloadInputViews];
+        // 数据和样式都没变时跳过整表重载：无谓的 reloadData 让复用 cell 跨位置
+        // 换位，键盘装配期多次重布局里会闪出一帧内容错位（顺序闪变根因）。
+        // 真正的偏好变更必然返回 YES，这里照常生效。
+        if ([container.toolbar reloadShortcutConfiguration]) {
+            [container.toolbar.collectionViewLayout invalidateLayout];
+            [container.toolbar reloadData];
+            // 多行模式增减行数会改变工具栏自身高度：失效容器高度并让输入视图重新
+            // 测量，否则新行数要等键盘下一次重建才生效。
+            if (fabs([container dxToolbarHeight] - previousToolbarHeight) > 0.01) {
+                [container dxSynchronizeHeight];
+                [container layoutIfNeeded];
+                if (responder.isFirstResponder) [responder reloadInputViews];
+            }
         }
     }
 

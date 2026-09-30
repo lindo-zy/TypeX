@@ -69,7 +69,12 @@ typedef NS_ENUM(NSInteger, direction) {
 /// Rebuilds the active shortcut/keyboard-type data from the current preference domain.
 /// iOS 17 keeps the collection view alive while Settings writes preferences, so
 /// invalidating only the on-disk cache is not sufficient.
--(void)reloadShortcutConfiguration;
+/// Returns YES when the visible result (data, chrome, or layout mode) actually
+/// changed and the caller must invalidate layout + reloadData; NO means nothing
+/// visible changed and the reload can be skipped — an unconditional reloadData
+/// reassigns reused cells across positions and flashes a one-frame wrong order
+/// while the keyboard assembles.
+-(BOOL)reloadShortcutConfiguration;
 
 -(IBAction)selectAllAction:(UIButton*)sender;
 -(IBAction)copyAction:(UIButton*)sender;

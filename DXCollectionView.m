@@ -365,6 +365,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         self.showsVerticalScrollIndicator = NO;
         self.showsHorizontalScrollIndicator = NO;
         self.pagingEnabled = YES;
+        [self registerClass:NSClassFromString(@"DXCell") forCellWithReuseIdentifier:@"kTypeXCellID"];
         dispatch_async(dispatch_get_main_queue(), ^{
             [self keyboardRotated:nil];
         });
@@ -756,12 +757,19 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     }
 }
 
--(void)reloadShortcutConfiguration{
+-(BOOL)reloadShortcutConfiguration{
     DXPrefsManager *manager = [DXPrefsManager sharedInstance];
     NSDictionary *currentPrefs = manager.preferencesAvailable ? manager.prefs : nil;
     self.shortcutConfigurationAvailable = [currentPrefs isKindOfClass:[NSDictionary class]];
     if (!self.shortcutConfigurationAvailable) currentPrefs = @{};
     prefs = [currentPrefs mutableCopy];
+    // 键盘每次弹出都会走带重载的路径，而数据/样式其实没变。无谓的整表
+    // reloadData 会让复用 cell 跨位置换位，键盘装配期的多次重布局里闪出一帧
+    // 内容错位（顺序闪变根因）。这里先记下当前可见状态，方法末尾对比，仅当
+    // 可见结果真正变化时才让调用方 invalidate + reloadData。
+    NSArray *previousShortcuts = self.shortcuts;
+    NSDictionary *previousCustomNames = self.customNames;
+    Class previousLayoutClass = [self.collectionViewLayout class];
     NSMutableArray *defaultImages12 = [[self.shortcutsGenerator imageNameArrayForiOS:0] mutableCopy];
     NSMutableArray *defaultImages13 = [[self.shortcutsGenerator imageNameArrayForiOS:1] mutableCopy];
     NSMutableArray *defaultSelectors = [[self.shortcutsGenerator selectorNames] mutableCopy];
@@ -818,6 +826,12 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         self.customNames = @{};
     }
 
+    CGFloat previousChrome[7] = { self.buttonHeight, self.buttonRadius, self.buttonSpacing,
+                                  self.bottomSpacing, self.borderWidth, self.widthScale, self.rowSpacing };
+    BOOL previousBorderEnabled = self.borderEnabled;
+    BOOL previousShortLabel = self.useShortLabel;
+    BOOL previousMultiRow = self.multiRowEnabled;
+    NSInteger previousPerRow = self.buttonsPerRow;
     self.shortcuts = @[images12, images13, selectors];
     [self reloadButtonChrome];
     [self dxApplyLayoutForConfiguration];
@@ -829,6 +843,27 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     self.indexArray = nil;
     self.sectionOffsetForwardArray = nil;
     self.sectionOffsetBackwardArray = nil;
+
+    BOOL changed = ![previousShortcuts[kbuttonsImages12] isEqual:images12]
+                || ![previousShortcuts[kbuttonsImages13] isEqual:images13]
+                || ![previousShortcuts[kselectors] isEqual:selectors]
+                || ![previousCustomNames isEqualToDictionary:self.customNames]
+                || previousBorderEnabled != self.borderEnabled
+                || previousShortLabel != self.useShortLabel
+                || previousMultiRow != self.multiRowEnabled
+                || previousPerRow != self.buttonsPerRow
+                || previousLayoutClass != [self.collectionViewLayout class];
+    if (!changed) {
+        CGFloat currentChrome[7] = { self.buttonHeight, self.buttonRadius, self.buttonSpacing,
+                                     self.bottomSpacing, self.borderWidth, self.widthScale, self.rowSpacing };
+        for (NSInteger chromeIndex = 0; chromeIndex < 7; chromeIndex++) {
+            if (previousChrome[chromeIndex] != currentChrome[chromeIndex]) {
+                changed = YES;
+                break;
+            }
+        }
+    }
+    return changed;
 }
 
 
@@ -2828,10 +2863,7 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
 }
 
 - (UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath {
-    // 全新分配，不走复用队列：整表 reloadData 会把复用的 cell 跨位置换位，在
-    // 键盘装配期的多次重布局里会有一帧「位置正确、内容是别的按钮」的错位画面
-    // （键盘出现时顺序闪变）。按钮数 ≤16，全新分配的开销可忽略。
-    DXCell *cell = [[DXCell alloc] initWithFrame:CGRectZero];
+    DXCell *cell = [collectionView dequeueReusableCellWithReuseIdentifier:@"kTypeXCellID" forIndexPath:indexPath];
     //cell.transform = CGAffineTransformMakeScale(-1, 1);
     int cellIndex = [self shortcutsPerSection]*indexPath.section + indexPath.row;
     //[cell.btn setTitle:_buttons[indexPath.row] forState:UIControlStateNormal];
