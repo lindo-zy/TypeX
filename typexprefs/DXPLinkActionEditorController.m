@@ -161,7 +161,7 @@ static NSInteger const DXLegacyRowLink = 2;
 
 + (NSString *)displayNameForType:(NSString *)type {
     [self loadTweakBundle];
-    if ([type isEqualToString:kCustomActionTypeJavaScript]) return @"JavaScript";
+    if ([type isEqualToString:kCustomActionTypeJavaScript]) return LOCALIZED(@"ACTION_TYPE_JAVASCRIPT");
     if ([type isEqualToString:kCustomActionTypeURLScheme]) return LOCALIZED(@"ACTION_TYPE_URL_SCHEME");
     if ([type isEqualToString:kCustomActionTypeText]) return LOCALIZED(@"ACTION_TYPE_TEXT");
     if ([type isEqualToString:kCustomActionTypeURL]) return LOCALIZED(@"ACTION_TYPE_URL");
@@ -802,7 +802,7 @@ static NSInteger const DXLegacyRowLink = 2;
         }
     }
     if (self.isJavaScriptEntry && (link.length == 0 || link.length > 131072)) {
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"JavaScript" message:LOCALIZED(@"JS_SOURCE_INVALID") preferredStyle:UIAlertControllerStyleAlert];
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:LOCALIZED(@"ACTION_TYPE_JAVASCRIPT") message:LOCALIZED(@"JS_SOURCE_INVALID") preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK") style:UIAlertActionStyleDefault handler:nil]];
         [self presentViewController:alert animated:YES completion:nil]; return;
     }

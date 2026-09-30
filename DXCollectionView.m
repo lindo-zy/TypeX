@@ -2000,15 +2000,24 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     if ([type isEqualToString:kCustomActionTypeSystem]) {
         __weak DXCollectionView *weakSelf = self;
         __weak id originalInput = delegate;
+        __block NSString *failureKey = @"SYSTEM_ACTION_UNAVAILABLE";
         DXCustomActionOpenCompletion completion = [self guardedCustomOpenCompletion:^(BOOL success) {
             DXCollectionView *view = weakSelf;
             if (!view || success || !originalInput) return;
             Class keyboardClass = NSClassFromString(@"UIKeyboardImpl");
             if (![keyboardClass respondsToSelector:@selector(activeInstance)] ||
                 DXKeyboardInputDelegate([keyboardClass activeInstance]) != originalInput) return;
-            [view showCustomActionMessage:LOCALIZED(@"SYSTEM_ACTION_UNAVAILABLE")];
+            [view showCustomActionMessage:LOCALIZED(failureKey)];
         }];
         DXRunSystemAction(entry[kCustomActionSystemIdentifierKey], ^(DXSystemOpenResult result) {
+            switch (result) {
+                case DXSystemOpenFailed: failureKey = @"SYSTEM_ACTION_FAILED"; break;
+                case DXSystemOpenTimedOut: failureKey = @"SYSTEM_ACTION_TIMEOUT"; break;
+                case DXSystemOpenInvalid: failureKey = @"SYSTEM_ACTION_INVALID"; break;
+                case DXSystemOpenBusy:
+                case DXSystemOpenExpired: failureKey = @"SYSTEM_ACTION_EXPIRED"; break;
+                default: break;
+            }
             completion(result == DXSystemOpenSucceeded);
         });
         return YES;

@@ -9,15 +9,21 @@ static inline const char *DXSystemUnqualifiedType(const char *type) {
 
 // Validate the runtime ABI instead of trusting historical private headers.
 // Only scalar/object returns and explicitly typed arguments are supported.
-static inline BOOL DXSystemInvoke(id target, NSString *name, NSArray *arguments, id *result) {
+static inline BOOL DXSystemInvocationRejected(id target, NSString *selector, NSString *stage) {
+    NSLog(@"[TypeX][SystemAction] rejected class=%@ selector=%@ stage=%@", target ? NSStringFromClass([target class]) : @"nil", selector, stage);
+    return NO;
+}
+static inline BOOL DXSystemInvokeReportingError(id target, NSString *name, NSArray *arguments, id *result, NSError **error) {
     if (result) *result = nil;
+    if (error) *error = nil;
+    NSError *__autoreleasing invocationError = nil;
     if (![name isKindOfClass:NSString.class] || !name.length || ![arguments isKindOfClass:NSArray.class]) return NO;
     SEL selector = NSSelectorFromString(name);
-    if (!target || ![target respondsToSelector:selector]) return NO;
+    if (!target || ![target respondsToSelector:selector]) return DXSystemInvocationRejected(target, name, @"missing-method");
     NSMethodSignature *signature = [target methodSignatureForSelector:selector];
-    if (!signature || signature.numberOfArguments != arguments.count + 2) return NO;
+    if (!signature || signature.numberOfArguments != arguments.count + 2) return DXSystemInvocationRejected(target, name, @"argument-count");
     const char *returned = DXSystemUnqualifiedType(signature.methodReturnType);
-    if (!*returned || !strchr("v@BcCsSiIlLqQfd", *returned) || returned[1]) return NO;
+    if (!*returned || !strchr("v@BcCsSiIlLqQfd", *returned) || returned[1]) return DXSystemInvocationRejected(target, name, @"return-type");
     NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
     invocation.target = target;
     invocation.selector = selector;
@@ -28,11 +34,11 @@ static inline BOOL DXSystemInvoke(id target, NSString *name, NSArray *arguments,
             id object = argument == NSNull.null ? nil : argument;
             [invocation setArgument:&object atIndex:index + 2];
         } else if (!strcmp(type, "^@") && argument == NSNull.null) {
-            // Optional NSError** is deliberately nil; BOOL return carries failure.
-            void *pointer = NULL;
+            // Keep the autoreleasing out storage alive until invoke returns.
+            NSError *__autoreleasing *pointer = error ? &invocationError : NULL;
             [invocation setArgument:&pointer atIndex:index + 2];
         } else {
-            if (![argument isKindOfClass:NSNumber.class] || type[1]) return NO;
+            if (![argument isKindOfClass:NSNumber.class] || type[1]) return DXSystemInvocationRejected(target, name, @"argument-type");
 #define DX_SYSTEM_ARGUMENT(CODE, TYPE, ACCESSOR) case CODE: { TYPE value = [argument ACCESSOR]; [invocation setArgument:&value atIndex:index + 2]; break; }
             switch (*type) {
                 DX_SYSTEM_ARGUMENT('B', bool, boolValue)
@@ -48,7 +54,7 @@ static inline BOOL DXSystemInvoke(id target, NSString *name, NSArray *arguments,
                 DX_SYSTEM_ARGUMENT('Q', unsigned long long, unsignedLongLongValue)
                 DX_SYSTEM_ARGUMENT('f', float, floatValue)
                 DX_SYSTEM_ARGUMENT('d', double, doubleValue)
-                default: return NO;
+                default: return DXSystemInvocationRejected(target, name, @"unsupported-argument");
             }
 #undef DX_SYSTEM_ARGUMENT
         }
@@ -56,6 +62,7 @@ static inline BOOL DXSystemInvoke(id target, NSString *name, NSArray *arguments,
     [invocation retainArguments];
     @try { [invocation invoke]; }
     @catch (NSException *exception) { NSLog(@"[TypeX][SystemAction] invocation exception=%@", exception.name); return NO; }
+    if (error) *error = invocationError;
     if (*returned == 'v') return YES;
     if (*returned == '@') {
         __unsafe_unretained id object = nil;
@@ -82,4 +89,8 @@ static inline BOOL DXSystemInvoke(id target, NSString *name, NSArray *arguments,
     }
 #undef DX_SYSTEM_RETURN
     return YES;
+}
+
+static inline BOOL DXSystemInvoke(id target, NSString *name, NSArray *arguments, id *result) {
+    return DXSystemInvokeReportingError(target, name, arguments, result, NULL);
 }

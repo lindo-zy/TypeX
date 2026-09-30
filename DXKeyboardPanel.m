@@ -1,6 +1,7 @@
 #import "DXKeyboardPanel.h"
 #import "DXKeyboardPanelPreferences.h"
 #import "DXKeyboardPanelGeometry.h"
+#import "DXKeyboardPanelLayout.h"
 #import "DXKeyboardPanelHostPolicy.h"
 #import "DXCollectionView.h"
 #import "DXHelper.h"
@@ -370,11 +371,10 @@
     CGFloat contentTop = 46;
     self.scroll.frame = CGRectMake(8, contentTop, width - 16, MAX(0, height - contentTop - 8));
     CGFloat itemWidth = self.scroll.bounds.size.width / self.columns;
-    CGFloat circle = MIN(54 * self.scale, itemWidth - 16);
-    CGFloat rowHeight = circle + 42 * self.scale;
+    CGFloat circle = DXKeyboardPanelCircle(self.scroll.bounds.size.width, self.columns, self.scale);
     [self.buttons enumerateObjectsUsingBlock:^(DXKeyboardPanelButton *button, NSUInteger index, BOOL *stop) {
         (void)stop;
-        button.frame = CGRectMake((index % self.columns) * itemWidth, (index / self.columns) * rowHeight, itemWidth, rowHeight);
+        button.frame = DXKeyboardPanelItemFrame(index, self.scroll.bounds.size.width, self.columns, self.scale);
         UIView *circleView = [button viewWithTag:10];
         if (!circleView) {
             circleView = [[UIView alloc] init];
@@ -389,7 +389,7 @@
         button.actionImage.frame = CGRectMake((itemWidth - icon) / 2, 4 + (circle - icon) / 2, icon, icon);
         button.actionLabel.frame = CGRectMake(3, circle + 9, itemWidth - 6, 30 * self.scale);
     }];
-    CGFloat contentHeight = MAX(self.scroll.bounds.size.height, ceil((double)self.buttons.count / self.columns) * rowHeight);
+    CGFloat contentHeight = MAX(self.scroll.bounds.size.height, DXKeyboardPanelContentHeight(self.buttons.count, self.scroll.bounds.size.width, self.columns, self.scale));
     self.scroll.contentSize = CGSizeMake(self.scroll.bounds.size.width, contentHeight);
     [self.scroll viewWithTag:20].frame = CGRectMake(0, 0, self.scroll.bounds.size.width, contentHeight);
     [self.scroll viewWithTag:21].frame = self.scroll.bounds;

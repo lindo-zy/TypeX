@@ -4,11 +4,13 @@
 #import "../common.h"
 #import "../DXHelper.h"
 #import "../DXShortcutsGenerator.h"
+#import "../DXSettingsSearch.h"
 
-static UISearchController *searchController;
 static NSBundle *tweakBundle;
 
-@interface DXPRootListController () <UIDocumentPickerDelegate>
+@interface DXPRootListController () <UIDocumentPickerDelegate, UISearchResultsUpdating>
+@property(nonatomic, strong) UISearchController *settingsSearch;
+@property(nonatomic, copy) NSArray<PSSpecifier *> *allSettingsSpecifiers;
 @property(nonatomic, retain) NSURL *pendingExportURL;
 @end
 
@@ -33,6 +35,7 @@ static NSBundle *tweakBundle;
             _specifiers = filteredSpecifiers;
         }
         
+        self.allSettingsSpecifiers = [_specifiers copy];
         self.dynamicSpecifiers = (!self.dynamicSpecifiers) ? [[NSMutableDictionary alloc] init] : self.dynamicSpecifiers;
     }
     
@@ -79,17 +82,20 @@ static NSBundle *tweakBundle;
     
     //search bar
     
-    searchController = [[UISearchController alloc] initWithSearchResultsController:nil];
-    searchController.definesPresentationContext = YES;
-    searchController.hidesNavigationBarDuringPresentation = YES;
-    //searchController.searchBar.delegate = self;
-    searchController.searchBar.placeholder = LOCALIZED(@"SEARCHBAR_PLACEHOLDER");
-    [searchController.searchBar setImage:[DXHelper imageForTypeXWithPlaceholder:YES] forSearchBarIcon:UISearchBarIconSearch state:UIControlStateNormal];
+    self.settingsSearch = [[UISearchController alloc] initWithSearchResultsController:nil];
+    self.settingsSearch.searchResultsUpdater = self;
+    self.settingsSearch.searchBar.delegate = self;
+    self.definesPresentationContext = YES;
+    self.settingsSearch.definesPresentationContext = YES;
+    self.settingsSearch.hidesNavigationBarDuringPresentation = NO;
     
-    searchController.obscuresBackgroundDuringPresentation = NO;
+    self.settingsSearch.searchBar.placeholder = LOCALIZED(@"SEARCHBAR_PLACEHOLDER");
+    [self.settingsSearch.searchBar setImage:[DXHelper imageForTypeXWithPlaceholder:YES] forSearchBarIcon:UISearchBarIconSearch state:UIControlStateNormal];
+
+    self.settingsSearch.obscuresBackgroundDuringPresentation = NO;
     
     if (@available(iOS 11.0, *)){
-        self.navigationItem.searchController = searchController;
+        self.navigationItem.searchController = self.settingsSearch;
         self.navigationItem.hidesSearchBarWhenScrolling = YES;
     }
     //search bar
@@ -217,12 +223,30 @@ static NSBundle *tweakBundle;
     [self presentViewController:alert animated:YES completion:nil];
 }
 
+- (void)updateSearchResultsForSearchController:(UISearchController *)controller {
+    NSArray *all = self.allSettingsSpecifiers ?: [self.specifiers copy];
+    NSMutableArray *rows = [NSMutableArray array];
+    for (PSSpecifier *specifier in all) {
+        NSString *text = [NSString stringWithFormat:@"%@ %@", specifier.name ?: @"", [specifier propertyForKey:@"footerText"] ?: @""];
+        [rows addObject:@{@"group": @(specifier.cellType == PSGroupCell), @"text": text}];
+    }
+    NSIndexSet *matches = DXSettingsSearchIndices(rows, controller.searchBar.text ?: @"");
+    self.specifiers = [[all objectsAtIndexes:matches] mutableCopy];
+    [self.table reloadData];
+}
+- (void)viewWillDisappear:(BOOL)animated {
+    self.settingsSearch.active = NO;
+    self.settingsSearch.searchBar.text = @"";
+    [self updateSearchResultsForSearchController:self.settingsSearch];
+    [self.view endEditing:YES];
+    [super viewWillDisappear:animated];
+}
 -(BOOL)searchBarShouldBeginEditing:(UISearchBar *)searchBar{
     DXPrefsManager *prefsManager = [DXPrefsManager sharedInstance];
     NSUInteger tappedCount = [[prefsManager getValueForKey:@"searchedc"] longValue];
     [prefsManager setValue:@(tappedCount + 1) forKey:@"searchedc"];
     if (tappedCount + 1 == searchedCountEaster){
-        [DXHelper showSearchCountEasterAlertFor:self searchController:searchController count:tappedCount+1 delay:0.5];
+        [DXHelper showSearchCountEasterAlertFor:self searchController:self.settingsSearch count:tappedCount+1 delay:0.5];
     }
     return YES;
 }

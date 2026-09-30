@@ -37,3 +37,5 @@
 "BACKUP_CONFIG" = "Back Up Configuration";
 "RESTORE_CONFIG" = "Restore Configuration";
 "BACKUP_FOOTER" = "Export all settings to a file and keep it safe in the Files app; restoring a backup overwrites the entire current configuration. Backup files contain the full configuration (including AI engine API keys) — do not share them.";
+
+"KEYBOARD_PANEL_SETTINGS" = "Keyboard panels";

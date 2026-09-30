@@ -1,6 +1,6 @@
 #import "DXSystemActionExecutor.h"
 #import "DXSystemActionCatalog.h"
-#import "DXSystemActionInvocation.h"
+#import "DXSystemActionCompatibility.h"
 #import "common.h"
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
@@ -79,7 +79,8 @@ static void DXLoadSystemActionFrameworks(void) {
     dispatch_once(&once, ^{
         for (NSString *name in @[@"BluetoothManager", @"DoNotDisturb", @"DoNotDisturbKit", @"AVFCapture"]) {
             NSString *path = [NSString stringWithFormat:@"/System/Library/PrivateFrameworks/%@.framework/%@", name, name];
-            dlopen(path.fileSystemRepresentation, RTLD_LAZY | RTLD_GLOBAL);
+            if (!dlopen(path.fileSystemRepresentation, RTLD_LAZY | RTLD_GLOBAL))
+                NSLog(@"[TypeX][SystemAction] framework unavailable name=%@", name);
         }
         dlopen("/System/Library/Frameworks/CoreTelephony.framework/CoreTelephony", RTLD_LAZY | RTLD_GLOBAL);
     });
@@ -88,15 +89,6 @@ static void DXLoadSystemActionFrameworks(void) {
 static id DXSystemShared(NSString *className, NSString *selector) {
     id result = nil;
     return DXSystemInvoke(NSClassFromString(className), selector, @[], &result) ? result : nil;
-}
-
-static DXSystemOpenResult DXSystemCall(id target, NSString *selector, NSArray *arguments) {
-    id result = nil;
-    if (!DXSystemInvoke(target, selector, arguments, &result)) {
-        NSLog(@"[TypeX][SystemAction] unavailable class=%@ selector=%@", target ? NSStringFromClass([target class]) : @"nil", selector);
-        return DXSystemOpenUnavailable;
-    }
-    return [result isKindOfClass:NSNumber.class] && ![result boolValue] ? DXSystemOpenFailed : DXSystemOpenSucceeded;
 }
 
 static DXSystemOpenResult DXSystemToggle(id target, NSString *getter, NSString *setter) {
@@ -139,16 +131,34 @@ DXSystemOpenResult DXPerformSystemAction(NSString *action) {
             @[@([action isEqual:@"next-track"] ? 1 : -1), @0]);
     }
     if ([action isEqual:@"play-pause"]) return DXSystemCall(DXSystemShared(@"SBMediaController", @"sharedInstance"), @"togglePlayPauseForEventSource:", @[@0]);
-    if ([action isEqual:@"home"]) return DXSystemCall(UIApplication.sharedApplication, @"_simulateHomeButtonPress", @[]);
+    if ([action isEqual:@"home"]) return DXSystemCallFirstAvailable(UIApplication.sharedApplication, @[
+        @[@"_simulateHomeButtonPress", @[]], @[@"_simulateHomeButtonPressWithCompletion:", @[NSNull.null]]]);
     if ([action isEqual:@"switcher"]) {
         id coordinator = DXSystemShared(@"SBMainSwitcherControllerCoordinator", @"sharedInstance");
-        NSString *selector = @"toggleSwitcherNoninteractivelyWithSource:";
-        if (![coordinator respondsToSelector:NSSelectorFromString(selector)]) coordinator = DXSystemShared(@"SBMainSwitcherViewController", @"sharedInstance");
-        return DXSystemCall(coordinator, selector, @[@1]);
+        NSArray *interfaces = @[@[@"toggleSwitcherNoninteractivelyWithSource:", @[@1]],
+            @[@"toggleMainSwitcherNoninteractivelyWithSource:animated:", @[@1, @YES]],
+            @[@"toggleSwitcherNoninteractively", @[]]];
+        BOOL supported = NO;
+        for (NSArray *candidate in interfaces) supported |= [coordinator respondsToSelector:NSSelectorFromString(candidate[0])];
+        if (!supported) coordinator = DXSystemShared(@"SBMainSwitcherViewController", @"sharedInstance");
+        return DXSystemCallFirstAvailable(coordinator, interfaces);
     }
-    if ([action isEqual:@"control-center"]) return DXSystemCall(DXSystemShared(@"SBControlCenterController", @"sharedInstance"), @"presentAnimated:completion:", @[@YES, NSNull.null]);
+    if ([action isEqual:@"control-center"]) return DXSystemCallFirstAvailable(DXSystemShared(@"SBControlCenterController", @"sharedInstance"), @[
+        @[@"presentAnimated:completion:", @[@YES, NSNull.null]], @[@"presentAnimated:", @[@YES]]]);
     if ([action isEqual:@"wifi"]) return DXSystemToggle(DXSystemShared(@"SBWiFiManager", @"sharedInstance"), @"wiFiEnabled", @"setWiFiEnabled:");
-    if ([action isEqual:@"bluetooth"]) return DXSystemToggle(DXSystemShared(@"BluetoothManager", @"sharedInstance"), @"powered", @"setPowered:");
+    if ([action isEqual:@"bluetooth"]) {
+        id manager = DXSystemShared(@"BluetoothManager", @"sharedInstance");
+        id powered = nil;
+        if (!DXSystemInvoke(manager, @"powered", @[], &powered) || ![powered isKindOfClass:NSNumber.class]) return DXSystemOpenUnavailable;
+        // Bluetooth has separate enabled and powered states. Enable its service
+        // before powering on; retain the original route when setEnabled is absent.
+        BOOL next = ![powered boolValue];
+        if (next && [manager respondsToSelector:NSSelectorFromString(@"setEnabled:")]) {
+            DXSystemOpenResult result = DXSystemCall(manager, @"setEnabled:", @[@YES]);
+            if (result != DXSystemOpenSucceeded) return result;
+        }
+        return DXSystemCall(manager, @"setPowered:", @[@(next)]);
+    }
     if ([action isEqual:@"airplane"]) return DXSystemToggle(DXSystemShared(@"SBAirplaneModeController", @"sharedInstance"), @"isInAirplaneMode", @"setInAirplaneMode:");
     if ([action isEqual:@"cellular"]) {
         typedef Boolean (*GetData)(void);
@@ -165,7 +175,10 @@ DXSystemOpenResult DXPerformSystemAction(NSString *action) {
         id manager = DXSystemShared(@"SBOrientationLockManager", @"sharedInstance");
         id locked = nil;
         if (!DXSystemInvoke(manager, @"isUserLocked", @[], &locked) || ![locked isKindOfClass:NSNumber.class]) return DXSystemOpenUnavailable;
-        return DXSystemCall(manager, [locked boolValue] ? @"unlock" : @"lock", @[]);
+        if ([locked boolValue]) return DXSystemCall(manager, @"unlock", @[]);
+        UIInterfaceOrientation orientation = DXKeyWindow().windowScene.interfaceOrientation;
+        if (orientation == UIInterfaceOrientationUnknown) orientation = UIInterfaceOrientationPortrait;
+        return DXSystemCallFirstAvailable(manager, @[@[@"lock", @[]], @[@"lock:", @[@(orientation)]]]);
     }
     if ([action isEqual:@"dark-mode"]) return DXSystemCall(DXSystemShared(@"UIUserInterfaceStyleArbiter", @"sharedInstance"), @"toggleCurrentStyle", @[]);
     if ([action isEqual:@"brightness-up"] || [action isEqual:@"brightness-down"]) {
@@ -175,9 +188,13 @@ DXSystemOpenResult DXPerformSystemAction(NSString *action) {
     }
     if ([action isEqual:@"volume-up"] || [action isEqual:@"volume-down"]) {
         id media = DXSystemShared(@"SBMediaController", @"sharedInstance");
-        Ivar ivar = media ? class_getInstanceVariable([media class], "_volumeControl") : NULL;
-        const char *type = ivar ? ivar_getTypeEncoding(ivar) : NULL;
-        id volume = type && type[0] == '@' ? object_getIvar(media, ivar) : nil;
+        id volume = nil;
+        for (id owner in @[media ?: NSNull.null, DXSystemShared(@"SBUIController", @"sharedInstance") ?: NSNull.null]) {
+            Ivar ivar = class_getInstanceVariable([owner class], "_volumeControl");
+            const char *type = ivar ? ivar_getTypeEncoding(ivar) : NULL;
+            if (type && type[0] == '@') volume = object_getIvar(owner, ivar);
+            if (volume) break;
+        }
         return DXSystemCall(volume, [action isEqual:@"volume-up"] ? @"increaseVolume" : @"decreaseVolume", @[]);
     }
     if ([action isEqual:@"flashlight"]) {
@@ -187,15 +204,7 @@ DXSystemOpenResult DXPerformSystemAction(NSString *action) {
         if (!DXSystemInvoke(flashlight, @"flashlightLevel", @[], &level) || ![level isKindOfClass:NSNumber.class]) return DXSystemOpenUnavailable;
         return DXSystemCall(flashlight, @"setFlashlightLevel:withError:", @[@([level floatValue] > 0 ? 0.0f : 1.0f), NSNull.null]);
     }
-    if ([action isEqual:@"do-not-disturb"]) {
-        id service = nil, state = nil, manager = nil, activeIdentifier = nil;
-        if (!DXSystemInvoke(NSClassFromString(@"DNDStateService"), @"serviceForClientIdentifier:", @[@"com.lindo.typex.systemactions"], &service) ||
-            !DXSystemInvoke(service, @"queryCurrentStateWithError:", @[NSNull.null], &state) || !state ||
-            !DXSystemInvoke(NSClassFromString(@"DNDToggleManager"), @"managerForClientIdentifier:", @[@"com.lindo.typex.systemactions"], &manager) || !manager ||
-            !DXSystemInvoke(state, @"activeModeIdentifier", @[], &activeIdentifier)) return DXSystemOpenUnavailable;
-        BOOL active = [activeIdentifier isEqual:@"com.apple.donotdisturb.mode.default"];
-        return DXSystemCall(manager, active ? @"_toggleDNDOffReturningError:" : @"_toggleDNDOnReturningError:", @[NSNull.null]);
-    }
+    if ([action isEqual:@"do-not-disturb"]) return DXSystemToggleDND(NSClassFromString(@"DNDStateService"), NSClassFromString(@"DNDToggleManager"));
     if (!DXSystemExitActionAvailable(action)) return DXSystemOpenUnavailable;
     if ([action isEqual:@"respring-sb"]) { exit(0); }
     if ([action isEqual:@"safe-mode"]) { return kill(getpid(), SIGSEGV) == 0 ? DXSystemOpenSucceeded : DXSystemOpenFailed; }

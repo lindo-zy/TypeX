@@ -1,5 +1,7 @@
 #import "DXPKeyboardPanelController.h"
 #import "DXPSubActionPickerController.h"
+#import "DXPKeyboardPanelPreviewHeader.h"
+#import "DXPPanelSliderCell.h"
 #import "DXPLinkActionEditorController.h"
 #import "../DXKeyboardPanelPreferences.h"
 #import "../DXHelper.h"
@@ -18,7 +20,40 @@ static NSString *DXPanelLocalized(NSString *key) {
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { (void)tableView; return 1; }
 @end
 
+@interface DXPKeyboardPanelController ()
+@property(nonatomic, strong) DXPKeyboardPanelPreviewHeader *previewHeader;
+@property(nonatomic, strong) UISearchController *keyboardTestSearch;
+@end
 @implementation DXPKeyboardPanelController
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = @"滑动面板";
+    NSString *side = DXKeyboardPanelBool([DXPrefsManager.sharedInstance readPrefs], kDXPanelUnified, NO) ? @"common" : @"left";
+    self.previewHeader = [[DXPKeyboardPanelPreviewHeader alloc] initWithSide:side allowsSelection:YES];
+    self.previewHeader.frame = CGRectMake(0, 0, self.table.bounds.size.width, 366);
+    self.table.tableHeaderView = self.previewHeader;
+    self.keyboardTestSearch = [[UISearchController alloc] initWithSearchResultsController:nil];
+    self.keyboardTestSearch.obscuresBackgroundDuringPresentation = NO;
+    self.keyboardTestSearch.hidesNavigationBarDuringPresentation = NO;
+    self.keyboardTestSearch.searchBar.placeholder = @"输入文字，测试键盘与滑动面板";
+    self.navigationItem.searchController = self.keyboardTestSearch;
+    self.navigationItem.hidesSearchBarWhenScrolling = YES;
+    self.definesPresentationContext = YES;
+}
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self.previewHeader refresh];
+}
+- (void)viewWillDisappear:(BOOL)animated {
+    self.keyboardTestSearch.active = NO;
+    [self.view endEditing:YES];
+    [super viewWillDisappear:animated];
+}
+- (CGFloat)tableView:(UITableView *)table heightForRowAtIndexPath:(NSIndexPath *)path {
+    PSSpecifier *specifier = [self specifierAtIndexPath:path];
+    if ([specifier propertyForKey:@"cellClass"] == DXPPanelSliderCell.class) return 80;
+    return [super tableView:table heightForRowAtIndexPath:path];
+}
 - (PSSpecifier *)setting:(NSString *)label key:(NSString *)key defaultValue:(id)value cell:(PSCellType)cell {
     PSSpecifier *specifier = [PSSpecifier preferenceSpecifierNamed:DXPanelLocalized(label) target:self
         set:@selector(setPreferenceValue:specifier:) get:@selector(readPreferenceValue:)
@@ -49,7 +84,8 @@ static NSString *DXPanelLocalized(NSString *key) {
     [items addObject:[self setting:@"KEYBOARD_PANEL_DARK" key:kDXPanelDark defaultValue:@YES cell:PSSwitchCell]];
     for (NSArray *row in @[@[@"KEYBOARD_PANEL_COLUMNS", kDXPanelColumns, @4, @3, @5],
                           @[@"KEYBOARD_PANEL_SCALE", kDXPanelScale, @100, @70, @120]]) {
-        PSSpecifier *slider = [self setting:row[0] key:row[1] defaultValue:row[2] cell:PSSliderCell];
+        PSSpecifier *slider = [self setting:row[0] key:row[1] defaultValue:row[2] cell:PSStaticTextCell];
+        [slider setProperty:DXPPanelSliderCell.class forKey:@"cellClass"];
         [slider setProperty:row[3] forKey:@"min"];
         [slider setProperty:row[4] forKey:@"max"];
         [slider setProperty:@YES forKey:@"showValue"];
@@ -66,11 +102,13 @@ static NSString *DXPanelLocalized(NSString *key) {
     if ([key isEqualToString:kDXPanelColumns]) value = @(MIN(5, MAX(3, lround([value doubleValue]))));
     if ([key isEqualToString:kDXPanelScale]) value = @(MIN(120, MAX(70, lround([value doubleValue] / 5) * 5)));
     if (key.length && value) [[DXPrefsManager sharedInstance] setValue:value forKey:key];
+    [self.previewHeader refresh];
 }
 @end
 
 @interface DXPKeyboardPanelItemsController ()
 @property(nonatomic, strong) UITableView *table;
+@property(nonatomic, strong) DXPKeyboardPanelPreviewHeader *previewHeader;
 @property(nonatomic, copy) NSString *side;
 @property(nonatomic, strong) NSMutableArray<NSDictionary *> *entries;
 @end
@@ -90,6 +128,9 @@ static NSString *DXPanelLocalized(NSString *key) {
     self.table.delegate = self;
     self.table.dataSource = self;
     [self.view addSubview:self.table];
+    self.previewHeader = [[DXPKeyboardPanelPreviewHeader alloc] initWithSide:self.side allowsSelection:NO];
+    self.previewHeader.frame = CGRectMake(0, 0, self.table.bounds.size.width, 326);
+    self.table.tableHeaderView = self.previewHeader;
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addActions)];
     self.entries = [self configuredEntries];
     [self.table setEditing:YES animated:NO];
@@ -98,10 +139,12 @@ static NSString *DXPanelLocalized(NSString *key) {
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     self.entries = [self configuredEntries];
+    [self.previewHeader refresh];
     [self.table reloadData];
 }
 - (void)save {
     [[DXPrefsManager sharedInstance] setValue:[self.entries copy] forKey:DXKeyboardPanelItemsKey(self.side)];
+    [self.previewHeader refresh];
 }
 - (NSDictionary *)definitionForSelector:(NSString *)selector {
     id stored = [[DXPrefsManager sharedInstance] readPrefs][kLinkActionskey];
@@ -238,6 +281,7 @@ static NSString *DXPanelLocalized(NSString *key) {
                 actions[index] = saved;
                 preferences[kLinkActionskey] = actions;
                 [[DXPrefsManager sharedInstance] writePrefs:preferences];
+                [weakSelf.previewHeader refresh];
                 [weakSelf.table reloadData];
                 break;
             }

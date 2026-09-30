@@ -69,6 +69,31 @@ userspace reboot 需要当前越狱授予 syscall 权限；没有 root helper �
 
 日志：`[TypeX][SystemAction]` 含固定动作 ID、结果和缺失 selector；不记录输入内容、不写设备日志文件。
 
+## iOS 16/17 RootHide 失败修复
+
+问题：用户报告多项动作失败，含勿扰，出现统一的不可用提示。
+源码中的确定问题：DNDStateService / DNDToggleManager 使用自创客户端标识，
+与 SpringBoard 公布的客户端授权列表不匹配；失败路径丢弃 NSError，无法区分缺失接口和原生拒绝。
+参考 [SpringBoard entitlement dump](https://gist.github.com/networkextension/11df87e07921b59fe9f526a45c6dee1d)
+中 DoNotDisturb 的 state.request / mode.assertion client-identifiers。此参考不是目标设备的运行时权限证明。
+
+修复：使用控制中心客户端标识 `com.apple.donotdisturb.control-center.module`；
+查询当前勿扰标识并切换，旧状态接口仅在无 activeModeIdentifier 时使用 isActive。
+查询失败不执行切换。保留原生错误 domain/code，记录 ABI 拒绝的阶段、类和 selector。
+返回桌面、后台、控制中心和方向锁加入已有接口的兼容选择；仅选一个存在的接口执行，
+调用失败不重试另一个接口。音量增加 SBUIController 的原生控制器来源；蓝牙开启先启用服务。
+Home / Switcher 的备用接口参考 [DVirtualHome 实现](https://github.com/DGh0st/DVirtualHome/blob/master/Tweak.xm)。
+未使用枚举含义不明的 toggleToTargetState，不新增提权或 shell 回退。
+失败提示区分接口不可用、原生失败、配置无效、过期和回复超时；超时结果未知，不自动重试。
+
+涉及 DXSystemActionExecutor.m、DXSystemActionInvocation.h、DXSystemActionCompatibility.h、
+DXCollectionView.m 和本地化资源。不改变系统动作目录、既有跨进程协议或退出动作的确认逻辑。
+
+自动检查新增 native NSError、单次接口选择及实际 DND 辅助调用路径的替身测试；
+替身校验客户端、开关方向、其他专注标识、旧状态、查询拒绝/切换拒绝和缺失类。
+这些检查不能验证系统服务权限或真实状态。需在两个版本安装后按上方步骤逐项测试，
+尤其观察勿扰状态与失败 syslog 的 domain/code；连接的 iOS 17.1.2 设备本次未安装新包、未操作系统动作。
+
 ## 本次开发结果（3.9.3）
 
 源码审查与 `git diff --check` 通过；49 项系统/面板辅助逻辑、187 项手势/几何/文本
@@ -79,3 +104,15 @@ control 的既有 firmware>=14.0 元数据未变；实际 Mach-O deployment 为 
 
 未安装到设备，冷/热启动、系统控制器是否存在、权限、动作实际效果、确认框可见性，
 以及 Spotlight 远程键盘的显示/命中测试均未验证。源码/构建通过不代表这些项目通过。
+
+## 本次修复结果（3.9.5）
+
+源码审查和 `git diff --check` 通过。62 项系统/面板辅助逻辑检查、4508 项搜索/共享网格
+检查及静态中文资源覆盖检查通过；既有 141 项手势配置、12 项覆盖几何、25 项识别器
+状态、9 项文本动作检查通过。`./build.sh` 成功构建两个目标，版本由 3.9.4 推进至 3.9.5。
+包检查确认两套均含 arm64/arm64e、预览与中文控件、正确 Root.strings 翻译、勿扰的新客户端标识、
+完整系统动作与失败提示资源；plist 和安装/卸载脚本语法通过。deployment/依赖沿用上文配置。
+
+核心功能未真机验证：本次没有安装或执行设备系统动作，也未验证 iOS 16/17 的权限、
+设置页实际显示/交互、预览即时刷新、搜索弹出键盘或远程键盘覆盖。自动检查使用生产代码和替身，
+不能证明这批私有 API 在两个目标版本均存在或所有动作已恢复。复测失败时需收集固定动作 ID 与对应 syslog。

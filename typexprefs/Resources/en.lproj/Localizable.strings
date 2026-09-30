@@ -416,7 +416,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SYSTEM_GROUP_CONTROL" = "Control Center";
 "SYSTEM_DEVICE_FOOTER" = "Respring restarts the interface service; Respring (SB) exits SpringBoard. Safe mode requires jailbreak support and userspace reboot requires system permission. Exit and power actions require confirmation.";
 "SYSTEM_ACTION_CONFIRM" = "This action interrupts the current session. Continue?";
-"SYSTEM_ACTION_UNAVAILABLE" = "System action unavailable or failed";
+"SYSTEM_ACTION_UNAVAILABLE" = "No supported system interface is available";
 "SYSTEM_PREVIOUS" = "Previous track";
 "SYSTEM_NEXT" = "Next track";
 "SYSTEM_PLAY_PAUSE" = "Play / Pause";
@@ -441,3 +441,13 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SYSTEM_BRIGHTNESS_DOWN" = "Decrease brightness";
 "SYSTEM_VOLUME_UP" = "Increase volume";
 "SYSTEM_VOLUME_DOWN" = "Decrease volume";
+
+"ACTION_TYPE_JAVASCRIPT" = "JavaScript";
+
+"SYSTEM_ACTION_FAILED" = "The system rejected this action. Check diagnostics.";
+
+"SYSTEM_ACTION_TIMEOUT" = "No system reply. The outcome is unknown; check tweak injection.";
+
+"SYSTEM_ACTION_INVALID" = "This system action configuration is invalid. Select and save it again.";
+
+"SYSTEM_ACTION_EXPIRED" = "The operation was canceled or expired. Trigger it again.";

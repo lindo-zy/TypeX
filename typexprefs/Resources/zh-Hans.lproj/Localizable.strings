@@ -34,7 +34,7 @@
 "SHORT_DELETE_FORWARD" = "向后删除";
 "SHORT_DELETE_ALL" = "清空";
 "SHORT_COPY_LOG" = "复制记录";
-"SHORT_SPONGEBOB" = "sPoNge";
+"SHORT_SPONGEBOB" = "交错大小写";
 
 //=====================Long Text for Shortcuts=====================
 //Used for showing shortcuts name in "Manage Shortcuts" etc.
@@ -69,7 +69,7 @@
 "LONG_DELETE_FORWARD" = "向后删除";
 "LONG_DELETE_ALL" = "清空";
 "LONG_COPY_LOG" = "复制记录";
-"LONG_SPONGEBOB" = "sPonGeBob teXt";
+"LONG_SPONGEBOB" = "交错大小写";
 
 //=====================Manage Shortcuts=====================
 //Title
@@ -160,14 +160,14 @@
 //=====================CUSTOM ACTION TYPES=====================
 "ACTION_TYPE" = "类型";
 "CHOOSE_ACTION_TYPE" = "选择动作类型";
-"ACTION_TYPE_URL_SCHEME" = "URL Scheme";
+"ACTION_TYPE_URL_SCHEME" = "链接协议";
 "ACTION_TYPE_TEXT" = "文本";
-"ACTION_TYPE_URL" = "URL";
+"ACTION_TYPE_URL" = "网页链接";
 "ACTION_TYPE_OPEN_APP" = "打开应用";
-"URL_SCHEME_SETTINGS" = "URL Scheme 设置";
+"URL_SCHEME_SETTINGS" = "链接协议设置";
 "TEXT_SETTINGS" = "文本设置";
-"URL_SETTINGS" = "URL 设置";
-"OPEN_IN_APP" = "APP内打开";
+"URL_SETTINGS" = "网页链接设置";
+"OPEN_IN_APP" = "应用内打开";
 "OPEN_WITH_PULLOVER" = "由 PullOver-X 打开";
 "CUT_REPLACE_FIELD" = "剪切替换";
 "TYPE_FOOTER_URL_SCHEME" = "点击后执行 URL Scheme 打开跳转，沿用系统跳转方式；使用 @@@ 可传入当前输入框的内容作为入参。开启「剪切替换」后，@@@ 传入内容的同时清空输入框；关闭则保留输入框内容。";
@@ -280,20 +280,20 @@
 "AI_CUSTOM_ENGINE_TITLE" = "自定义引擎";
 "AI_SAVE" = "保存";
 "AI_INVALID_ENDPOINT" = "接口地址无效，请填写以 http:// 或 https:// 开头的完整地址";
-"AI_API_KEY" = "API Key";
+"AI_API_KEY" = "接口密钥";
 "AI_MODELS_LABEL" = "模型";
 "AI_FETCH_MODELS" = "模型抓取";
 "AI_FETCHING_MODELS" = "抓取中…";
-"AI_OPEN_KEYS_URL" = "打开获取 API 网址";
+"AI_OPEN_KEYS_URL" = "获取接口密钥";
 "AI_ENDPOINT" = "接口地址";
 "AI_CUSTOM_NAME" = "显示名称";
-"AI_CUSTOM_ADD_TITLE" = "添加自定义 API";
+"AI_CUSTOM_ADD_TITLE" = "添加自定义接口";
 "AI_CUSTOM_ADD_MESSAGE" = "兼容接口：填 Base URL（如 https://xxx/v1）或完整 …/chat/completions，任意兼容均可";
-"AI_CUSTOM_BASEURL_HINT" = "Base URL（https://xxx/v1 或 …/chat/completions）";
-"AI_CUSTOM_MODEL_HINT" = "模型 ID（例 gpt-4o-mini）";
+"AI_CUSTOM_BASEURL_HINT" = "接口地址（https://xxx/v1 或 …/chat/completions）";
+"AI_CUSTOM_MODEL_HINT" = "模型标识（例 gpt-4o-mini）";
 "AI_PERSONA_SECTION" = "AI 人设";
 "AI_PERSONA_ROW" = "人设";
-"AI_THEME_ROW" = "Ai窗口主题";
+"AI_THEME_ROW" = "问答窗口主题";
 "AI_STREAM_ROW" = "流式输出";
 "AI_THEME_SYSTEM" = "跟随系统";
 "AI_THEME_LIGHT" = "浅色";
@@ -397,7 +397,7 @@
 "KEYBOARD_PANEL_EDIT_HINT" = "点击编辑，拖动排序";
 "KEYBOARD_PANEL_ITEM_APPEARANCE" = "编辑名称与图标";
 "KEYBOARD_PANEL_NAME" = "名称（留空使用动作名称）";
-"KEYBOARD_PANEL_ICON" = "SF Symbol 或 App Bundle ID";
+"KEYBOARD_PANEL_ICON" = "系统图标名称或应用标识";
 "KEYBOARD_PANEL_SAVE" = "保存";
 "KEYBOARD_PANEL_REPLACE_ACTION" = "更换动作";
 "KEYBOARD_PANEL_EDIT_ACTION" = "编辑自定义动作";
@@ -415,7 +415,7 @@
 "SYSTEM_GROUP_CONTROL" = "控制中心";
 "SYSTEM_DEVICE_FOOTER" = "注销会重启界面服务，注销（SB）仅退出 SpringBoard。安全模式依赖越狱环境，重启用户空间需要系统权限。注销、安全模式、关机和重启执行前需要确认。";
 "SYSTEM_ACTION_CONFIRM" = "此操作会中断当前会话。确定继续？";
-"SYSTEM_ACTION_UNAVAILABLE" = "系统动作不可用或执行失败";
+"SYSTEM_ACTION_UNAVAILABLE" = "当前系统没有可用的动作接口";
 "SYSTEM_PREVIOUS" = "上一首";
 "SYSTEM_NEXT" = "下一首";
 "SYSTEM_PLAY_PAUSE" = "播放 / 暂停";
@@ -440,3 +440,13 @@
 "SYSTEM_BRIGHTNESS_DOWN" = "降低亮度";
 "SYSTEM_VOLUME_UP" = "增加音量";
 "SYSTEM_VOLUME_DOWN" = "降低音量";
+
+"ACTION_TYPE_JAVASCRIPT" = "脚本";
+
+"SYSTEM_ACTION_FAILED" = "系统拒绝执行该动作，请查看诊断日志";
+
+"SYSTEM_ACTION_TIMEOUT" = "未收到系统回复，执行结果未知，请检查插件是否已注入";
+
+"SYSTEM_ACTION_INVALID" = "系统动作配置已失效，请重新选择并保存";
+
+"SYSTEM_ACTION_EXPIRED" = "操作已取消或过期，请重新触发";
