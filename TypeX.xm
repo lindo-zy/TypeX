@@ -28,7 +28,6 @@ BOOL singleTapGlobeEnabled = NO;
 BOOL isSpringBoard = YES;
 BOOL isApplication = NO;
 BOOL isSafari = NO;
-BOOL shouldPerformBatchUpdate = YES;
 //BOOL shouldSendScrollExecution = YES;
 UIKeyboardDockView *dockV;
 NSBundle *tweakBundle;
@@ -1346,7 +1345,6 @@ static void reloadPrefs(void) {
     // Button chrome (height/radius/spacing/border/width scale) is scoped per
     // toolbar and recomputed inside DXCollectionView's reloadShortcutConfiguration.
 
-    shouldPerformBatchUpdate = NO;
     spongebobEntropy = (DXStudlyCapsType)preferencesInt(kSpongebobEntropyKey, DXStudlyCapsTypeRandom);
 
     // Settings changes arrive while the keyboard dock is still alive.  Refresh
@@ -1460,7 +1458,6 @@ static void shortcutRefreshRequestCallback(CFNotificationCenterRef center,
                     [tweakBundle load];
                     firstInit = YES;
                     reloadPrefs();
-                    shouldPerformBatchUpdate = YES;
                     %init(TypeX);
                     NSLog(@"[TypeX] diag: hooks installed");
                     topToolbarLifecycleObserver = [[DXTopToolbarLifecycleObserver alloc] init];

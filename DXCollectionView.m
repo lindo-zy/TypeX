@@ -327,21 +327,22 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 - (instancetype)initWithConfiguration:(NSString *)configuration{
-    
-    BOOL isTopConfiguration = [configuration isEqualToString:@"top"];
-    UICollectionViewFlowLayout *flowLayout = isTopConfiguration
-        ? [[DXTopShortcutFlowLayout alloc] init]
-        : [[UICollectionViewFlowLayout alloc] init];
+
+    // Both toolbars get the non-flipping flow layout: the dock toolbar joins
+    // the same rebuilt keyboard hierarchy as the top accessory, so an unpinned
+    // direction re-resolution there mirrors its items too.
+    UICollectionViewFlowLayout *flowLayout = [[DXTopShortcutFlowLayout alloc] init];
     flowLayout.scrollDirection = UICollectionViewScrollDirectionHorizontal;
     flowLayout.minimumLineSpacing = 0;
 
 
     if (self = [super initWithFrame:CGRectZero collectionViewLayout:flowLayout]) {
         // Keep the configured array order stable before and after the view is
-        // attached to the keyboard's accessory hierarchy.
-        if (isTopConfiguration) {
-            self.semanticContentAttribute = UISemanticContentAttributeForceLeftToRight;
-        }
+        // attached to the keyboard's accessory hierarchy — for both toolbars:
+        // the keyboard's private hierarchy can temporarily resolve a different
+        // semantic direction, and flow layout answers that by mirroring item
+        // positions (the reversed-first-frame flash).
+        self.semanticContentAttribute = UISemanticContentAttributeForceLeftToRight;
         self.configuration = configuration ?: @"bottom";
         self.shortcutsGenerator = [DXShortcutsGenerator sharedInstance];
         // Build the data source exactly once, directly from the complete
@@ -838,18 +839,12 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     if (toggledOn){
         if (self.refreshView){
             [UIView performWithoutAnimation:^{
-                //[self reloadItemsAtIndexPaths:[self indexPathsForVisibleItems]];
-                if (shouldPerformBatchUpdate){
-                    [self performBatchUpdates:^{
-                        [self reloadData];
-                    } completion:^(BOOL finished) {}];
-                }else{
-                    [self reloadData];
-                    [self performBatchUpdates:^{} completion:^(BOOL finished) {
-                        shouldPerformBatchUpdate = YES;
-                    }];
-                }
-                
+                // reloadData inside performBatchUpdates mixes a full reload with
+                // batch semantics (undefined; cells can end up attributed to
+                // stale index paths). Reload plainly; the empty batch only
+                // forces the layout pass.
+                [self reloadData];
+                [self performBatchUpdates:^{} completion:^(BOOL finished) {}];
             }];
         }
         
@@ -900,18 +895,12 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         isLandscape = UIInterfaceOrientationIsLandscape(orientation);
         if (self.refreshView){
             [UIView performWithoutAnimation:^{
-                //[self reloadItemsAtIndexPaths:[self indexPathsForVisibleItems]];
-                if (shouldPerformBatchUpdate){
-                    [self performBatchUpdates:^{
-                        [self reloadData];
-                    } completion:^(BOOL finished) {}];
-                }else{
-                    [self reloadData];
-                    [self performBatchUpdates:^{} completion:^(BOOL finished) {
-                        shouldPerformBatchUpdate = YES;
-                    }];
-                }
-                
+                // reloadData inside performBatchUpdates mixes a full reload with
+                // batch semantics (undefined; cells can end up attributed to
+                // stale index paths). Reload plainly; the empty batch only
+                // forces the layout pass.
+                [self reloadData];
+                [self performBatchUpdates:^{} completion:^(BOOL finished) {}];
             }];
         }
     }
