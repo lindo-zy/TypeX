@@ -106,7 +106,7 @@ static NSInteger const DXSectionAddType = 1;
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == DXSectionSelected) return MAX(1, (NSInteger)self.linkActions.count);
-    return 6;
+    return self.addTypeList.count;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -171,17 +171,23 @@ static NSInteger const DXSectionAddType = 1;
     return cell;
 }
 
-- (NSString *)typeAtIndex:(NSInteger)row {
+// 管理页「选择动作」分区的类型清单：与添加弹窗（presentTypeChooserFrom-
+// Controller）保持同一集合与顺序——网页链接已退役，系统动作在此直选。
+- (NSArray<NSString *> *)addTypeList {
     static NSArray<NSString *> *types;
     if (!types) types = @[
         kCustomActionTypeURLScheme,
         kCustomActionTypeText,
-        kCustomActionTypeURL,
         kCustomActionTypeOpenApp,
         kCustomActionTypeShortcut,
+        kCustomActionTypeSystem,
         kCustomActionTypeJavaScript,
     ];
-    return types[row];
+    return types;
+}
+
+- (NSString *)typeAtIndex:(NSInteger)row {
+    return self.addTypeList[row];
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
