@@ -108,6 +108,7 @@ static NSArray<NSString *> *DXSFSymbolCatalog(void) {
     self.searchBar.delegate = self;
     self.table.tableHeaderView = self.searchBar;
     self.view = self.table;
+    NSLog(@"[TypeX][SFSymbol] picker open rows=%lu catalog=%lu", (unsigned long)self.symbols.count, (unsigned long)DXSFSymbolCatalog().count);
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
@@ -152,7 +153,9 @@ static NSArray<NSString *> *DXSFSymbolCatalog(void) {
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    if (indexPath.row < 0 || indexPath.row >= (NSInteger)self.symbols.count) return;
     NSString *name = self.symbols[indexPath.row];
+    NSLog(@"[TypeX][SFSymbol] picked name=%@ completion=%d", name, self.completion != nil);
     if (self.completion) self.completion(name);
     [self.navigationController popViewControllerAnimated:YES];
 }
