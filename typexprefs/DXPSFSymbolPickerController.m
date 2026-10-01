@@ -80,6 +80,8 @@ static NSArray<NSString *> *DXSFSymbolCatalog(void) {
 @interface DXPSFSymbolPickerController () <UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate>
 @property (nonatomic, strong) UITableView *table;
 @property (nonatomic, strong) UISearchBar *searchBar;
+// 全量可用符号只算一次；symbols 始终由 allSymbols 过滤而来，退格才能恢复。
+@property (nonatomic, copy) NSArray<NSString *> *allSymbols;
 @property (nonatomic, copy) NSArray<NSString *> *symbols;
 @end
 
@@ -94,6 +96,7 @@ static NSArray<NSString *> *DXSFSymbolCatalog(void) {
     for (NSString *name in DXSFSymbolCatalog()) {
         if ([UIImage systemImageNamed:name]) [available addObject:name];
     }
+    self.allSymbols = available;
     self.symbols = available;
     self.table = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
     self.table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
@@ -114,16 +117,10 @@ static NSArray<NSString *> *DXSFSymbolCatalog(void) {
 
 - (void)filterWithQuery:(NSString *)query {
     query = [query stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    if (query.length == 0) {
-        NSMutableArray<NSString *> *available = [NSMutableArray array];
-        for (NSString *name in DXSFSymbolCatalog()) {
-            if ([UIImage systemImageNamed:name]) [available addObject:name];
-        }
-        self.symbols = available;
-    } else {
-        self.symbols = [self.symbols filteredArrayUsingPredicate:
-            [NSPredicate predicateWithFormat:@"self CONTAINS[cd] %@", query]];
-    }
+    self.symbols = query.length
+        ? [self.allSymbols filteredArrayUsingPredicate:
+              [NSPredicate predicateWithFormat:@"self CONTAINS[cd] %@", query]]
+        : self.allSymbols;
     [self.table reloadData];
 }
 

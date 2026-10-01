@@ -514,6 +514,7 @@ static NSBundle *tweakBundle;
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"TypeXLPItemCell"];
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"TypeXCustomLinkActionCell"];
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPActionAddCell"];
+    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPActionGroupCell"];
     self.view = self.tableView;
 
     if (!self.selectionManagedExternally) {
