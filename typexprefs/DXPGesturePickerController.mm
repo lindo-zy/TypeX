@@ -474,6 +474,22 @@ static NSBundle *tweakBundle;
 // 显示组三行的 cell 定制：图标行 imageView 实时预览（键入即刷新，去重注册），
 // 名称行清掉复用残留的预览图，图标库行预览生效图标。
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    // 图标库行整行用自绘 cell（标准 textLabel/imageView/chevron），彻底绕开
+    // PSTableCell 对无 detail PSLinkCell 的弱化灰渲染与私有标题标签——此前
+    // 改 textLabel 颜色与按 textLabel 文本匹配点击全部落空即根因于此。
+    if (self.iconLibrarySpec && [self specifierAtIndexPath:indexPath] == self.iconLibrarySpec) {
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPIconLibraryRow"];
+        if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"DXPIconLibraryRow"];
+        BOOL placeholder = NO;
+        UIImage *image = [self previewImageForIconConfig:[self readIconValue:nil] placeholder:&placeholder];
+        cell.imageView.image = image;
+        cell.imageView.tintColor = placeholder ? UIColor.secondaryLabelColor : nil;
+        cell.textLabel.text = LOCALIZED(@"ICON_LIBRARY_ROW");
+        cell.textLabel.textColor = UIColor.labelColor;
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        cell.detailTextLabel.text = nil;
+        return cell;
+    }
     UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
     PSSpecifier *specifier = [self specifierAtIndexPath:indexPath];
     if (self.customIconSpec && specifier == self.customIconSpec) {
@@ -492,15 +508,6 @@ static NSBundle *tweakBundle;
             cell.imageView.image = nil;
             cell.imageView.tintColor = nil;
         }
-    }
-    if (self.iconLibrarySpec && specifier == self.iconLibrarySpec) {
-        BOOL placeholder = NO;
-        UIImage *image = [self previewImageForIconConfig:[self readIconValue:nil] placeholder:&placeholder];
-        cell.imageView.image = image;
-        cell.imageView.tintColor = placeholder ? UIColor.secondaryLabelColor : nil;
-        // Preferences 对无 detail 的 PSLinkCell 会把标题渲染成弱化灰，强制正常色。
-        cell.textLabel.textColor = UIColor.labelColor;
-        cell.detailTextLabel.text = nil;
     }
     return cell;
 }

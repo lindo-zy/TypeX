@@ -466,4 +466,3 @@ static NSString *DXPanelLocalized(NSString *key) {
     [self presentViewController:menu animated:YES completion:nil];
 }
 @end
-
