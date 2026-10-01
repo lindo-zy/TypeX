@@ -1,5 +1,6 @@
 #import "DXPGesturePickerController.h"
 #import "DXPSubActionsController.h"
+#import "DXPSFSymbolPickerController.h"
 #import "../DXHelper.h"
 #import "../DXShortcutsGenerator.h"
 #import "../common.h"
@@ -14,6 +15,8 @@ static NSBundle *tweakBundle;
 @property (nonatomic, assign) BOOL pushedTapActionPicker;
 @property (nonatomic, assign) BOOL nameDirty;
 @property (nonatomic, assign) BOOL iconDirty;
+// 显示组里的「从图标库选择」行：预览 + 推入 SF 图标库。
+@property (nonatomic, strong) PSSpecifier *iconLibrarySpec;
 @end
 
 @implementation DXPGesturePickerController
@@ -420,6 +423,13 @@ static NSBundle *tweakBundle;
         [customIconSpec setProperty:LOCALIZED(@"CUSTOM_ICON") forKey:@"label"];
         [snippetEntrySpecifiers addObject:customIconSpec];
 
+        // 图标库入口行：左侧实时预览当前图标，点击推入 SF 图标库；回写走
+        // setIconValue: 的既有校验与保存按钮脏标记链。
+        PSSpecifier *iconLibrarySpec = [PSSpecifier preferenceSpecifierNamed:LOCALIZED(@"ICON_LIBRARY_ROW") target:self set:nil get:nil detail:nil cell:PSLinkCell edit:nil];
+        [iconLibrarySpec setProperty:LOCALIZED(@"ICON_LIBRARY_ROW") forKey:@"label"];
+        self.iconLibrarySpec = iconLibrarySpec;
+        [snippetEntrySpecifiers addObject:iconLibrarySpec];
+
         PSSpecifier *gestureTypeGroup = [PSSpecifier preferenceSpecifierNamed:LOCALIZED(@"GESTURES") target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
         [snippetEntrySpecifiers addObject:gestureTypeGroup];
 
@@ -437,6 +447,22 @@ static NSBundle *tweakBundle;
     return _specifiers;
 }
 
+// 图标库行左侧实时渲染当前图标（SF Symbol 名或 Bundle ID）；随字段重载刷新，
+// 空值显示问号占位。
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
+    if (self.iconLibrarySpec && [self specifierAtIndexPath:indexPath] == self.iconLibrarySpec) {
+        NSString *icon = [self readIconValue:nil];
+        if (![icon isKindOfClass:NSString.class]) icon = @"";
+        cell.imageView.image = icon.length
+            ? [DXHelper imageForIconConfig:icon defaultSymbolName:@"link"]
+            : [UIImage systemImageNamed:@"questionmark.square"];
+        cell.imageView.tintColor = UIColor.secondaryLabelColor;
+        cell.detailTextLabel.text = nil;
+    }
+    return cell;
+}
+
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath{
 
     UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
@@ -450,6 +476,25 @@ static NSBundle *tweakBundle;
     if (editField) {
         [tableView deselectRowAtIndexPath:indexPath animated:YES];
         [editField becomeFirstResponder];
+        return;
+    }
+
+    // 图标库行：推入 SF 图标库；选中后经 setIconValue: 的既有校验回写并刷新。
+    if (self.iconLibrarySpec && [self specifierAtIndexPath:indexPath] == self.iconLibrarySpec) {
+        [tableView deselectRowAtIndexPath:indexPath animated:YES];
+        DXPSFSymbolPickerController *picker = [[DXPSFSymbolPickerController alloc] init];
+        NSString *current = [self readIconValue:nil];
+        picker.selectedSymbolName = [current isKindOfClass:NSString.class] ? current : nil;
+        __weak typeof(self) weakSelf = self;
+        picker.completion = ^(NSString *symbolName) {
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf || !symbolName.length) return;
+            [strongSelf setIconValue:symbolName specifier:strongSelf.iconLibrarySpec];
+            [strongSelf reloadSpecifiers];
+        };
+        [picker setRootController:[self rootController]];
+        [picker setParentController:[self parentController]];
+        [self pushController:picker];
         return;
     }
 
