@@ -4,6 +4,7 @@
 #import "DXPLinkActionEditorController.h"
 #import "../DXHelper.h"
 #import "../DXShortcutsGenerator.h"
+#import "../DXSystemActionCatalog.h"
 #import "../common.h"
 
 static NSBundle *tweakBundle;
@@ -14,6 +15,8 @@ static NSBundle *tweakBundle;
 // 内置动作的分组展示行（kind=group/action）；fullOrder 换引用时重建。
 @property (nonatomic, strong) NSArray<NSDictionary *> *builtInDisplayRows;
 @property (nonatomic, strong) NSArray *builtInDisplayRowsSource;
+// 系统动作分区的多选暂存（存目录 id，确认时才创建底层自定义动作）。
+@property (nonatomic, strong) NSMutableSet<NSString *> *pickedSystemIds;
 @end
 
 @implementation DXPCustomActionViewController
@@ -27,6 +30,11 @@ static NSBundle *tweakBundle;
         if (![entry isKindOfClass:[NSDictionary class]]) continue;
         NSString *selector = entry[@"selector"];
         if (!DXIsLinkActionSelector(selector)) continue;
+        // 选择页不再出现网页链接（类型已退役）与系统动作条目（由独立的系统
+        // 动作分区承载）；管理页保留全部条目以便查看和删除。
+        if (!self.customActionsOnly &&
+            ([entry[kCustomActionTypeKey] isEqual:kCustomActionTypeURL] ||
+             [entry[kCustomActionTypeKey] isEqual:kCustomActionTypeSystem])) continue;
         [self.linkActions addObject:[entry mutableCopy]];
     }
 
@@ -224,27 +232,45 @@ static NSBundle *tweakBundle;
 
 #pragma mark - Table view
 
+// 分区布局：管理页只有自定义动作；选择页为 自定义 / 基础 / 系统，面板选择
+// 页可关掉基础分区（custom + system）。隐藏分区以 -1 表示。
+- (BOOL)showsBuiltInActionsSection { return YES; }
+- (BOOL)showsSystemActionsSection { return !self.customActionsOnly; }
+- (NSInteger)builtInSection {
+    return (self.customActionsOnly || !self.showsBuiltInActionsSection) ? -1 : 1;
+}
+- (NSInteger)systemSection {
+    if (!self.showsSystemActionsSection) return -1;
+    return (self.showsBuiltInActionsSection ? 2 : 1);
+}
+
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return self.customActionsOnly ? 1 : 2;
+    if (self.customActionsOnly) return 1;
+    return 1 + (self.showsBuiltInActionsSection ? 1 : 0) + (self.showsSystemActionsSection ? 1 : 0);
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    if (section != self.customActionsSection) return LOCALIZED(@"BASIC_ACTIONS");
-    // Picker modes hide the whole group when there is nothing to select; the
-    // sub-action picker keeps it visible so its 添加 row is always reachable.
-    if (!self.customActionsOnly && self.linkActions.count == 0 && !self.allowsCreatingCustomActions) return nil;
-    return LOCALIZED(@"CUSTOM_ACTIONS");
+    if (section == self.systemSection) return LOCALIZED(@"SYSTEM_ACTIONS_SECTION");
+    if (section == self.builtInSection) return LOCALIZED(@"BASIC_ACTIONS");
+    if (section == self.customActionsSection) {
+        // Picker modes hide the whole group when there is nothing to select; the
+        // sub-action picker keeps it visible so its 添加 row is always reachable.
+        if (!self.customActionsOnly && self.linkActions.count == 0 && !self.allowsCreatingCustomActions) return nil;
+        return LOCALIZED(@"CUSTOM_ACTIONS");
+    }
+    return nil;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (section != self.customActionsSection) return self.builtInDisplayRows.count;
+    if (section == self.systemSection) return DXSystemActionCatalog().count;
+    if (section == self.builtInSection) return self.builtInDisplayRows.count;
     // The trailing "添加" row belongs to the management page and the sub-action
     // picker (in-place creation); plain selection pickers stay read-only.
     return self.linkActions.count + ((self.customActionsOnly || self.allowsCreatingCustomActions) ? 1 : 0);
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.section != self.customActionsSection && indexPath.row < (NSInteger)self.builtInDisplayRows.count &&
+    if (indexPath.section == self.builtInSection && indexPath.row < (NSInteger)self.builtInDisplayRows.count &&
         [self.builtInDisplayRows[indexPath.row][@"kind"] isEqual:@"group"]) return 30;
     return 44;
 }
@@ -328,8 +354,71 @@ static NSBundle *tweakBundle;
     return cell;
 }
 
+#pragma mark - System actions
+
+// 在权威自定义目录里找指向该系统动作的 type=system 条目；没有则就地创建
+// （名称/图标取目录默认，后续可在管理页改），返回其 selector。
+- (NSString *)existingSystemActionSelectorForId:(NSString *)systemId {
+    for (NSDictionary *entry in self.prefs[kLinkActionskey]) {
+        if ([entry isKindOfClass:NSDictionary.class] &&
+            [entry[kCustomActionTypeKey] isEqual:kCustomActionTypeSystem] &&
+            [entry[kCustomActionSystemIdentifierKey] isEqual:systemId] &&
+            [entry[@"selector"] isKindOfClass:NSString.class]) return entry[@"selector"];
+    }
+    return nil;
+}
+
+- (NSString *)ensureSystemActionSelectorForId:(NSString *)systemId {
+    NSDictionary *definition = DXSystemActionDefinition(systemId);
+    if (!definition) return nil;
+    NSString *existing = [self existingSystemActionSelectorForId:systemId];
+    if (existing.length) return existing;
+    NSString *selector = [kLinkActionSelectorPrefix stringByAppendingString:NSUUID.UUID.UUIDString];
+    NSMutableDictionary *preferences = [self.prefs mutableCopy] ?: [NSMutableDictionary dictionary];
+    NSMutableArray *actions = [preferences[kLinkActionskey] isKindOfClass:NSArray.class]
+        ? [preferences[kLinkActionskey] mutableCopy] : [NSMutableArray array];
+    [actions addObject:[@{
+        @"selector": selector,
+        @"name": LOCALIZED(definition[@"title"]),
+        @"icon": definition[@"icon"],
+        kCustomActionTypeKey: kCustomActionTypeSystem,
+        kCustomActionSystemIdentifierKey: systemId,
+    } mutableCopy]];
+    preferences[kLinkActionskey] = actions;
+    self.prefs = preferences;
+    [self writePreferences];
+    return selector;
+}
+
+// 反查：系统动作条目的 selector → 目录 id（用于勾选定位）。
+- (NSString *)systemIdForSelector:(NSString *)selector {
+    for (NSDictionary *entry in self.prefs[kLinkActionskey]) {
+        if ([entry isKindOfClass:NSDictionary.class] &&
+            [entry[@"selector"] isEqual:selector] &&
+            [entry[kCustomActionTypeKey] isEqual:kCustomActionTypeSystem]) return entry[kCustomActionSystemIdentifierKey];
+    }
+    return nil;
+}
+
+- (UITableViewCell *)systemCellForIndexPath:(NSIndexPath *)indexPath {
+    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:@"DXPSystemActionCell" forIndexPath:indexPath];
+    NSDictionary *action = DXSystemActionCatalog()[indexPath.row];
+    cell.textLabel.text = LOCALIZED(action[@"title"]);
+    cell.imageView.image = [UIImage systemImageNamed:action[@"icon"]];
+    NSString *selector = [self existingSystemActionSelectorForId:action[@"id"]];
+    BOOL checked = self.allowsMultipleSelection
+        ? ([self.pickedSystemIds containsObject:action[@"id"]] ||
+           (selector && [self.pickedSelectors containsObject:selector]))
+        : (selector && [self.selectedSelector isEqualToString:selector]);
+    cell.accessoryType = checked ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+    cell.accessoryView = nil;
+    cell.editingAccessoryView = nil;
+    return cell;
+}
+
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.section != self.customActionsSection) return [self builtInCellForIndexPath:indexPath];
+    if (indexPath.section == self.systemSection) return [self systemCellForIndexPath:indexPath];
+    if (indexPath.section == self.builtInSection) return [self builtInCellForIndexPath:indexPath];
     if (indexPath.row >= (NSInteger)self.linkActions.count) {
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPActionAddCell" forIndexPath:indexPath];
         cell.textLabel.text = LOCALIZED(@"ADD");
@@ -354,6 +443,42 @@ static NSBundle *tweakBundle;
     // Management page: tapping a custom action edits it instead of selecting.
     if (self.customActionsOnly) {
         [self pushEditorForCustomRow:indexPath.row];
+        return;
+    }
+
+    // 系统动作分区：点选即创建（或复用）底层自定义动作并按其 selector 走通用流程。
+    if (indexPath.section == self.systemSection) {
+        NSString *systemId = DXSystemActionCatalog()[indexPath.row][@"id"];
+        if (self.allowsMultipleSelection) {
+            NSString *existing = [self existingSystemActionSelectorForId:systemId];
+            if ([self.pickedSystemIds containsObject:systemId]) {
+                [self.pickedSystemIds removeObject:systemId];
+            } else if (existing && [self.pickedSelectors containsObject:existing]) {
+                [self.pickedSelectors removeObject:existing];
+            } else {
+                [self.pickedSystemIds addObject:systemId];
+            }
+            [tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
+            return;
+        }
+        NSString *selector = [self ensureSystemActionSelectorForId:systemId];
+        if (!selector.length) return;
+        NSString *oldSelector = self.selectedSelector;
+        if (self.selectionManagedExternally) {
+            self.selectedSelector = selector;
+            NSMutableArray *paths = [NSMutableArray arrayWithObject:indexPath];
+            NSIndexPath *oldPath = [self indexPathForSelector:oldSelector];
+            if (oldPath && ![oldPath isEqual:indexPath]) [paths addObject:oldPath];
+            [tableView reloadRowsAtIndexPaths:paths withRowAnimation:UITableViewRowAnimationAutomatic];
+            if (self.completion) self.completion(selector);
+            [self.navigationController popViewControllerAnimated:YES];
+            return;
+        }
+        [self persistSelectedSelector:[oldSelector isEqualToString:selector] ? nil : selector];
+        NSMutableArray *paths = [NSMutableArray arrayWithObject:indexPath];
+        NSIndexPath *oldPath = [self indexPathForSelector:oldSelector];
+        if (oldPath && ![oldPath isEqual:indexPath]) [paths addObject:oldPath];
+        [tableView reloadRowsAtIndexPaths:paths withRowAnimation:UITableViewRowAnimationAutomatic];
         return;
     }
 
@@ -398,14 +523,25 @@ static NSBundle *tweakBundle;
 
 - (NSIndexPath *)indexPathForSelector:(NSString *)selector {
     if (selector.length == 0) return nil;
-    for (NSUInteger row = 0; row < self.builtInDisplayRows.count; row++) {
-        NSDictionary *model = self.builtInDisplayRows[row];
-        if ([model[@"kind"] isEqual:@"action"] && [model[@"selector"] isEqualToString:selector]) {
-            return self.customActionsOnly ? nil : [NSIndexPath indexPathForRow:row inSection:1];
+    if (self.builtInSection >= 0) {
+        for (NSUInteger row = 0; row < self.builtInDisplayRows.count; row++) {
+            NSDictionary *model = self.builtInDisplayRows[row];
+            if ([model[@"kind"] isEqual:@"action"] && [model[@"selector"] isEqualToString:selector]) {
+                return [NSIndexPath indexPathForRow:row inSection:self.builtInSection];
+            }
         }
     }
     for (NSUInteger row = 0; row < self.linkActions.count; row++) {
         if ([self.linkActions[row][@"selector"] isEqual:selector]) return [NSIndexPath indexPathForRow:row inSection:self.customActionsSection];
+    }
+    if (self.systemSection >= 0) {
+        NSString *systemId = [self systemIdForSelector:selector];
+        if (systemId) {
+            NSArray<NSDictionary *> *catalog = DXSystemActionCatalog();
+            for (NSUInteger row = 0; row < catalog.count; row++) {
+                if ([catalog[row][@"id"] isEqual:systemId]) return [NSIndexPath indexPathForRow:row inSection:self.systemSection];
+            }
+        }
     }
     return nil;
 }
@@ -420,8 +556,9 @@ static NSBundle *tweakBundle;
 
 #pragma mark - Multi-select (batch pick)
 
-// Report picks in list order (custom actions first, then built-ins) so a
-// batch append lands in the order the user saw on screen.
+// Report picks in on-screen order (custom actions, then built-ins, then the
+// system section) so a batch append lands in the order the user saw. System
+// picks materialize their underlying custom actions here, once, deduped.
 - (NSArray<NSString *> *)orderedPickedSelectors {
     NSMutableArray<NSString *> *ordered = [NSMutableArray array];
     for (NSDictionary *entry in self.linkActions) {
@@ -431,6 +568,11 @@ static NSBundle *tweakBundle;
     for (NSUInteger row = 0; row < self.fullOrder.count; row++) {
         NSString *selector = [DXHelper actionNameFromArray:self.fullOrder atIndex:row];
         if ([self.pickedSelectors containsObject:selector]) [ordered addObject:selector];
+    }
+    for (NSDictionary *action in DXSystemActionCatalog()) {
+        if (![self.pickedSystemIds containsObject:action[@"id"]]) continue;
+        NSString *selector = [self ensureSystemActionSelectorForId:action[@"id"]];
+        if (selector.length && ![ordered containsObject:selector]) [ordered addObject:selector];
     }
     return ordered;
 }
@@ -515,6 +657,7 @@ static NSBundle *tweakBundle;
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"TypeXCustomLinkActionCell"];
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPActionAddCell"];
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPActionGroupCell"];
+    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPSystemActionCell"];
     self.view = self.tableView;
 
     if (!self.selectionManagedExternally) {
@@ -527,6 +670,7 @@ static NSBundle *tweakBundle;
 
     if (self.allowsMultipleSelection) {
         self.pickedSelectors = [NSMutableSet set];
+        self.pickedSystemIds = [NSMutableSet set];
         self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:LOCALIZED(@"DONE")
                                                                                   style:UIBarButtonItemStyleDone
                                                                                  target:self

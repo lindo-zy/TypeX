@@ -49,6 +49,11 @@
 // 添加 flow on a fixed type: creates a PENDING entry and pushes the editor;
 // the store is only touched when the editor reports the saved entry.
 - (void)startAddFlowForType:(NSString *)type;
+// 分区布局助手（子类可覆写 shows* 关分区）：隐藏分区返回 -1。
+- (BOOL)showsBuiltInActionsSection;
+- (BOOL)showsSystemActionsSection;
+- (NSInteger)builtInSection;
+- (NSInteger)systemSection;
 @property(nonatomic, retain) UIBarButtonItem *defaultBtn;
 @property (nonatomic, copy) NSString *configuration;
 @end

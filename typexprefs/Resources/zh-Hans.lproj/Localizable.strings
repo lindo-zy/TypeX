@@ -465,3 +465,6 @@
 "ACTION_GROUP_TOOLS" = "工具";
 "SF_SYMBOL_PICKER_TITLE" = "图标库";
 "SF_SYMBOL_SEARCH" = "搜索图标名";
+
+"SYSTEM_ACTIONS_SECTION" = "系统动作";
+"SYSTEM_ACTIONS_PICKER_FOOTER" = "选择后自动创建对应的系统动作，可在自定义动作管理页改名换图标。";
