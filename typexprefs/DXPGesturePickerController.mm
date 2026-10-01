@@ -17,6 +17,8 @@ static NSBundle *tweakBundle;
 @property (nonatomic, assign) BOOL iconDirty;
 // 显示组里的「从图标库选择」行：预览 + 推入 SF 图标库。
 @property (nonatomic, strong) PSSpecifier *iconLibrarySpec;
+// 显示组里的「图标」输入行：imageView 承载实时预览。
+@property (nonatomic, strong) PSSpecifier *customIconSpec;
 @end
 
 @implementation DXPGesturePickerController
@@ -421,6 +423,7 @@ static NSBundle *tweakBundle;
         PSSpecifier *customIconSpec = [PSSpecifier preferenceSpecifierNamed:LOCALIZED(@"CUSTOM_ICON") target:self set:@selector(setIconValue:specifier:) get:@selector(readIconValue:) detail:nil cell:PSEditTextCell edit:nil];
         [customIconSpec setProperty:@YES forKey:@"noAutoCorrect"];
         [customIconSpec setProperty:LOCALIZED(@"CUSTOM_ICON") forKey:@"label"];
+        self.customIconSpec = customIconSpec;
         [snippetEntrySpecifiers addObject:customIconSpec];
 
         // 图标库入口行：左侧实时预览当前图标，点击推入 SF 图标库；回写走
@@ -447,38 +450,69 @@ static NSBundle *tweakBundle;
     return _specifiers;
 }
 
-// 图标库行左侧实时渲染按钮实际生效的图标：自定义覆盖优先，其次点按动作的
-// 目录图标（内置 SF 名或自定义动作图标），两者皆无才显示问号占位；随字段
-// 重载刷新。
+// 图标配置的预览渲染：自定义覆盖优先，其次点按动作的目录图标（内置 SF 名/
+// 自定义动作图标通吃），两者皆无显示问号占位。isPlaceholder 带回是否占位。
+- (UIImage *)previewImageForIconConfig:(NSString *)icon placeholder:(BOOL *)isPlaceholder {
+    if (![icon isKindOfClass:NSString.class]) icon = @"";
+    icon = [icon stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    UIImage *image = nil;
+    if (icon.length) {
+        image = [DXHelper imageForIconConfig:icon defaultSymbolName:@"link"];
+    } else {
+        NSString *tapAction = [self selectedActionForGesture:DXShortcutGestureTap
+                                                  identifier:self.pendingNewEntry ? kNewButtonPendingIdentifier : self.identifier] ?: @"";
+        NSString *builtIn = [self canonicalEntryForSelector:tapAction][@"images13"];
+        if ([builtIn isKindOfClass:NSString.class] && builtIn.length) {
+            image = [DXHelper imageForIconConfig:builtIn defaultSymbolName:@"link"];
+        }
+    }
+    BOOL placeholder = (image == nil);
+    if (isPlaceholder) *isPlaceholder = placeholder;
+    return placeholder ? [UIImage systemImageNamed:@"questionmark.square"] : image;
+}
+
+// 显示组三行的 cell 定制：图标行 imageView 实时预览（键入即刷新，去重注册），
+// 名称行清掉复用残留的预览图，图标库行预览生效图标。
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
-    if (self.iconLibrarySpec && [self specifierAtIndexPath:indexPath] == self.iconLibrarySpec) {
-        NSString *icon = [self readIconValue:nil];
-        if (![icon isKindOfClass:NSString.class]) icon = @"";
-        UIImage *image = nil;
+    PSSpecifier *specifier = [self specifierAtIndexPath:indexPath];
+    if (self.customIconSpec && specifier == self.customIconSpec) {
         BOOL placeholder = NO;
-        if (icon.length) {
-            image = [DXHelper imageForIconConfig:icon defaultSymbolName:@"link"];
-        } else {
-            NSString *tapAction = [self selectedActionForGesture:DXShortcutGestureTap
-                                                      identifier:self.pendingNewEntry ? kNewButtonPendingIdentifier : self.identifier] ?: @"";
-            NSString *builtIn = [self canonicalEntryForSelector:tapAction][@"images13"];
-            if ([builtIn isKindOfClass:NSString.class] && builtIn.length) {
-                image = [DXHelper imageForIconConfig:builtIn defaultSymbolName:@"link"];
-            }
+        cell.imageView.image = [self previewImageForIconConfig:[self readIconValue:nil] placeholder:&placeholder];
+        cell.imageView.tintColor = placeholder ? UIColor.secondaryLabelColor : nil;
+        cell.detailTextLabel.text = nil;
+        UITextField *field = [self editableTextFieldInView:cell];
+        if (field && ![field actionsForTarget:self forControlEvent:UIControlEventEditingChanged]) {
+            [field addTarget:self action:@selector(iconFieldTextChanged:) forControlEvents:UIControlEventEditingChanged];
         }
-        if (!image) {
-            image = [UIImage systemImageNamed:@"questionmark.square"];
-            placeholder = YES;
+    }
+    if (!self.customIconSpec || specifier != self.customIconSpec) {
+        // PSEditTextCell 复用池共享：非图标行清掉可能残留的预览图。
+        if ([cell isKindOfClass:NSClassFromString(@"PSEditTextCell")]) {
+            cell.imageView.image = nil;
+            cell.imageView.tintColor = nil;
         }
+    }
+    if (self.iconLibrarySpec && specifier == self.iconLibrarySpec) {
+        BOOL placeholder = NO;
+        UIImage *image = [self previewImageForIconConfig:[self readIconValue:nil] placeholder:&placeholder];
         cell.imageView.image = image;
-        // 占位符弱化显示；真实图标保持默认色（模板符号=label 色，App 图标原样）。
         cell.imageView.tintColor = placeholder ? UIColor.secondaryLabelColor : nil;
         // Preferences 对无 detail 的 PSLinkCell 会把标题渲染成弱化灰，强制正常色。
         cell.textLabel.textColor = UIColor.labelColor;
         cell.detailTextLabel.text = nil;
     }
     return cell;
+}
+
+- (void)iconFieldTextChanged:(UITextField *)field {
+    UIView *view = field;
+    while (view && ![view isKindOfClass:[UITableViewCell class]]) view = view.superview;
+    UITableViewCell *cell = (UITableViewCell *)view;
+    if (!cell) return;
+    BOOL placeholder = NO;
+    cell.imageView.image = [self previewImageForIconConfig:field.text placeholder:&placeholder];
+    cell.imageView.tintColor = placeholder ? UIColor.secondaryLabelColor : nil;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath{
