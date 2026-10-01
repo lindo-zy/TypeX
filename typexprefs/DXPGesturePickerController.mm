@@ -489,7 +489,21 @@ static NSBundle *tweakBundle;
         picker.completion = ^(NSString *symbolName) {
             __strong typeof(weakSelf) strongSelf = weakSelf;
             if (!strongSelf || !symbolName.length) return;
-            [strongSelf setIconValue:symbolName specifier:strongSelf.iconLibrarySpec];
+            if (strongSelf.pendingNewEntry) {
+                // 新建未保存按钮没有可落盘的条目：保持暂存，随页面保存一并写入。
+                [strongSelf setIconValue:symbolName specifier:strongSelf.iconLibrarySpec];
+                [strongSelf reloadSpecifiers];
+                return;
+            }
+            // 已保存按钮：图标库选中立即落盘生效（目录选出的名字必过 systemImageNamed
+            // 校验）；字段里未保存的手输图标暂存被本次选择覆盖，名称暂存不受影响。
+            [strongSelf updateStoredShortcutEntryWithMutator:^(NSMutableDictionary *entry) {
+                entry[@"icon"] = symbolName;
+            }];
+            [strongSelf stageAppIconCacheForIconConfig:symbolName];
+            strongSelf.pendingIcon = nil;
+            strongSelf.iconDirty = NO;
+            [strongSelf updateSaveButtonItem];
             [strongSelf reloadSpecifiers];
         };
         [picker setRootController:[self rootController]];
