@@ -2,6 +2,8 @@
 #import "DXPSubActionPickerController.h"
 #import "DXPKeyboardPanelPreviewHeader.h"
 #import "DXPPanelSliderCell.h"
+#import "DXPIconInputView.h"
+#import "DXPSFSymbolPickerController.h"
 #import "DXPLinkActionEditorController.h"
 #import "../DXKeyboardPanelPreferences.h"
 #import "../DXHelper.h"
@@ -113,13 +115,89 @@ static NSString *DXPanelLocalized(NSString *key) {
     [self.previewHeader refresh];
 }
 @end
+// 面板条目外观编辑页：两行表单（名称、图标），图标行走 DXPIconInputView
+// （预览缩略图 + 输入框 + 图标库入口），保存回传完整条目。
+@interface DXPPanelItemAppearanceController : PSViewController <UITableViewDataSource, UITableViewDelegate>
+@property(nonatomic, copy) NSDictionary *entry;
+@property(nonatomic, strong) UITextField *nameField;
+@property(nonatomic, strong) DXPIconInputView *iconInputView;
+@property(nonatomic, copy) void (^completion)(NSDictionary *updatedEntry);
+@end
 
-@interface DXPKeyboardPanelItemsController ()
+@implementation DXPPanelItemAppearanceController
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = DXPanelLocalized(@"KEYBOARD_PANEL_ITEM_APPEARANCE");
+    self.nameField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 180, 36)];
+    self.nameField.textAlignment = NSTextAlignmentRight;
+    self.nameField.clearButtonMode = UITextFieldViewModeWhileEditing;
+    self.nameField.autocorrectionType = UITextAutocorrectionTypeNo;
+    self.nameField.placeholder = DXPanelLocalized(@"KEYBOARD_PANEL_NAME");
+    self.nameField.text = [self.entry[@"name"] isKindOfClass:NSString.class] ? self.entry[@"name"] : @"";
+
+    self.iconInputView = [[DXPIconInputView alloc] initWithFrame:CGRectMake(0, 0, 267, 36)];
+    self.iconInputView.textField.placeholder = DXPanelLocalized(@"KEYBOARD_PANEL_ICON");
+    self.iconInputView.textField.text = [self.entry[@"icon"] isKindOfClass:NSString.class] ? self.entry[@"icon"] : @"";
+    __weak typeof(self) weakSelf = self;
+    self.iconInputView.browseTapped = ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        [strongSelf.view endEditing:YES];
+        DXPSFSymbolPickerController *picker = [[DXPSFSymbolPickerController alloc] init];
+        picker.selectedSymbolName = [strongSelf.iconInputView.textField.text
+            stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        __weak typeof(strongSelf) weakOwner = strongSelf;
+        picker.completion = ^(NSString *symbolName) {
+            typeof(weakOwner) owner = weakOwner;
+            if (!owner || !symbolName.length) return;
+            owner.iconInputView.textField.text = symbolName;
+            [owner.iconInputView refreshPreview];
+        };
+        [picker setRootController:[strongSelf rootController]];
+        [picker setParentController:[strongSelf parentController]];
+        [strongSelf pushController:picker];
+    };
+
+    UITableView *table = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    table.dataSource = self;
+    table.delegate = self;
+    self.view = table;
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:DXPanelLocalized(@"KEYBOARD_PANEL_SAVE")
+        style:UIBarButtonItemStyleDone target:self action:@selector(saveTapped)];
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    (void)tableView; (void)section;
+    return 2;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"PanelAppearanceCell"];
+    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"PanelAppearanceCell"];
+    cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    cell.textLabel.text = DXPanelLocalized(indexPath.row == 0 ? @"KEYBOARD_PANEL_NAME" : @"KEYBOARD_PANEL_ICON");
+    cell.textLabel.font = [UIFont systemFontOfSize:16];
+    cell.imageView.image = nil;
+    cell.accessoryView = indexPath.row == 0 ? self.nameField : self.iconInputView;
+    return cell;
+}
+
+- (void)saveTapped {
+    [self.view endEditing:YES];
+    NSMutableDictionary *updated = [self.entry mutableCopy] ?: [NSMutableDictionary dictionary];
+    updated[@"name"] = [self.nameField.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"";
+    updated[@"icon"] = [self.iconInputView.textField.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"";
+    if (self.completion) self.completion(updated);
+    [self.navigationController popViewControllerAnimated:YES];
+}
+@end
+
+@interface DXPKeyboardPanelItemsController () <UITableViewDragDelegate, UITableViewDropDelegate>
 @property(nonatomic, strong) UITableView *table;
 @property(nonatomic, strong) DXPKeyboardPanelPreviewHeader *previewHeader;
 @property(nonatomic, copy) NSString *side;
 @property(nonatomic, strong) NSMutableArray<NSDictionary *> *entries;
-@property(nonatomic, strong) UIBarButtonItem *sortButton;
 @end
 
 @implementation DXPKeyboardPanelItemsController
@@ -141,15 +219,12 @@ static NSString *DXPanelLocalized(NSString *key) {
     self.previewHeader.frame = CGRectMake(0, 0, self.table.bounds.size.width, self.previewHeader.bounds.size.height);
     self.table.tableHeaderView = self.previewHeader;
     UIBarButtonItem *addButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addActions)];
-    self.sortButton = [[UIBarButtonItem alloc] initWithTitle:DXPanelLocalized(@"EDIT") style:UIBarButtonItemStylePlain target:self action:@selector(toggleSorting)];
-    self.navigationItem.rightBarButtonItems = @[addButton, self.sortButton];
+    self.navigationItem.rightBarButtonItem = addButton;
     self.entries = [self configuredEntries];
-    self.table.allowsSelectionDuringEditing = YES;
-}
-- (void)toggleSorting {
-    BOOL editing = !self.table.editing;
-    [self.table setEditing:editing animated:YES];
-    self.sortButton.title = DXPanelLocalized(editing ? @"DONE" : @"EDIT");
+    // 排序不设编辑模式：长按直接拖动（drag & drop），左滑删除照旧。
+    self.table.dragInteractionEnabled = YES;
+    self.table.dragDelegate = self;
+    self.table.dropDelegate = self;
 }
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
@@ -193,7 +268,6 @@ static NSString *DXPanelLocalized(NSString *key) {
     NSDictionary *entry = self.entries[indexPath.row];
     cell.textLabel.text = [self nameForEntry:entry];
     cell.imageView.image = [self imageForEntry:entry];
-    cell.showsReorderControl = YES;
     cell.detailTextLabel.text = DXPanelLocalized(@"KEYBOARD_PANEL_EDIT_HINT");
     return cell;
 }
@@ -238,14 +312,42 @@ static NSString *DXPanelLocalized(NSString *key) {
     configuration.performsFirstActionWithFullSwipe = NO;
     return configuration;
 }
-- (BOOL)tableView:(UITableView *)tableView canMoveRowAtIndexPath:(NSIndexPath *)indexPath {
-    (void)tableView; (void)indexPath; return YES;
+// 长按拖动排序：本地拖动会话由表格跟踪落点间隙，落点即最终数组位置，
+// 数据源更新与 moveRow 动画在同一 beginUpdates 里提交。
+- (NSArray<UIDragItem *> *)tableView:(UITableView *)tableView itemsForBeginningDragSession:(id<UIDragSession>)session atIndexPath:(NSIndexPath *)indexPath {
+    (void)tableView; (void)session;
+    if (indexPath.section != 0 || indexPath.row < 0 || indexPath.row >= (NSInteger)self.entries.count) return @[];
+    NSDictionary *entry = self.entries[indexPath.row];
+    UIDragItem *item = [[UIDragItem alloc] initWithItemProvider:[[NSItemProvider alloc] initWithObject:entry[@"id"] ?: @""]];
+    item.localObject = entry;
+    return @[item];
 }
-- (void)tableView:(UITableView *)tableView moveRowAtIndexPath:(NSIndexPath *)from toIndexPath:(NSIndexPath *)to {
-    (void)tableView;
-    NSDictionary *entry = self.entries[from.row];
-    [self.entries removeObjectAtIndex:from.row];
-    [self.entries insertObject:entry atIndex:to.row];
+
+- (UITableViewDropProposal *)tableView:(UITableView *)tableView dropSessionDidUpdate:(id<UIDropSession>)session withDestinationIndexPath:(NSIndexPath *)destinationIndexPath {
+    (void)tableView; (void)destinationIndexPath;
+    if (!session.localDragSession) return nil;
+    return [[UITableViewDropProposal alloc] initWithDropOperation:UIDropOperationMove
+        intent:UITableViewDropIntentInsertAtDestinationIndexPath];
+}
+
+- (void)tableView:(UITableView *)tableView performDropWithCoordinator:(id<UITableViewDropCoordinator>)coordinator {
+    NSIndexPath *destination = coordinator.destinationIndexPath;
+    id<UITableViewDropItem> dropItem = coordinator.items.firstObject;
+    if (!destination || !dropItem.sourceIndexPath) return;
+    NSDictionary *entry = dropItem.dragItem.localObject;
+    if (![entry isKindOfClass:NSDictionary.class]) return;
+    NSUInteger sourceRow = [self.entries indexOfObjectIdenticalTo:entry];
+    if (sourceRow == NSNotFound) return;
+    // 落点按当前序的插入位计（末尾追加=行数）；先移除源行，向下移动回缩一位。
+    NSInteger targetRow = MIN(MAX(destination.row, 0), (NSInteger)self.entries.count);
+    if (targetRow > (NSInteger)sourceRow) targetRow--;
+    if (targetRow == (NSInteger)sourceRow) return;
+    [tableView beginUpdates];
+    [self.entries removeObjectAtIndex:sourceRow];
+    [self.entries insertObject:entry atIndex:targetRow];
+    [tableView moveRowAtIndexPath:[NSIndexPath indexPathForRow:sourceRow inSection:0]
+        toIndexPath:[NSIndexPath indexPathForRow:targetRow inSection:0]];
+    [tableView endUpdates];
     [self save];
 }
 - (void)pushPicker:(DXPSubActionPickerController *)picker {
@@ -294,33 +396,27 @@ static NSString *DXPanelLocalized(NSString *key) {
     };
     [self pushPicker:picker];
 }
-- (void)editAppearanceAtRow:(NSInteger)row {
+// 外观编辑改为独立页面：名称 + 图标行（DXPIconInputView 提供实时预览与
+// 图标库入口），替代原双文本框弹窗。
+- (void)pushAppearanceEditorAtRow:(NSInteger)row {
+    if (row < 0 || row >= (NSInteger)self.entries.count) return;
     NSDictionary *original = self.entries[row];
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:DXPanelLocalized(@"KEYBOARD_PANEL_ITEM_APPEARANCE") message:nil preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
-        field.placeholder = DXPanelLocalized(@"KEYBOARD_PANEL_NAME");
-        field.text = original[@"name"];
-    }];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
-        field.placeholder = DXPanelLocalized(@"KEYBOARD_PANEL_ICON");
-        field.text = original[@"icon"];
-        field.autocapitalizationType = UITextAutocapitalizationTypeNone;
-        field.autocorrectionType = UITextAutocorrectionTypeNo;
-    }];
-    [alert addAction:[UIAlertAction actionWithTitle:DXPanelLocalized(@"CANCEL") style:UIAlertActionStyleCancel handler:nil]];
+    DXPPanelItemAppearanceController *editor = [[DXPPanelItemAppearanceController alloc] init];
+    editor.entry = original;
     __weak typeof(self) weakSelf = self;
-    __weak UIAlertController *weakAlert = alert;
-    [alert addAction:[UIAlertAction actionWithTitle:DXPanelLocalized(@"KEYBOARD_PANEL_SAVE") style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
-        __strong typeof(weakSelf) self = weakSelf;
-        if (!self || row >= (NSInteger)self.entries.count || ![self.entries[row] isEqual:original]) return;
-        NSMutableDictionary *entry = [original mutableCopy];
-        entry[@"name"] = [weakAlert.textFields[0].text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"";
-        entry[@"icon"] = [weakAlert.textFields[1].text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"";
-        self.entries[row] = entry;
-        [self save];
-        [self.table reloadData];
-    }]];
-    [self presentViewController:alert animated:YES completion:nil];
+    editor.completion = ^(NSDictionary *updated) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf || ![updated isKindOfClass:NSDictionary.class]) return;
+        // 返回时按原条目对象定位行；行已删除或重排则放弃写入。
+        NSUInteger currentRow = [strongSelf.entries indexOfObjectIdenticalTo:original];
+        if (currentRow == NSNotFound) return;
+        strongSelf.entries[currentRow] = updated;
+        [strongSelf save];
+        [strongSelf.table reloadData];
+    };
+    [editor setRootController:[self rootController]];
+    [editor setParentController:[self parentController]];
+    [self pushController:editor];
 }
 - (void)editDefinition:(NSDictionary *)definition {
     DXPLinkActionEditorController *editor = [[DXPLinkActionEditorController alloc] init];
@@ -352,7 +448,7 @@ static NSString *DXPanelLocalized(NSString *key) {
     NSDictionary *entry = self.entries[row];
     UIAlertController *menu = [UIAlertController alertControllerWithTitle:[self nameForEntry:entry] message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     __weak typeof(self) weakSelf = self;
-    [menu addAction:[UIAlertAction actionWithTitle:DXPanelLocalized(@"KEYBOARD_PANEL_ITEM_APPEARANCE") style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) { [weakSelf editAppearanceAtRow:row]; }]];
+    [menu addAction:[UIAlertAction actionWithTitle:DXPanelLocalized(@"KEYBOARD_PANEL_ITEM_APPEARANCE") style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) { [weakSelf pushAppearanceEditorAtRow:row]; }]];
     [menu addAction:[UIAlertAction actionWithTitle:DXPanelLocalized(@"KEYBOARD_PANEL_REPLACE_ACTION") style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) { [weakSelf replaceActionAtRow:row]; }]];
     NSDictionary *definition = [self definitionForSelector:entry[@"selector"]];
     if (definition) [menu addAction:[UIAlertAction actionWithTitle:DXPanelLocalized(@"KEYBOARD_PANEL_EDIT_ACTION") style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) { [weakSelf editDefinition:definition]; }]];
@@ -362,3 +458,4 @@ static NSString *DXPanelLocalized(NSString *key) {
     [self presentViewController:menu animated:YES completion:nil];
 }
 @end
+

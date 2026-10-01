@@ -101,6 +101,7 @@ typedef NS_ENUM(NSInteger, direction) {
 -(void)moveCursorStartOfSentenceAction:(UIButton*)sender;
 -(void)moveCursorEndOfSentenceAction:(UIButton*)sender;
 -(void)deleteForwardAction:(UIButton*)sender;
+-(IBAction)deleteWordAction:(UIButton*)sender;
 
 -(UIWindow*)keyWindow;
 

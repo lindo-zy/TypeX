@@ -52,17 +52,16 @@ static BOOL DXRecordingInterfaceAvailable(id recorder, BOOL stopping) {
         // A lost native callback must not keep the slot forever once the
         // requested terminal state is observed. Old callbacks stay invalid.
         NSNumber *recording = DXRecordingState(self.activeRecorder, @"isRecording");
-        NSNumber *system = DXRecordingState(self.activeRecorder, @"systemRecording");
-        BOOL settled = recording && system && (self.stopping ? !recording.boolValue : recording.boolValue && system.boolValue);
+        BOOL settled = recording && (self.stopping ? !recording.boolValue : recording.boolValue);
         if (settled) [self finish:DXSystemOpenSucceeded generation:self.generation];
     }
     if (self.busy) { if (reply) reply(DXSystemOpenBusy); return; }
     NSNumber *recording = DXRecordingState(recorder, @"isRecording");
-    NSNumber *system = DXRecordingState(recorder, @"systemRecording");
-    if (!recording || !system) { if (reply) reply(DXSystemOpenUnavailable); return; }
-    // Do not interrupt an app capture or a broadcast, and do not start a new
-    // session while the system flag still marks a pending start/stop.
-    if (recording.boolValue != system.boolValue) { if (reply) reply(DXSystemOpenBusy); return; }
+    if (!recording) { if (reply) reply(DXSystemOpenUnavailable); return; }
+    // RPScreenRecorder in SpringBoard only drives the system recording (app
+    // captures and broadcasts run in their own processes), so the public
+    // isRecording flag alone decides start versus stop. No private state
+    // getter exists to separate the two.
     BOOL stopping = recording.boolValue;
     if (!DXRecordingInterfaceAvailable(recorder, stopping)) {
         NSLog(@"[TypeX][SystemRecording] unavailable stage=interface stopping=%d", stopping);

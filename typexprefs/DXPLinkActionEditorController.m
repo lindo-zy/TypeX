@@ -3,6 +3,8 @@
 #import "DXPOpenAppPickerController.h"
 #import "DXPAppShortcutPickerController.h"
 #import "DXPSystemActionPickerController.h"
+#import "DXPSFSymbolPickerController.h"
+#import "DXPIconInputView.h"
 #import "DXPKeyboardAvoider.h"
 #import "../DXSystemActionCatalog.h"
 #import "DXPJavaScriptTestController.h"
@@ -128,12 +130,10 @@ static NSInteger const DXLegacyRowLink = 2;
 // 文本记录区头部右上角的 编辑/完成 按钮（原导航栏编辑入口移入此处）。
 @property (nonatomic, strong) UIButton *recordsEditButton;
 @property (nonatomic, strong) UITextField *nameField;
+// 图标行 accessory 由 DXPIconInputView 承载（预览缩略图 + 输入框 + 图标库
+// 入口）；iconField 即其 textField，保存/回传逻辑与普通字段保持一致。
 @property (nonatomic, strong) UITextField *iconField;
-// 图标 row accessory: preview thumbnail (left) + edit field (right) in one
-// container, mirroring KayokoX's icon row. The preview lives in the accessory
-// so its position never depends on how UIKit sizes textLabel's frame.
-@property (nonatomic, strong) UIView *iconAccessoryContainer;
-@property (nonatomic, strong) UIImageView *iconPreviewImageView;
+@property (nonatomic, strong) DXPIconInputView *iconInputView;
 @property (nonatomic, strong) UITextField *linkField;
 @property (nonatomic, strong) UISwitch *inAppSwitch;
 @property (nonatomic, strong) UISwitch *pullOverSwitch;
@@ -189,6 +189,8 @@ static NSInteger const DXLegacyRowLink = 2;
 // Used by the management page's 添加 flow: the type is chosen here and is
 // then fixed for the entry's life — the editor's 类型 row only displays it.
 // The order places URL Scheme first because it is the default for new actions.
+// 网页链接不再开放新建（URL Scheme 覆盖 http(s) 载体），存量 url 条目仍按
+// 原类型编辑与执行。
 + (void)presentTypeChooserFromController:(UIViewController *)controller
                              currentType:(NSString *)currentType
                               completion:(void (^)(NSString *type))completion {
@@ -199,7 +201,6 @@ static NSInteger const DXLegacyRowLink = 2;
     NSArray<NSString *> *types = @[
         kCustomActionTypeURLScheme,
         kCustomActionTypeText,
-        kCustomActionTypeURL,
         kCustomActionTypeOpenApp,
         kCustomActionTypeShortcut,
         kCustomActionTypeSystem,
@@ -903,42 +904,46 @@ static NSInteger const DXLegacyRowLink = 2;
 
 #pragma mark - Icon preview
 
-// The 图标 row's accessory is a preview thumbnail followed by the edit field;
-// the thumbnail mirrors what the entry will actually render (SF Symbol name or
-// app bundle identifier) and refreshes on every keystroke.
+// The 图标 row's accessory is the shared DXPIconInputView: the thumbnail
+// mirrors what the entry will actually render (SF Symbol name or app bundle
+// identifier), refreshes on every keystroke, and the grid button opens the
+// SF Symbols library picker.
 - (UIView *)iconAccessoryView {
-    if (!self.iconAccessoryContainer) {
-        UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0.0, 0.0, 267.0, 36.0)];
-        self.iconPreviewImageView = [[UIImageView alloc] initWithFrame:CGRectMake(0.0, 3.5, 29.0, 29.0)];
-        self.iconPreviewImageView.contentMode = UIViewContentModeScaleAspectFit;
-        [container addSubview:self.iconPreviewImageView];
-        self.iconField.frame = CGRectMake(38.0, 0.0, 220.0, 36.0);
-        [container addSubview:self.iconField];
-        self.iconAccessoryContainer = container;
-        [self refreshIconPreview];
-    }
-    return self.iconAccessoryContainer;
+    if (!self.iconInputView) [self buildIconAccessory];
+    return self.iconInputView;
 }
 
 - (void)buildIconAccessory {
-    [self.iconField addTarget:self action:@selector(iconTextChanged:) forControlEvents:UIControlEventEditingChanged];
-}
-
-- (void)iconTextChanged:(__unused UITextField *)sender {
-    [self refreshIconPreview];
-}
-
-- (UIImage *)currentIconPreviewImage {
-    NSString *icon = [self trimmedValue:self.iconField.text];
-    UIImage *image = icon.length ? [DXHelper imageForIconConfig:icon defaultSymbolName:@"link"] : nil;
-    if (!image) image = [UIImage systemImageNamed:@"link"];
-    return image;
+    self.iconInputView = [[DXPIconInputView alloc] initWithFrame:CGRectMake(0.0, 0.0, 267.0, 36.0)];
+    self.iconField = self.iconInputView.textField;
+    self.iconField.placeholder = @"link";
+    self.iconField.text = [self.entry[@"icon"] isKindOfClass:[NSString class]] ? self.entry[@"icon"] : @"";
+    self.iconField.delegate = self;
+    __weak typeof(self) weakSelf = self;
+    self.iconInputView.textChanged = ^(__unused NSString *text) { [weakSelf refreshIconPreview]; };
+    self.iconInputView.browseTapped = ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        [strongSelf.view endEditing:YES];
+        DXPSFSymbolPickerController *picker = [[DXPSFSymbolPickerController alloc] init];
+        picker.selectedSymbolName = [strongSelf trimmedValue:strongSelf.iconField.text];
+        __weak typeof(strongSelf) weakOwner = strongSelf;
+        picker.completion = ^(NSString *symbolName) {
+            typeof(weakOwner) owner = weakOwner;
+            if (!owner || !symbolName.length) return;
+            owner.iconField.text = symbolName;
+            [owner refreshIconPreview];
+        };
+        [picker setRootController:[strongSelf rootController]];
+        [picker setParentController:[strongSelf parentController]];
+        [strongSelf pushController:picker];
+    };
 }
 
 // Refresh only the one preview view; sweeping visibleCells with the property
 // setter would hit plain field cells and crash on an unrecognized selector.
 - (void)refreshIconPreview {
-    self.iconPreviewImageView.image = [self currentIconPreviewImage];
+    [self.iconInputView refreshPreview];
 }
 
 - (void)viewDidLoad {
@@ -984,7 +989,6 @@ static NSInteger const DXLegacyRowLink = 2;
     NSString *defaultName = ([self trimmedValue:self.entry[@"name"]].length && [self.entry[@"name"] isKindOfClass:[NSString class]])
         ? self.entry[@"name"] : LOCALIZED(@"DEFAULT_BUTTON_NAME");
     self.nameField = [self newFieldWithText:defaultName placeholder:LOCALIZED(@"DEFAULT_BUTTON_NAME")];
-    self.iconField = [self newFieldWithText:self.entry[@"icon"] placeholder:@"link"];
     [self buildIconAccessory];
     self.linkField = [self newFieldWithText:self.entry[@"link"] placeholder:@""];
     [self applyTypeToPayloadField];

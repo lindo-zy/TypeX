@@ -32,6 +32,7 @@
 "SHORT_SELECT_PARAGRAPH" = "Prgph";
 "SHORT_SELECT_SENTENCE" = "Stn";
 "SHORT_DELETE_FORWARD" = "DelFw";
+"SHORT_DELETE_WORD" = "DelWd";
 "SHORT_DELETE_ALL" = "Clear";
 "SHORT_COPY_LOG" = "CLog";
 "SHORT_SPONGEBOB" = "sPoNge";
@@ -67,6 +68,7 @@
 "LONG_SELECT_PARAGRAPH" = "Select Paragraph";
 "LONG_SELECT_SENTENCE" = "Select Sentence";
 "LONG_DELETE_FORWARD" = "Delete Forward";
+"LONG_DELETE_WORD" = "Delete Word";
 "LONG_DELETE_ALL" = "Clear All";
 "LONG_SPONGEBOB" = "sPonGeBob teXt";
 
@@ -455,3 +457,12 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SYSTEM_ACTION_INVALID" = "This system action configuration is invalid. Select and save it again.";
 
 "SYSTEM_ACTION_EXPIRED" = "The operation was canceled or expired. Trigger it again.";
+
+//=====================Action groups & SF symbol picker=====================
+"ACTION_GROUP_EDIT" = "Edit";
+"ACTION_GROUP_DELETE" = "Delete";
+"ACTION_GROUP_SELECT" = "Select";
+"ACTION_GROUP_CURSOR" = "Cursor";
+"ACTION_GROUP_TOOLS" = "Tools";
+"SF_SYMBOL_PICKER_TITLE" = "Icon Library";
+"SF_SYMBOL_SEARCH" = "Search symbol name";

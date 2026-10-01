@@ -19,4 +19,7 @@
 -(NSArray *)selectorNames;
 -(NSArray *)labelName;
 -(NSArray *)shortenedlabelName;
+// 选择动作页的内置动作分组：返回组顺序与 selector→组 id（未映射归 tools）。
++(NSArray<NSString *> *)builtInActionGroupOrder;
++(NSString *)builtInActionGroupForSelector:(NSString *)selector;
 @end

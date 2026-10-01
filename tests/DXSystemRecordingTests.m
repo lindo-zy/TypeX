@@ -2,7 +2,6 @@
 
 @interface DXRecorderSpy : NSObject
 @property(nonatomic) BOOL recording;
-@property(nonatomic) BOOL systemRecording;
 @property(nonatomic) BOOL available;
 @property(nonatomic) BOOL microphone;
 @property(nonatomic) BOOL throws;
@@ -29,14 +28,10 @@
 @interface DXWrongRecorderSpy : NSObject
 @property(nonatomic) NSUInteger calls;
 - (BOOL)isRecording;
-- (BOOL)systemRecording;
-- (BOOL)isAvailable;
 - (void)startSystemRecordingWithMicrophoneEnabled:(id)enabled handler:(id)handler;
 @end
 @implementation DXWrongRecorderSpy
 - (BOOL)isRecording { return NO; }
-- (BOOL)systemRecording { return NO; }
-- (BOOL)isAvailable { return YES; }
 - (void)startSystemRecordingWithMicrophoneEnabled:(id)enabled handler:(id)handler { self.calls++; }
 @end
 
@@ -57,7 +52,7 @@ int main(void) {
         [session toggleRecorder:spy microphoneEnabled:YES reply:reply];
         check(result == DXSystemOpenBusy && replies == 1 && spy.starts == 1);
         void (^oldCompletion)(NSError *) = spy.completion;
-        spy.recording = YES; spy.systemRecording = YES;
+        spy.recording = YES;
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0), ^{ oldCompletion(nil); oldCompletion(nil); });
         drain(0.1);
         check(result == DXSystemOpenSucceeded && replies == 2);
@@ -65,20 +60,23 @@ int main(void) {
         check(spy.stops == 1 && spy.starts == 1 && replies == 2);
         oldCompletion(nil); drain(0.01);
         check(replies == 2); // Late start cannot complete this stop.
-        spy.recording = NO; spy.systemRecording = NO; spy.completion(nil); drain(0.01);
+        spy.recording = NO; spy.completion(nil); drain(0.01);
         check(result == DXSystemOpenSucceeded && replies == 3);
         [session toggleRecorder:spy microphoneEnabled:YES reply:reply];
         check(spy.starts == 2 && spy.microphone);
         spy.completion([NSError errorWithDomain:@"ReplayKitDenied" code:17 userInfo:nil]); drain(0.01);
         check(result == DXSystemOpenFailed && replies == 4);
 
-        spy.recording = YES; spy.systemRecording = NO;
+        // The public isRecording flag alone decides the direction: observing a
+        // recording state flips the next toggle to stop without extra guards.
+        spy.recording = YES;
         [session toggleRecorder:spy microphoneEnabled:NO reply:reply];
-        check(result == DXSystemOpenBusy && spy.stops == 1 && spy.starts == 2);
-        spy.recording = NO; spy.systemRecording = YES;
-        [session toggleRecorder:spy microphoneEnabled:NO reply:reply];
-        check(result == DXSystemOpenBusy && spy.starts == 2);
-        spy.systemRecording = NO; spy.available = NO;
+        check(spy.stops == 2 && replies == 4);
+        spy.completion(nil); drain(0.01);
+        check(result == DXSystemOpenSucceeded && replies == 5);
+
+        // Starting is refused while the recorder reports unavailable.
+        spy.recording = NO; spy.available = NO;
         [session toggleRecorder:spy microphoneEnabled:YES reply:reply];
         check(result == DXSystemOpenUnavailable && spy.starts == 2);
         [session toggleRecorder:nil microphoneEnabled:NO reply:reply];
@@ -87,12 +85,12 @@ int main(void) {
         [session toggleRecorder:wrong microphoneEnabled:NO reply:reply];
         check(result == DXSystemOpenUnavailable && wrong.calls == 0);
         // Stopping remains available even if a new start is forbidden.
-        spy.systemRecording = YES; spy.recording = YES;
+        spy.recording = YES;
         [session toggleRecorder:spy microphoneEnabled:NO reply:reply];
-        check(spy.stops == 2);
+        check(spy.stops == 3);
         spy.completion(nil); drain(0.01);
         check(result == DXSystemOpenSucceeded);
-        spy.recording = NO; spy.systemRecording = NO; spy.available = YES; spy.throws = YES;
+        spy.recording = NO; spy.available = YES; spy.throws = YES;
         [session toggleRecorder:spy microphoneEnabled:NO reply:reply];
         check(result == DXSystemOpenUnavailable && spy.starts == 3);
         spy.throws = NO;
@@ -108,13 +106,13 @@ int main(void) {
         NSUInteger before = replies;
         void (^timedOutCompletion)(NSError *) = spy.completion;
         drain(7.65);
-        check(result == DXSystemOpenTimedOut && replies == before + 1 && spy.starts == 4 && spy.stops == 2);
+        check(result == DXSystemOpenTimedOut && replies == before + 1 && spy.starts == 4 && spy.stops == 3);
         check(lateResult == DXSystemOpenTimedOut && lateReplies == 1 && late.starts == 1);
         [session toggleRecorder:spy microphoneEnabled:NO reply:reply];
         check(result == DXSystemOpenBusy && spy.starts == 4);
-        spy.recording = YES; spy.systemRecording = YES;
+        spy.recording = YES;
         [session toggleRecorder:spy microphoneEnabled:NO reply:reply];
-        check(spy.stops == 3 && spy.starts == 4);
+        check(spy.stops == 4 && spy.starts == 4);
         before = replies; timedOutCompletion(nil); drain(0.01);
         check(replies == before); // Timed-out start cannot acknowledge the new stop.
         spy.completion(nil); drain(0.01);

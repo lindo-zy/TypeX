@@ -3,6 +3,7 @@
 #import "DXPSubActionPickerController.h"
 #import "DXPLinkActionEditorController.h"
 #import "../DXHelper.h"
+#import "../DXShortcutsGenerator.h"
 #import "../common.h"
 
 static NSBundle *tweakBundle;
@@ -10,6 +11,9 @@ static NSBundle *tweakBundle;
 @interface DXPCustomActionViewController ()
 // Live multi-select state; only maintained while allowsMultipleSelection is on.
 @property (nonatomic, strong) NSMutableSet<NSString *> *pickedSelectors;
+// 内置动作的分组展示行（kind=group/action）；fullOrder 换引用时重建。
+@property (nonatomic, strong) NSArray<NSDictionary *> *builtInDisplayRows;
+@property (nonatomic, strong) NSArray *builtInDisplayRowsSource;
 @end
 
 @implementation DXPCustomActionViewController
@@ -134,7 +138,6 @@ static NSBundle *tweakBundle;
         entry[kCustomActionTextRecordsKey] = @[@""];
         [entry removeObjectForKey:@"link"];
     }
-    if ([type isEqualToString:kCustomActionTypeURL]) entry[kCustomActionInAppKey] = @YES;
     if (opensApplication) entry[kCustomActionUsePullOverKey] = @NO;
     if ([type isEqualToString:kCustomActionTypeJavaScript]) {
         entry[@"icon"] = @"curlybraces";
@@ -234,19 +237,68 @@ static NSBundle *tweakBundle;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (section != self.customActionsSection) return self.fullOrder.count;
+    if (section != self.customActionsSection) return self.builtInDisplayRows.count;
     // The trailing "添加" row belongs to the management page and the sub-action
     // picker (in-place creation); plain selection pickers stay read-only.
     return self.linkActions.count + ((self.customActionsOnly || self.allowsCreatingCustomActions) ? 1 : 0);
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (indexPath.section != self.customActionsSection && indexPath.row < (NSInteger)self.builtInDisplayRows.count &&
+        [self.builtInDisplayRows[indexPath.row][@"kind"] isEqual:@"group"]) return 30;
     return 44;
 }
 
+#pragma mark - Built-in action grouping
+
+// 分组行模型：group 行带 @"key"，action 行带 @"selector" 与 @"index"
+// （fullOrder 原始下标）。组内保持 fullOrder 顺序，空组不渲染。
+- (NSArray<NSDictionary *> *)builtInDisplayRows {
+    if (_builtInDisplayRows && _builtInDisplayRowsSource == self.fullOrder) return _builtInDisplayRows;
+    NSMutableArray<NSDictionary *> *rows = [NSMutableArray array];
+    for (NSString *group in [DXShortcutsGenerator builtInActionGroupOrder]) {
+        NSMutableArray<NSDictionary *> *actions = [NSMutableArray array];
+        for (NSUInteger index = 0; index < self.fullOrder.count; index++) {
+            NSString *selector = [DXHelper actionNameFromArray:self.fullOrder atIndex:index];
+            if (!selector.length) continue;
+            if (![group isEqualToString:[DXShortcutsGenerator builtInActionGroupForSelector:selector]]) continue;
+            [actions addObject:@{@"kind": @"action", @"selector": selector, @"index": @(index)}];
+        }
+        if (!actions.count) continue;
+        [rows addObject:@{@"kind": @"group", @"key": group}];
+        [rows addObjectsFromArray:actions];
+    }
+    _builtInDisplayRowsSource = self.fullOrder;
+    _builtInDisplayRows = rows;
+    return rows;
+}
+
+// action 行返回其 selector 并带出 fullOrder 下标；group 行返回 nil。
+- (NSString *)selectorForBuiltInRow:(NSInteger)row indexOut:(NSUInteger *)indexOut {
+    if (row < 0 || row >= (NSInteger)self.builtInDisplayRows.count) return nil;
+    NSDictionary *model = self.builtInDisplayRows[row];
+    if (![model[@"kind"] isEqual:@"action"]) return nil;
+    if (indexOut) *indexOut = [model[@"index"] unsignedIntegerValue];
+    return model[@"selector"];
+}
+
 - (UITableViewCell *)builtInCellForIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:@"TypeXLPItemCell" forIndexPath:indexPath];
-    NSString *selector = [DXHelper actionNameFromArray:self.fullOrder atIndex:indexPath.row];
+    NSUInteger actionIndex = 0;
+    NSString *selector = [self selectorForBuiltInRow:indexPath.row indexOut:&actionIndex];
+    UITableViewCell *cell;
+    if (!selector) {
+        cell = [self.tableView dequeueReusableCellWithIdentifier:@"DXPActionGroupCell" forIndexPath:indexPath];
+        NSString *group = self.builtInDisplayRows[indexPath.row][@"key"];
+        cell.textLabel.text = LOCALIZED([@"ACTION_GROUP_" stringByAppendingString:group.uppercaseString]);
+        cell.textLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
+        cell.textLabel.textColor = UIColor.secondaryLabelColor;
+        cell.imageView.image = nil;
+        cell.accessoryType = UITableViewCellAccessoryNone;
+        cell.accessoryView = nil;
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        return cell;
+    }
+    cell = [self.tableView dequeueReusableCellWithIdentifier:@"TypeXLPItemCell" forIndexPath:indexPath];
     BOOL checked = self.allowsMultipleSelection
         ? [self.pickedSelectors containsObject:selector]
         : [self.selectedSelector isEqualToString:selector];
@@ -254,7 +306,7 @@ static NSBundle *tweakBundle;
     cell.accessoryView = nil;
     cell.editingAccessoryView = nil;
     cell.textLabel.text = [DXHelper localizedStringForActionNamed:selector shortName:NO bundle:tweakBundle];
-    cell.imageView.image = [DXHelper imageFromArray:self.fullOrder atIndex:indexPath.row withSystemColor:YES completion:nil];
+    cell.imageView.image = [DXHelper imageFromArray:self.fullOrder atIndex:actionIndex withSystemColor:YES completion:nil];
     return cell;
 }
 
@@ -308,7 +360,8 @@ static NSBundle *tweakBundle;
     if (self.allowsMultipleSelection) {
         NSString *selector = indexPath.section == self.customActionsSection
             ? self.linkActions[indexPath.row][@"selector"]
-            : [DXHelper actionNameFromArray:self.fullOrder atIndex:indexPath.row];
+            : [self selectorForBuiltInRow:indexPath.row indexOut:NULL];
+        if (!selector.length) return; // 分组标题行不参与选择
         if ([self.pickedSelectors containsObject:selector]) {
             [self.pickedSelectors removeObject:selector];
         } else {
@@ -320,7 +373,8 @@ static NSBundle *tweakBundle;
 
     NSString *selector = indexPath.section == self.customActionsSection
         ? self.linkActions[indexPath.row][@"selector"]
-        : [DXHelper actionNameFromArray:self.fullOrder atIndex:indexPath.row];
+        : [self selectorForBuiltInRow:indexPath.row indexOut:NULL];
+    if (!selector.length) return; // 分组标题行不参与选择
     NSString *oldSelector = self.selectedSelector;
 
     if (self.selectionManagedExternally) {
@@ -344,8 +398,9 @@ static NSBundle *tweakBundle;
 
 - (NSIndexPath *)indexPathForSelector:(NSString *)selector {
     if (selector.length == 0) return nil;
-    for (NSUInteger row = 0; row < self.fullOrder.count; row++) {
-        if ([[DXHelper actionNameFromArray:self.fullOrder atIndex:row] isEqualToString:selector]) {
+    for (NSUInteger row = 0; row < self.builtInDisplayRows.count; row++) {
+        NSDictionary *model = self.builtInDisplayRows[row];
+        if ([model[@"kind"] isEqual:@"action"] && [model[@"selector"] isEqualToString:selector]) {
             return self.customActionsOnly ? nil : [NSIndexPath indexPathForRow:row inSection:1];
         }
     }

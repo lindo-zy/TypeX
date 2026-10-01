@@ -32,6 +32,7 @@
 "SHORT_SELECT_PARAGRAPH" = "选择段落";
 "SHORT_SELECT_SENTENCE" = "选择句子";
 "SHORT_DELETE_FORWARD" = "向后删除";
+"SHORT_DELETE_WORD" = "删词";
 "SHORT_DELETE_ALL" = "清空";
 "SHORT_COPY_LOG" = "复制记录";
 "SHORT_SPONGEBOB" = "交错大小写";
@@ -67,6 +68,7 @@
 "LONG_SELECT_PARAGRAPH" = "选择整段";
 "LONG_SELECT_SENTENCE" = "选择整句";
 "LONG_DELETE_FORWARD" = "向后删除";
+"LONG_DELETE_WORD" = "删除单词";
 "LONG_DELETE_ALL" = "清空";
 "LONG_COPY_LOG" = "复制记录";
 "LONG_SPONGEBOB" = "交错大小写";
@@ -454,3 +456,12 @@
 "SYSTEM_ACTION_INVALID" = "系统动作配置已失效，请重新选择并保存";
 
 "SYSTEM_ACTION_EXPIRED" = "操作已取消或过期，请重新触发";
+
+//=====================Action groups & SF symbol picker=====================
+"ACTION_GROUP_EDIT" = "编辑";
+"ACTION_GROUP_DELETE" = "删除";
+"ACTION_GROUP_SELECT" = "选择";
+"ACTION_GROUP_CURSOR" = "光标";
+"ACTION_GROUP_TOOLS" = "工具";
+"SF_SYMBOL_PICKER_TITLE" = "图标库";
+"SF_SYMBOL_SEARCH" = "搜索图标名";
