@@ -397,7 +397,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "KEYBOARD_PANEL_COLUMNS" = "Icons per row";
 "KEYBOARD_PANEL_SCALE" = "Content size (%)";
 "KEYBOARD_PANEL_ITEMS_FOOTER" = "Only custom actions can be added. Create system actions, links, apps, text or scripts in Custom Actions first, then add them to the panel. Swipe left to delete; tap to edit. Tap Edit at the top to drag and reorder. Deleting removes only this panel item and keeps the custom action.";
-"KEYBOARD_PANEL_EDIT_HINT" = "Swipe left to delete; tap to edit; drag to reorder in Edit mode";
+"KEYBOARD_PANEL_EDIT_HINT" = "Swipe left to delete; tap to edit; press and hold to drag";
 "KEYBOARD_PANEL_PICKER_DELETE_FOOTER" = "Tap a row to select it; swipe left to delete the custom action. Deleting also removes its references from toolbars, sub-actions and all panels.";
 "KEYBOARD_PANEL_ITEM_APPEARANCE" = "Edit name and icon";
 "KEYBOARD_PANEL_NAME" = "Name (empty uses action name)";

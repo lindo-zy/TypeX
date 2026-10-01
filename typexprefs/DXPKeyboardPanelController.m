@@ -269,6 +269,12 @@ static NSString *DXPanelLocalized(NSString *key) {
     cell.textLabel.text = [self nameForEntry:entry];
     cell.imageView.image = [self imageForEntry:entry];
     cell.detailTextLabel.text = DXPanelLocalized(@"KEYBOARD_PANEL_EDIT_HINT");
+    // 行尾固定拖动把手，让可拖动性可见；拖动本身仍由表格的长按 drag & drop 承担。
+    UIImageView *handle = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"line.3.horizontal"]];
+    handle.contentMode = UIViewContentModeScaleAspectFit;
+    handle.tintColor = UIColor.secondaryLabelColor;
+    handle.frame = CGRectMake(0, 0, 24, 24);
+    cell.accessoryView = handle;
     return cell;
 }
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
