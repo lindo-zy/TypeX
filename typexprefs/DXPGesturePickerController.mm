@@ -447,17 +447,35 @@ static NSBundle *tweakBundle;
     return _specifiers;
 }
 
-// 图标库行左侧实时渲染当前图标（SF Symbol 名或 Bundle ID）；随字段重载刷新，
-// 空值显示问号占位。
+// 图标库行左侧实时渲染按钮实际生效的图标：自定义覆盖优先，其次点按动作的
+// 目录图标（内置 SF 名或自定义动作图标），两者皆无才显示问号占位；随字段
+// 重载刷新。
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
     if (self.iconLibrarySpec && [self specifierAtIndexPath:indexPath] == self.iconLibrarySpec) {
         NSString *icon = [self readIconValue:nil];
         if (![icon isKindOfClass:NSString.class]) icon = @"";
-        cell.imageView.image = icon.length
-            ? [DXHelper imageForIconConfig:icon defaultSymbolName:@"link"]
-            : [UIImage systemImageNamed:@"questionmark.square"];
-        cell.imageView.tintColor = UIColor.secondaryLabelColor;
+        UIImage *image = nil;
+        BOOL placeholder = NO;
+        if (icon.length) {
+            image = [DXHelper imageForIconConfig:icon defaultSymbolName:@"link"];
+        } else {
+            NSString *tapAction = [self selectedActionForGesture:DXShortcutGestureTap
+                                                      identifier:self.pendingNewEntry ? kNewButtonPendingIdentifier : self.identifier] ?: @"";
+            NSString *builtIn = [self canonicalEntryForSelector:tapAction][@"images13"];
+            if ([builtIn isKindOfClass:NSString.class] && builtIn.length) {
+                image = [DXHelper imageForIconConfig:builtIn defaultSymbolName:@"link"];
+            }
+        }
+        if (!image) {
+            image = [UIImage systemImageNamed:@"questionmark.square"];
+            placeholder = YES;
+        }
+        cell.imageView.image = image;
+        // 占位符弱化显示；真实图标保持默认色（模板符号=label 色，App 图标原样）。
+        cell.imageView.tintColor = placeholder ? UIColor.secondaryLabelColor : nil;
+        // Preferences 对无 detail 的 PSLinkCell 会把标题渲染成弱化灰，强制正常色。
+        cell.textLabel.textColor = UIColor.labelColor;
         cell.detailTextLabel.text = nil;
     }
     return cell;
