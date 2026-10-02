@@ -21,12 +21,12 @@ static inline NSString *DXGlobalPanelSideForNotification(NSString *name) {
     return nil;
 }
 
-// Coordinates are relative to the visible Dock frame in its window. Include
-// the blank strip below it: those touches never reach a recognizer on the Dock.
+// Accept the full Dock background, including gaps at icon height, plus the
+// strip below it. Visible icon images are excluded by the touch-view policy.
 static inline BOOL DXDockPanelOriginAllowed(double x, double y, double width, double height, double below) {
     return isfinite(x) && isfinite(y) && isfinite(width) && isfinite(height) && isfinite(below) &&
         width > 0 && height > 0 && below >= 0 && x >= 0 && x <= width &&
-        y >= fmax(0, height - 30) && y <= height + below;
+        y >= 0 && y <= height + below;
 }
 static inline BOOL DXDockPanelSwipeCompletes(double dx, double dy) {
     return isfinite(dx) && isfinite(dy) && dy <= -48 && -dy >= fabs(dx) * 1.5;

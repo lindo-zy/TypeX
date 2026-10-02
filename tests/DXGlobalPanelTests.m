@@ -14,7 +14,9 @@ int main(void) {
         check(!DXGlobalPanelSideForNotification(nil));
         check(DXDockPanelOriginAllowed(150, 82, 300, 96, 34));
         check(DXDockPanelOriginAllowed(150, 66, 300, 96, 34));
-        check(!DXDockPanelOriginAllowed(150, 65, 300, 96, 34));
+        check(DXDockPanelOriginAllowed(150, 48, 300, 96, 34)); // Between icons, at icon height.
+        check(DXDockPanelOriginAllowed(150, 0, 300, 96, 34));
+        check(!DXDockPanelOriginAllowed(150, -1, 300, 96, 34));
         check(!DXDockPanelOriginAllowed(-1, 82, 300, 96, 34));
         check(!DXDockPanelOriginAllowed(301, 82, 300, 96, 34));
         check(DXDockPanelOriginAllowed(150, 110, 300, 96, 34)); // Below Dock, on window.

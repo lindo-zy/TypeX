@@ -395,7 +395,7 @@
 "GLOBAL_PANEL_SETTINGS" = "独立面板";
 "GLOBAL_PANEL_ENABLED" = "启用独立面板";
 "GLOBAL_PANEL_DOCK_SWIPE" = "主屏幕 Dock 底部上划";
-"GLOBAL_PANEL_FOOTER" = "从主屏幕 Dock 底部或下方空白处向上滑动，只打开通用面板，无需弹出键盘。图标点击和拖动保留。独立面板支持系统控制、链接、应用和快捷操作；需要输入框的文字和脚本动作请在键盘面板中执行。";
+"GLOBAL_PANEL_FOOTER" = "从主屏幕 Dock 的空白处（包括图标之间或下方）向上滑动，只打开通用面板，无需弹出键盘。图标点击和拖动保留。独立面板支持系统控制、链接、应用和快捷操作；需要输入框的文字和脚本动作请在键盘面板中执行。";
 "GLOBAL_PANEL_INPUT_REQUIRED" = "该动作需要输入框，请在键盘面板中执行。";
 "KEYBOARD_PANEL_APPEARANCE" = "面板外观";
 "KEYBOARD_PANEL_DARK" = "深色背景";

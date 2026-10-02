@@ -1,5 +1,6 @@
 #import "DXGlobalPanel.h"
 #import "DXGlobalPanelPolicy.h"
+#import "DXDockPanelTouchPolicy.h"
 #import "DXKeyboardPanelPreferences.h"
 #import "common.h"
 #import <objc/runtime.h>
@@ -13,6 +14,7 @@ static void DXTryInstallGlobalPanelHooks(void);
 @property(nonatomic, weak) UIWindow *installedWindow;
 @property(nonatomic, strong) UIPanGestureRecognizer *pan;
 @property(nonatomic, assign) BOOL opened;
+@property(nonatomic, assign) BOOL loggedRejectedTouch;
 - (BOOL)enabled;
 - (void)upwardPan:(UIPanGestureRecognizer *)gesture;
 @end
@@ -41,15 +43,19 @@ static void DXTryInstallGlobalPanelHooks(void);
     (void)gesture;
     self.sourceWindow = nil;
     self.opened = NO;
-    // Icon taps, long presses and rearrangement keep their original handlers.
-    for (UIView *view = touch.view; view && view != self.installedWindow; view = view.superview)
-        if ([view isKindOfClass:UIControl.class] || [NSStringFromClass(view.class) containsString:@"IconView"]) return NO;
     UIWindow *window = self.dock.window;
     if (window != self.installedWindow || touch.window != window) return NO;
     CGPoint point = [touch locationInView:window];
     CGRect frame = [self.dock convertRect:self.dock.bounds toView:window];
     CGFloat below = MAX(0, CGRectGetMaxY(window.bounds) - CGRectGetMaxY(frame));
     if (!DXDockPanelOriginAllowed(point.x - frame.origin.x, point.y - frame.origin.y, frame.size.width, frame.size.height, below)) return NO;
+    if (!DXDockPanelTouchIsBackground(self.dock, touch.view, point)) {
+        if (!self.loggedRejectedTouch) {
+            self.loggedRejectedTouch = YES;
+            NSLog(@"[TypeX][GlobalPanel] dock swipe rejected: icon/control hit=%@", NSStringFromClass(touch.view.class));
+        }
+        return NO;
+    }
     if (![self enabled]) {
         DXPrefsManager *manager = DXPrefsManager.sharedInstance;
         NSLog(@"[TypeX][GlobalPanel] dock swipe gated prefs=%d enabled=%d global=%d dock=%d unlocked=%d panelVisible=%d",
@@ -59,7 +65,8 @@ static void DXTryInstallGlobalPanelHooks(void);
         return NO;
     }
     self.sourceWindow = self.dock.window;
-    NSLog(@"[TypeX][GlobalPanel] dock swipe tracking below=%d", point.y > CGRectGetMaxY(frame));
+    NSLog(@"[TypeX][GlobalPanel] dock swipe tracking zone=%@ hit=%@",
+        point.y > CGRectGetMaxY(frame) ? @"below" : @"inside", NSStringFromClass(touch.view.class));
     return YES;
 }
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)recognizer {

@@ -11,3 +11,14 @@ with tempfile.TemporaryDirectory(prefix="typex-global-panel-tests-") as tmp:
                     "-framework", "Foundation", "-framework", "CoreGraphics",
                     str(root / "tests/DXGlobalPanelTests.m"), "-o", binary], check=True)
     subprocess.run([binary], check=True, timeout=15)
+    # Compile the actual icon/background policy against narrow view doubles.
+    # UIKit hit testing, private-class availability and pan arbitration remain
+    # device-only checks; expanded icon padding is reproduced deterministically.
+    tmp = pathlib.Path(tmp)
+    (tmp / "UIKit").mkdir()
+    (tmp / "UIKit/UIKit.h").write_bytes((root / "tests/UIKitDockTouchStub.h").read_bytes())
+    touch_binary = tmp / "dock-touch-policy"
+    subprocess.run(["xcrun", "clang", "-fobjc-arc", "-Wall", "-Wextra", "-Werror",
+                    "-framework", "Foundation", "-framework", "CoreGraphics", "-I", str(tmp), "-I", str(root),
+                    str(root / "tests/DXDockPanelTouchTests.m"), "-o", str(touch_binary)], check=True)
+    subprocess.run([str(touch_binary)], check=True, timeout=15)

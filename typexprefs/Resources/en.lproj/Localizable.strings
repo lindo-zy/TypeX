@@ -396,7 +396,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "GLOBAL_PANEL_SETTINGS" = "Independent panels";
 "GLOBAL_PANEL_ENABLED" = "Enable independent panels";
 "GLOBAL_PANEL_DOCK_SWIPE" = "Swipe up from the Home Screen Dock";
-"GLOBAL_PANEL_FOOTER" = "Swipe up from the blank bottom of or below the Home Screen Dock to open only the common panel without a keyboard. Icon taps and dragging remain available. Independent panels support system controls, links, apps and quick actions. Use keyboard panels for text and scripts that require an input field.";
+"GLOBAL_PANEL_FOOTER" = "Swipe up from blank space in the Home Screen Dock, including between or below icons, to open only the common panel without a keyboard. Icon taps and dragging remain available. Independent panels support system controls, links, apps and quick actions. Use keyboard panels for text and scripts that require an input field.";
 "GLOBAL_PANEL_INPUT_REQUIRED" = "This action needs an input field. Run it from a keyboard panel.";
 "KEYBOARD_PANEL_APPEARANCE" = "Panel appearance";
 "KEYBOARD_PANEL_DARK" = "Dark background";
