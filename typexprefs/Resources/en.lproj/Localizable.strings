@@ -411,7 +411,6 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "KEYBOARD_PANEL_REPLACE_ACTION" = "Choose another action";
 "KEYBOARD_PANEL_EDIT_ACTION" = "Edit custom action";
 "KEYBOARD_PANEL_CLOSE" = "Close panel";
-"KEYBOARD_PANEL_EMPTY" = "No custom actions below. Add them in TypeX Settings.";
 "KEYBOARD_TOOLBAR_CAPACITY" = "This toolbar fits %ld enabled buttons. Disable a button before enabling another.";
 
 // Custom system actions

@@ -369,15 +369,6 @@
     blank.tag = 20;
     [blank addTarget:self action:@selector(dismiss) forControlEvents:UIControlEventTouchUpInside];
     [self.scroll insertSubview:blank atIndex:0];
-    if (!buttons.count) {
-        UILabel *empty = [[UILabel alloc] init];
-        empty.tag = 21;
-        empty.text = [bundle localizedStringForKey:@"KEYBOARD_PANEL_EMPTY" value:@"Add actions in Settings" table:nil];
-        empty.textColor = text;
-        empty.numberOfLines = 0;
-        empty.textAlignment = NSTextAlignmentCenter;
-        [self.scroll addSubview:empty];
-    }
     [self layoutPanel];
     if (!self.window) return;
     [self.controlSession enqueueAction:@"state" value:nil];
@@ -428,11 +419,10 @@
         button.actionImage.frame = CGRectMake((itemWidth - icon) / 2, 4 + (circle - icon) / 2, icon, icon);
         button.actionLabel.frame = CGRectMake(3, circle + 9, itemWidth - 6, 30 * self.scale);
     }];
-    CGFloat gridHeight = self.buttons.count ? DXKeyboardPanelContentHeight(self.buttons.count, self.scroll.bounds.size.width, self.columns, self.scale) : 70;
+    CGFloat gridHeight = self.buttons.count ? DXKeyboardPanelContentHeight(self.buttons.count, self.scroll.bounds.size.width, self.columns, self.scale) : 0;
     CGFloat contentHeight = MAX(self.scroll.bounds.size.height, controlsHeight + gridHeight);
     self.scroll.contentSize = CGSizeMake(self.scroll.bounds.size.width, contentHeight);
     [self.scroll viewWithTag:20].frame = CGRectMake(0, 0, self.scroll.bounds.size.width, contentHeight);
-    [self.scroll viewWithTag:21].frame = CGRectMake(0, controlsHeight, self.scroll.bounds.size.width, MAX(70, self.scroll.bounds.size.height - controlsHeight));
 }
 - (void)itemTapped:(DXKeyboardPanelButton *)button {
     if (![self validSession] || ![self.buttons containsObject:button]) { [self dismiss]; return; }

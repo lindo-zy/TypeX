@@ -38,7 +38,6 @@
 @property(nonatomic, strong) UIButton *closeButton;
 @property(nonatomic, strong) UIControl *header;
 @property(nonatomic, strong) UIControl *blank;
-@property(nonatomic, strong) UILabel *empty;
 @property(nonatomic, strong) DXPanelSystemControlsView *controls;
 @property(nonatomic, strong) DXPanelControlSession *controlSession;
 @property(nonatomic, strong) NSArray<DXGlobalPanelItem *> *items;
@@ -250,14 +249,6 @@ static NSString *DXGlobalLocalized(NSString *key) {
         [buttons addObject:button];
     }
     self.items = buttons;
-    if (!buttons.count) {
-        self.empty = [UILabel new];
-        self.empty.text = DXGlobalLocalized(@"KEYBOARD_PANEL_EMPTY");
-        self.empty.textColor = text;
-        self.empty.textAlignment = NSTextAlignmentCenter;
-        self.empty.numberOfLines = 0;
-        [self.scroll addSubview:self.empty];
-    }
     self.window.hidden = NO;
     [self.window layoutIfNeeded];
     [self layout];
@@ -295,11 +286,10 @@ static NSString *DXGlobalLocalized(NSString *key) {
         button.icon.frame = CGRectMake((slot - icon) / 2, 4 + (circle - icon) / 2, icon, icon);
         button.name.frame = CGRectMake(3, circle + 9, slot - 6, 30 * self.scale);
     }
-    CGFloat gridHeight = self.items.count ? DXKeyboardPanelContentHeight(self.items.count, contentWidth, self.columns, self.scale) : 70;
+    CGFloat gridHeight = self.items.count ? DXKeyboardPanelContentHeight(self.items.count, contentWidth, self.columns, self.scale) : 0;
     CGFloat total = MAX(self.scroll.bounds.size.height, controlsHeight + gridHeight);
     self.scroll.contentSize = CGSizeMake(contentWidth, total);
     self.blank.frame = CGRectMake(0, 0, contentWidth, total);
-    self.empty.frame = CGRectMake(0, controlsHeight, contentWidth, 70);
 }
 - (void)itemTapped:(DXGlobalPanelItem *)button {
     if (![self validSession] || ![self.items containsObject:button]) { [self dismiss]; return; }
@@ -361,7 +351,7 @@ static NSString *DXGlobalLocalized(NSString *key) {
     self.window.hidden = YES;
     self.window.rootViewController = nil; self.window = nil;
     self.panel = nil; self.scroll = nil; self.items = nil; self.snapshot = nil;
-    self.title = nil; self.message = nil; self.closeButton = nil; self.header = nil; self.blank = nil; self.empty = nil;
+    self.title = nil; self.message = nil; self.closeButton = nil; self.header = nil; self.blank = nil;
 }
 @end
 

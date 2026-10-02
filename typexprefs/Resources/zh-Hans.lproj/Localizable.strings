@@ -410,7 +410,6 @@
 "KEYBOARD_PANEL_REPLACE_ACTION" = "更换动作";
 "KEYBOARD_PANEL_EDIT_ACTION" = "编辑自定义动作";
 "KEYBOARD_PANEL_CLOSE" = "关闭面板";
-"KEYBOARD_PANEL_EMPTY" = "下面的自定义动作为空，请在 TypeX 设置中添加";
 "KEYBOARD_TOOLBAR_CAPACITY" = "当前工具栏一屏最多显示 %ld 个按钮。请先关闭一个按钮，再启用新按钮。";
 
 // Custom system actions

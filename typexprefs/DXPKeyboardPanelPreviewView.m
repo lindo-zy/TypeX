@@ -7,7 +7,6 @@
 
 @interface DXPKeyboardPanelPreviewView ()
 @property(nonatomic, strong) UILabel *titleLabel;
-@property(nonatomic, strong) UILabel *emptyLabel;
 @property(nonatomic, strong) UIScrollView *scroll;
 @property(nonatomic, strong) DXPanelSystemControlsView *systemControls;
 @property(nonatomic, copy) NSArray<UIView *> *items;
@@ -27,11 +26,6 @@
         self.scroll.showsVerticalScrollIndicator = YES;
         [self addSubview:self.scroll];
         [self.scroll addSubview:self.systemControls];
-        self.emptyLabel = [UILabel new];
-        self.emptyLabel.numberOfLines = 0;
-        self.emptyLabel.textAlignment = NSTextAlignmentCenter;
-        self.emptyLabel.font = [UIFont systemFontOfSize:14];
-        [self.scroll addSubview:self.emptyLabel];
     }
     return self;
 }
@@ -41,13 +35,11 @@
     NSBundle *bundle = [NSBundle bundleWithPath:bundlePath];
     NSString *titleKey = [side isEqual:@"right"] ? @"KEYBOARD_PANEL_RIGHT" : ([side isEqual:@"common"] ? @"KEYBOARD_PANEL_COMMON" : @"KEYBOARD_PANEL_LEFT");
     self.titleLabel.text = [bundle localizedStringForKey:titleKey value:titleKey table:nil];
-    self.emptyLabel.text = [bundle localizedStringForKey:@"KEYBOARD_PANEL_EMPTY" value:@"请先添加自定义动作" table:nil];
     BOOL dark = DXKeyboardPanelBool(preferences, kDXPanelDark, YES);
     UIColor *textColor = dark ? UIColor.whiteColor : UIColor.labelColor;
     self.backgroundColor = dark ? [UIColor colorWithWhite:0.10 alpha:1] : UIColor.systemBackgroundColor;
     [self.systemControls configureWithPreferences:preferences preview:YES];
     self.titleLabel.textColor = textColor;
-    self.emptyLabel.textColor = textColor;
     self.columns = (NSInteger)DXKeyboardPanelNumber(preferences, kDXPanelColumns, 4, 3, 5);
     self.scale = DXKeyboardPanelNumber(preferences, kDXPanelScale, 100, 70, 120) / 100;
     for (UIView *item in self.items) [item removeFromSuperview];
@@ -90,7 +82,6 @@
         [items addObject:item];
     }
     self.items = items;
-    self.emptyLabel.hidden = items.count > 0;
     self.scroll.contentOffset = CGPointZero;
     [self setNeedsLayout];
 }
@@ -115,8 +106,7 @@
         [item viewWithTag:2].frame = CGRectMake((itemWidth - iconSize) / 2, 4 + (circleSize - iconSize) / 2, iconSize, iconSize);
         [item viewWithTag:3].frame = CGRectMake(3, circleSize + 9, MAX(0, itemWidth - 6), 30 * self.scale);
     }];
-    CGFloat gridHeight = self.items.count ? DXKeyboardPanelContentHeight(self.items.count, contentWidth, self.columns, self.scale) : 70;
+    CGFloat gridHeight = self.items.count ? DXKeyboardPanelContentHeight(self.items.count, contentWidth, self.columns, self.scale) : 0;
     self.scroll.contentSize = CGSizeMake(contentWidth, MAX(self.scroll.bounds.size.height, controlsHeight + gridHeight));
-    self.emptyLabel.frame = CGRectMake(0, controlsHeight, contentWidth, MAX(70, self.scroll.bounds.size.height - controlsHeight));
 }
 @end
