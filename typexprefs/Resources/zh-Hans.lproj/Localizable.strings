@@ -515,3 +515,7 @@
 "ICON_LIBRARY_ROW" = "从图标库选择";
 "KEYBOARD_PANEL_PROFILES_FOOTER" = "左面板、右面板和通用面板分别配置内容与外观。工具栏左滑打开左面板，右滑打开右面板；主屏幕 Dock 上划只打开通用面板。";
 "KEYBOARD_PANEL_ACTIONS" = "配置面板动作";
+"SF_SYMBOL_COLUMNS_ONE" = "单列";
+"SF_SYMBOL_COLUMNS_TWO" = "双列";
+"SF_SYMBOL_COLUMNS_THREE" = "三列";
+"SF_SYMBOL_COLUMNS_FOUR" = "四列";

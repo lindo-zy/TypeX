@@ -516,3 +516,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "ICON_LIBRARY_ROW" = "Pick from Icon Library";
 "KEYBOARD_PANEL_PROFILES_FOOTER" = "Left, right and common panels have separate content and appearance settings. Swipe left or right on a toolbar for its matching panel. Swipe up from the Home Screen Dock for the common panel only.";
 "KEYBOARD_PANEL_ACTIONS" = "Configure panel actions";
+"SF_SYMBOL_COLUMNS_ONE" = "One";
+"SF_SYMBOL_COLUMNS_TWO" = "Two";
+"SF_SYMBOL_COLUMNS_THREE" = "Three";
+"SF_SYMBOL_COLUMNS_FOUR" = "Four";

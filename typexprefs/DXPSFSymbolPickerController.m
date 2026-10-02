@@ -5,15 +5,104 @@
 static NSBundle *tweakBundle;
 // Successful catalogs only, confined to the main thread; failed loads retry.
 static NSArray<DXPSFSymbolCategory *> *DXPAvailableSymbolCategories;
+// Presentation only: share the last column choice within this Settings session.
+static NSInteger DXPPreferredSymbolColumns = 4;
 
 static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
     NSString *key = [@"SF_SYMBOL_CATEGORY_" stringByAppendingString:category.identifier];
     return [tweakBundle localizedStringForKey:key value:(category.title ?: category.identifier.capitalizedString) table:nil];
 }
 
-@interface DXPSFSymbolPickerController () <UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate>
+@interface DXPSFSymbolCell : UICollectionViewCell
+@property (nonatomic, strong) UIView *tile;
+@property (nonatomic, strong) UIImageView *symbolView;
+@property (nonatomic, strong) UILabel *nameLabel;
+@property (nonatomic, strong) UIImageView *checkmark;
+@property (nonatomic, strong) UIView *separator;
+@property (nonatomic, assign) NSInteger columns;
+- (void)configureWithName:(NSString *)name columns:(NSInteger)columns checked:(BOOL)checked;
+@end
+
+@implementation DXPSFSymbolCell
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (!self) return nil;
+    self.tile = [[UIView alloc] init];
+    self.tile.layer.cornerRadius = 12;
+    [self.contentView addSubview:self.tile];
+    self.symbolView = [[UIImageView alloc] init];
+    self.symbolView.contentMode = UIViewContentModeScaleAspectFit;
+    self.symbolView.tintColor = UIColor.labelColor;
+    [self.tile addSubview:self.symbolView];
+    self.nameLabel = [[UILabel alloc] init];
+    self.nameLabel.adjustsFontForContentSizeCategory = YES;
+    self.nameLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    [self.contentView addSubview:self.nameLabel];
+    self.checkmark = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"checkmark.circle.fill"]];
+    self.checkmark.contentMode = UIViewContentModeScaleAspectFit;
+    self.checkmark.tintColor = UIColor.systemBlueColor;
+    [self.contentView addSubview:self.checkmark];
+    self.separator = [[UIView alloc] init];
+    self.separator.backgroundColor = UIColor.separatorColor;
+    [self.contentView addSubview:self.separator];
+    UIView *highlight = [[UIView alloc] init];
+    highlight.backgroundColor = UIColor.tertiarySystemFillColor;
+    highlight.layer.cornerRadius = 12;
+    self.selectedBackgroundView = highlight;
+    self.isAccessibilityElement = YES;
+    return self;
+}
+
+- (void)configureWithName:(NSString *)name columns:(NSInteger)columns checked:(BOOL)checked {
+    self.columns = columns;
+    BOOL list = columns == 1;
+    self.symbolView.image = [UIImage systemImageNamed:name withConfiguration:
+        [UIImageSymbolConfiguration configurationWithPointSize:(list ? 24 : 32) weight:UIImageSymbolWeightRegular]];
+    self.tile.backgroundColor = list ? UIColor.clearColor : UIColor.tertiarySystemFillColor;
+    self.nameLabel.text = name;
+    self.nameLabel.font = [[UIFontMetrics metricsForTextStyle:(list ? UIFontTextStyleBody : UIFontTextStyleFootnote)]
+        scaledFontForFont:[UIFont systemFontOfSize:(list ? 15 : 12)]];
+    self.nameLabel.textColor = list ? UIColor.labelColor : UIColor.secondaryLabelColor;
+    self.nameLabel.textAlignment = list ? NSTextAlignmentNatural : NSTextAlignmentCenter;
+    self.nameLabel.numberOfLines = list ? 1 : 2;
+    self.separator.hidden = !list;
+    self.checkmark.hidden = !checked;
+    self.accessibilityLabel = name;
+    self.accessibilityTraits = UIAccessibilityTraitButton | (checked ? UIAccessibilityTraitSelected : 0);
+    [self setNeedsLayout];
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGFloat width = CGRectGetWidth(self.contentView.bounds);
+    CGFloat height = CGRectGetHeight(self.contentView.bounds);
+    if (self.columns == 1) {
+        BOOL rtl = self.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
+        self.tile.frame = CGRectMake(rtl ? width - 44 : 0, 0, 44, height);
+        self.symbolView.frame = CGRectMake(8, (height - 28) / 2, 28, 28);
+        self.nameLabel.frame = CGRectMake(rtl ? 30 : 56, 0, MAX(0, width - 86), height);
+        self.checkmark.frame = CGRectMake(rtl ? 0 : width - 20, (height - 20) / 2, 20, 20);
+        self.separator.frame = CGRectMake(rtl ? 0 : 56, height - 0.5, MAX(0, width - 56), 0.5);
+    } else {
+        CGFloat tileHeight = self.columns == 2 ? 76 : 64;
+        self.tile.frame = CGRectMake(0, 0, width, tileHeight);
+        self.symbolView.frame = CGRectMake(12, 12, MAX(0, width - 24), tileHeight - 24);
+        self.nameLabel.frame = CGRectMake(0, tileHeight + 8, width, MAX(0, height - tileHeight - 8));
+        self.checkmark.frame = CGRectMake(width - 24, 5, 19, 19);
+    }
+}
+
+@end
+
+@interface DXPSFSymbolPickerController () <UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate,
+    UICollectionViewDataSource, UICollectionViewDelegateFlowLayout>
 @property (nonatomic, strong) UITableView *table;
 @property (nonatomic, strong) UISearchBar *searchBar;
+@property (nonatomic, strong) UISegmentedControl *columnControl;
+@property (nonatomic, strong) UICollectionView *collection;
+@property (nonatomic, assign) NSInteger columnCount;
+@property (nonatomic, assign) CGFloat collectionWidth;
 @property (nonatomic, copy) NSArray<DXPSFSymbolCategory *> *categories;
 // A category child shares the library's selection callback and closes both
 // levels when selected. Cancelling the child returns to the category list.
@@ -39,25 +128,104 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
     self.categories = self.category ? @[] : (DXPAvailableSymbolCategories ?: @[]);
     self.allSymbols = self.category ? self.category.symbolNames : (self.categories.firstObject.symbolNames ?: @[]);
     self.symbols = self.allSymbols;
-    self.table = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
-    self.table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    self.table.dataSource = self;
-    self.table.delegate = self;
     if (self.category) {
-        self.searchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 44)];
-        self.searchBar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-        self.searchBar.placeholder = LOCALIZED(@"SF_SYMBOL_SEARCH");
-        self.searchBar.delegate = self;
-        self.searchBar.autocorrectionType = UITextAutocorrectionTypeNo;
-        self.searchBar.autocapitalizationType = UITextAutocapitalizationTypeNone;
-        self.table.tableHeaderView = self.searchBar;
+        [self setupSymbolCollection];
     } else {
+        self.table = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
+        self.table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        self.table.dataSource = self;
+        self.table.delegate = self;
         self.table.rowHeight = 56;
+        self.view = self.table;
     }
-    self.view = self.table;
     [self refreshBackground];
     NSLog(@"[TypeX][SFSymbol] picker open category=%@ rows=%lu", self.category.identifier ?: @"library",
           (unsigned long)(self.category ? self.symbols.count : self.categories.count));
+}
+
+- (void)setupSymbolCollection {
+    self.view.backgroundColor = UIColor.systemBackgroundColor;
+    self.columnCount = DXPPreferredSymbolColumns;
+    self.searchBar = [[UISearchBar alloc] init];
+    self.searchBar.translatesAutoresizingMaskIntoConstraints = NO;
+    self.searchBar.searchBarStyle = UISearchBarStyleMinimal;
+    self.searchBar.placeholder = LOCALIZED(@"SF_SYMBOL_SEARCH");
+    self.searchBar.delegate = self;
+    self.searchBar.autocorrectionType = UITextAutocorrectionTypeNo;
+    self.searchBar.autocapitalizationType = UITextAutocapitalizationTypeNone;
+    [self.view addSubview:self.searchBar];
+    self.columnControl = [[UISegmentedControl alloc] initWithItems:@[
+        LOCALIZED(@"SF_SYMBOL_COLUMNS_ONE"), LOCALIZED(@"SF_SYMBOL_COLUMNS_TWO"),
+        LOCALIZED(@"SF_SYMBOL_COLUMNS_THREE"), LOCALIZED(@"SF_SYMBOL_COLUMNS_FOUR")]];
+    self.columnControl.translatesAutoresizingMaskIntoConstraints = NO;
+    self.columnControl.selectedSegmentIndex = self.columnCount - 1;
+    [self.columnControl addTarget:self action:@selector(columnsChanged:) forControlEvents:UIControlEventValueChanged];
+    [self.view addSubview:self.columnControl];
+    UICollectionViewFlowLayout *layout = [[UICollectionViewFlowLayout alloc] init];
+    self.collection = [[UICollectionView alloc] initWithFrame:CGRectZero collectionViewLayout:layout];
+    self.collection.translatesAutoresizingMaskIntoConstraints = NO;
+    self.collection.backgroundColor = UIColor.systemBackgroundColor;
+    self.collection.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+    self.collection.alwaysBounceVertical = YES;
+    self.collection.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
+    self.collection.dataSource = self;
+    self.collection.delegate = self;
+    [self.collection registerClass:DXPSFSymbolCell.class forCellWithReuseIdentifier:@"DXPSFSymbolCell"];
+    [self.view addSubview:self.collection];
+    UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
+    // Let UIKit track docked/search keyboards without notification ownership.
+    NSLayoutConstraint *bottom = [self.collection.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor];
+    bottom.priority = UILayoutPriorityDefaultHigh;
+    [NSLayoutConstraint activateConstraints:@[
+        [self.searchBar.topAnchor constraintEqualToAnchor:safe.topAnchor],
+        [self.searchBar.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:8],
+        [self.searchBar.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-8],
+        [self.searchBar.heightAnchor constraintEqualToConstant:56],
+        [self.columnControl.topAnchor constraintEqualToAnchor:self.searchBar.bottomAnchor constant:8],
+        [self.columnControl.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:16],
+        [self.columnControl.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-16],
+        [self.columnControl.heightAnchor constraintEqualToConstant:32],
+        [self.collection.topAnchor constraintEqualToAnchor:self.columnControl.bottomAnchor constant:12],
+        [self.collection.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
+        [self.collection.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
+        bottom,
+        [self.collection.bottomAnchor constraintLessThanOrEqualToAnchor:self.view.keyboardLayoutGuide.topAnchor],
+    ]];
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    CGFloat width = CGRectGetWidth(self.collection.bounds);
+    if (width != self.collectionWidth) {
+        self.collectionWidth = width;
+        [self.collection.collectionViewLayout invalidateLayout];
+    }
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+    [super traitCollectionDidChange:previousTraitCollection];
+    if (![previousTraitCollection.preferredContentSizeCategory isEqualToString:self.traitCollection.preferredContentSizeCategory]) {
+        [self.collection.collectionViewLayout invalidateLayout];
+        [self.collection reloadData];
+    }
+}
+
+- (void)columnsChanged:(UISegmentedControl *)control {
+    NSInteger columns = control.selectedSegmentIndex + 1;
+    if (columns < 1 || columns > 4 || columns == self.columnCount) return;
+    // Preserve the first visible symbol, including while searching.
+    NSArray<NSIndexPath *> *visible = [self.collection.indexPathsForVisibleItems sortedArrayUsingSelector:@selector(compare:)];
+    NSIndexPath *anchor = visible.firstObject;
+    self.columnCount = columns;
+    DXPPreferredSymbolColumns = columns;
+    [self.collection.collectionViewLayout invalidateLayout];
+    [self.collection reloadData];
+    [self.collection layoutIfNeeded];
+    if (anchor && anchor.item < (NSInteger)self.symbols.count) {
+        [self.collection scrollToItemAtIndexPath:anchor atScrollPosition:UICollectionViewScrollPositionTop animated:NO];
+    }
+    NSLog(@"[TypeX][SFSymbol] layout category=%@ columns=%ld rows=%lu", self.category.identifier,
+          (long)columns, (unsigned long)self.symbols.count);
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -156,9 +324,10 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
     }
     if (self.category ? self.symbols.count : self.categories.count) {
         self.table.backgroundView = nil;
+        self.collection.backgroundView = nil;
         return;
     }
-    UIView *background = [[UIView alloc] initWithFrame:self.table.bounds];
+    UIView *background = [[UIView alloc] initWithFrame:(self.category ? self.collection.bounds : self.table.bounds)];
     UIStackView *stack = [[UIStackView alloc] init];
     stack.axis = UILayoutConstraintAxisVertical;
     stack.alignment = UIStackViewAlignmentCenter;
@@ -189,7 +358,8 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
         [retry addTarget:self action:@selector(loadSymbolCatalog) forControlEvents:UIControlEventTouchUpInside];
         [stack addArrangedSubview:retry];
     }
-    self.table.backgroundView = background;
+    if (self.category) self.collection.backgroundView = background;
+    else self.table.backgroundView = background;
 }
 
 - (void)filterWithQuery:(NSString *)query {
@@ -198,7 +368,8 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
         ? [self.allSymbols filteredArrayUsingPredicate:
               [NSPredicate predicateWithFormat:@"self CONTAINS[cd] %@", query]]
         : self.allSymbols;
-    [self.table reloadData];
+    [self.collection reloadData];
+    [self.collection setContentOffset:CGPointZero animated:NO];
     [self refreshBackground];
 }
 
@@ -212,7 +383,7 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     (void)tableView; (void)section;
-    return self.category ? self.symbols.count : self.categories.count;
+    return self.categories.count;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
@@ -222,54 +393,86 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (!self.category) {
-        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPSFSymbolCategoryCell"];
-        if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:@"DXPSFSymbolCategoryCell"];
-        DXPSFSymbolCategory *category = self.categories[indexPath.row];
-        cell.textLabel.text = DXPSymbolCategoryTitle(category);
-        cell.textLabel.font = [UIFont systemFontOfSize:17];
-        cell.textLabel.textColor = UIColor.labelColor;
-        cell.detailTextLabel.text = @(category.symbolNames.count).stringValue;
-        cell.detailTextLabel.textColor = UIColor.secondaryLabelColor;
-        cell.imageView.image = category.iconName.length ? [UIImage systemImageNamed:category.iconName
-            withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:23 weight:UIImageSymbolWeightRegular]] : nil;
-        cell.imageView.tintColor = UIColor.labelColor;
-        cell.imageView.contentMode = UIViewContentModeScaleAspectFit;
-        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-        return cell;
-    }
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPSFSymbolCell"];
-    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:@"DXPSFSymbolCell"];
-    NSString *name = self.symbols[indexPath.row];
-    cell.textLabel.text = name;
-    cell.textLabel.font = [UIFont monospacedSystemFontOfSize:13 weight:UIFontWeightRegular];
-    cell.detailTextLabel.text = nil;
-    cell.imageView.image = [UIImage systemImageNamed:name];
-    cell.accessoryType = [name isEqualToString:self.selectedSymbolName]
-        ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPSFSymbolCategoryCell"];
+    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:@"DXPSFSymbolCategoryCell"];
+    DXPSFSymbolCategory *category = self.categories[indexPath.row];
+    cell.textLabel.text = DXPSymbolCategoryTitle(category);
+    cell.textLabel.font = [UIFont systemFontOfSize:17];
+    cell.textLabel.textColor = UIColor.labelColor;
+    cell.detailTextLabel.text = @(category.symbolNames.count).stringValue;
+    cell.detailTextLabel.textColor = UIColor.secondaryLabelColor;
+    cell.imageView.image = category.iconName.length ? [UIImage systemImageNamed:category.iconName
+        withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:23 weight:UIImageSymbolWeightRegular]] : nil;
+    cell.imageView.tintColor = UIColor.labelColor;
+    cell.imageView.contentMode = UIViewContentModeScaleAspectFit;
+    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     return cell;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    if (!self.category) {
-        if (indexPath.row < 0 || indexPath.row >= (NSInteger)self.categories.count) return;
-        if (self.pushingCategory) return;
-        self.pushingCategory = YES;
-        DXPSFSymbolPickerController *picker = [[DXPSFSymbolPickerController alloc] init];
-        picker.category = self.categories[indexPath.row];
-        picker.libraryController = self;
-        picker.selectedSymbolName = self.selectedSymbolName;
-        picker.completion = self.completion;
-        [picker setRootController:[self rootController]];
-        [picker setParentController:[self parentController]];
-        [self pushController:picker];
-        return;
-    }
-    if (indexPath.row < 0 || indexPath.row >= (NSInteger)self.symbols.count) return;
+    if (indexPath.row < 0 || indexPath.row >= (NSInteger)self.categories.count) return;
+    if (self.pushingCategory) return;
+    self.pushingCategory = YES;
+    DXPSFSymbolPickerController *picker = [[DXPSFSymbolPickerController alloc] init];
+    picker.category = self.categories[indexPath.row];
+    picker.libraryController = self;
+    picker.selectedSymbolName = self.selectedSymbolName;
+    picker.completion = self.completion;
+    [picker setRootController:[self rootController]];
+    [picker setParentController:[self parentController]];
+    [self pushController:picker];
+}
+
+- (NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section {
+    (void)collectionView; (void)section;
+    return self.symbols.count;
+}
+
+- (UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath {
+    DXPSFSymbolCell *cell = [collectionView dequeueReusableCellWithReuseIdentifier:@"DXPSFSymbolCell" forIndexPath:indexPath];
+    NSString *name = self.symbols[indexPath.item];
+    [cell configureWithName:name columns:self.columnCount checked:[name isEqualToString:self.selectedSymbolName]];
+    return cell;
+}
+
+- (CGSize)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)layout
+    sizeForItemAtIndexPath:(NSIndexPath *)indexPath {
+    (void)layout; (void)indexPath;
+    BOOL list = self.columnCount == 1;
+    CGFloat spacing = list ? 0 : 12;
+    CGFloat width = MAX(1, floor((CGRectGetWidth(collectionView.bounds) - 32 - spacing * (self.columnCount - 1)) / self.columnCount));
+    UIFont *font = [[UIFontMetrics metricsForTextStyle:(list ? UIFontTextStyleBody : UIFontTextStyleFootnote)]
+        scaledFontForFont:[UIFont systemFontOfSize:(list ? 15 : 12)]];
+    CGFloat height = list ? MAX(56, ceil(font.lineHeight) + 24)
+        : (self.columnCount == 2 ? 76 : 64) + 8 + ceil(font.lineHeight) * 2;
+    return CGSizeMake(width, height);
+}
+
+- (UIEdgeInsets)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)layout
+    insetForSectionAtIndex:(NSInteger)section {
+    (void)collectionView; (void)layout; (void)section;
+    return UIEdgeInsetsMake(8, 16, 16, 16);
+}
+
+- (CGFloat)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)layout
+    minimumInteritemSpacingForSectionAtIndex:(NSInteger)section {
+    (void)collectionView; (void)layout; (void)section;
+    return self.columnCount == 1 ? 0 : 12;
+}
+
+- (CGFloat)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)layout
+    minimumLineSpacingForSectionAtIndex:(NSInteger)section {
+    (void)collectionView; (void)layout; (void)section;
+    return self.columnCount == 1 ? 0 : 16;
+}
+
+- (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath {
+    [collectionView deselectItemAtIndexPath:indexPath animated:YES];
+    if (indexPath.item < 0 || indexPath.item >= (NSInteger)self.symbols.count) return;
     DXPSFSymbolPickerController *library = self.libraryController;
     if (!library || self.selectionFinished || library.selectionFinished) return;
-    NSString *name = self.symbols[indexPath.row];
+    NSString *name = self.symbols[indexPath.item];
     // Cached names can outlive an external symbol hook's configuration.
     if (![UIImage systemImageNamed:name]) {
         DXPAvailableSymbolCategories = nil;
