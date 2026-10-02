@@ -36,6 +36,11 @@ int main(void) {
     @autoreleasepool {
         NSDictionary *base = @{@"token": NSUUID.UUID.UUIDString, @"source": @"top", @"action": @"state"};
         check(DXPanelControlRequestValid(base));
+        NSMutableDictionary *global = [base mutableCopy];
+        global[@"source"] = @"global";
+        check(DXPanelControlRequestValid(global));
+        global[@"source"] = @"arbitrary";
+        check(!DXPanelControlRequestValid(global));
         for (NSString *action in DXPanelToggleIdentifiers()) {
             NSMutableDictionary *request = [base mutableCopy]; request[@"action"] = action;
             check(DXPanelControlRequestValid(request)); request[@"value"] = @1;
@@ -166,6 +171,11 @@ int main(void) {
             mockCallbacks++; check(result == DXSystemOpenInvalid);
         });
         drain(0.05); check(mockExecutions == 2 && mockCallbacks == 3);
+        mockBadWord = NO;
+        DXRequestPanelSystemControl(@"state", nil, @"global", ^(DXSystemOpenResult result, NSDictionary *state) {
+            mockCallbacks++; check(result == DXSystemOpenSucceeded && [state[@"wifi"] boolValue]);
+        });
+        drain(0.05); check(mockExecutions == 3 && mockCallbacks == 4);
         NSLog(@"PASS: %lu panel-control checks (fixed whitelist, state round trip, layout, coalescing, timeout, duplicate/late replies and cancellation)", (unsigned long)checks);
     }
     return 0;

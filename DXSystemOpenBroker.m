@@ -72,7 +72,8 @@ static void DXPerformSystemOpen(NSDictionary *request, DXSystemOpenReply reply) 
         if (!(age >= 0 && age <= 1.5)) { reply(DXSystemOpenExpired); return; }
         DXPrefsManager *manager = DXPrefsManager.sharedInstance;
         if (!manager.preferencesAvailable) [manager reload];
-        NSString *enabledKey = [control[@"source"] isEqual:@"top"] ? kDXPanelTopEnabled : kDXPanelBottomEnabled;
+        NSString *enabledKey = [control[@"source"] isEqual:@"global"] ? kDXPanelGlobalEnabled :
+            ([control[@"source"] isEqual:@"top"] ? kDXPanelTopEnabled : kDXPanelBottomEnabled);
         if (!manager.preferencesAvailable || !DXKeyboardPanelBool(manager.prefs, enabledKey, YES)) { reply(DXSystemOpenUnavailable); return; }
         int token = NOTIFY_TOKEN_INVALID;
         NSString *slot = DXPanelControlStateSlot(control[@"token"]);

@@ -1,0 +1,54 @@
+#import "../DXGlobalPanelPolicy.h"
+#import "../DXGlobalPanelGeometry.h"
+#import "../DXKeyboardPanelPreferences.h"
+
+static NSUInteger checks;
+static void check(BOOL condition) { NSCAssert(condition, @"Global panel check %lu", (unsigned long)checks + 1); checks++; }
+
+int main(void) {
+    @autoreleasepool {
+        check([DXGlobalPanelSideForNotification(DXGlobalPanelLeftNotification) isEqual:@"left"]);
+        check([DXGlobalPanelSideForNotification(DXGlobalPanelRightNotification) isEqual:@"right"]);
+        check([DXGlobalPanelSideForNotification(DXGlobalPanelCommonNotification) isEqual:@"common"]);
+        check(!DXGlobalPanelSideForNotification(@"com.lindo.typex/aichat"));
+        check(!DXGlobalPanelSideForNotification(nil));
+        check(DXDockPanelOriginAllowed(150, 82, 300, 96));
+        check(DXDockPanelOriginAllowed(150, 74, 300, 96));
+        check(!DXDockPanelOriginAllowed(150, 73, 300, 96));
+        check(!DXDockPanelOriginAllowed(-1, 82, 300, 96));
+        check(!DXDockPanelOriginAllowed(301, 82, 300, 96));
+        check(!DXDockPanelOriginAllowed(150, 97, 300, 96));
+        check(!DXDockPanelOriginAllowed(0, 0, 0, 0));
+        check(!DXDockPanelOriginAllowed(NAN, 80, 300, 96));
+        check(DXDockPanelSwipeCompletes(0, -48));
+        check(DXDockPanelSwipeCompletes(32, -48));
+        check(!DXDockPanelSwipeCompletes(33, -48));
+        check(!DXDockPanelSwipeCompletes(0, -47));
+        check(!DXDockPanelSwipeCompletes(0, 80));
+        check(!DXDockPanelSwipeCompletes(NAN, -100));
+        check(DXGlobalPanelActionNeedsInput(@{@"type": @"text"}));
+        check(DXGlobalPanelActionNeedsInput(@{@"type": @"javascript"}));
+        check(DXGlobalPanelActionNeedsInput(@{@"type": @"url", @"link": @"https://example.com?q=@@@"}));
+        check(DXGlobalPanelActionNeedsInput(@{@"link": @"example://@@@"}));
+        check(!DXGlobalPanelActionNeedsInput(@{@"type": @"openapp", @"link": @"com.apple.mobilenotes"}));
+        check(!DXGlobalPanelActionNeedsInput(@{@"type": @"system", @"systemaction": @"screenshot"}));
+        check(!DXGlobalPanelActionNeedsInput(@{@"type": @"shortcut"}));
+        check(!DXGlobalPanelActionNeedsInput(@{@"type": NSNull.null, @"link": @42}));
+        check([DXGlobalPanelNormalizedPayload(@"  www.example.com\n") isEqual:@"https://www.example.com"]);
+        check([DXGlobalPanelNormalizedPayload(@"com.apple.mobilenotes") isEqual:@"com.apple.mobilenotes"]);
+        check([DXGlobalPanelNormalizedPayload(NSNull.null) isEqual:@""]);
+        check([DXGlobalPanelString(@42) isEqual:@""]);
+        CGRect portrait = DXGlobalPanelFrame(CGRectMake(0, 0, 390, 844), 47, 34);
+        check(CGRectEqualToRect(portrait, CGRectMake(10, 280, 370, 520)));
+        CGRect landscape = DXGlobalPanelFrame(CGRectMake(0, 0, 844, 390), 0, 21);
+        check(CGRectEqualToRect(landscape, CGRectMake(172, 20, 500, 339)));
+        check(CGRectIsNull(DXGlobalPanelFrame(CGRectZero, 0, 0)));
+        check(CGRectIsNull(DXGlobalPanelFrame(CGRectMake(0, 0, 100, 100), 0, 0)));
+        check(CGRectIsNull(DXGlobalPanelFrame(CGRectMake(0, 0, 390, 844), NAN, 34)));
+        check(DXKeyboardPanelBool(@{}, kDXPanelGlobalEnabled, YES));
+        check(!DXKeyboardPanelBool(@{kDXPanelGlobalEnabled: @NO}, kDXPanelGlobalEnabled, YES));
+        check(!DXKeyboardPanelBool(@{kDXPanelDockSwipeEnabled: @"yes"}, kDXPanelDockSwipeEnabled, YES));
+        printf("PASS: %lu global panel policy/geometry checks\n", (unsigned long)checks);
+    }
+    return 0;
+}

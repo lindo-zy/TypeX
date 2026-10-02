@@ -6,6 +6,7 @@
 #import "DXPasteChip.h"
 #import "DXAIPanel.h"
 #import "DXKeyboardPanel.h"
+#import "DXGlobalPanel.h"
 #import "DXSystemOpenBroker.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -1382,6 +1383,7 @@ static void shortcutRefreshRequestCallback(CFNotificationCenterRef center,
                         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, shortcutRefreshRequestCallback, (CFStringRef)kShortcutRefreshRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, aiChatRequestCallback, (CFStringRef)kAIChatRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                         DXStartSystemOpenBroker();
+                        DXStartGlobalPanel();
                         uint32_t pullOverStatus = notify_register_check(kPullOverOpenRequestIdentifier.UTF8String,
                                                                        &gPullOverOpenStateToken);
                         if (pullOverStatus == NOTIFY_STATUS_OK) {

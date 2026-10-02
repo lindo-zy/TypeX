@@ -82,6 +82,11 @@ static NSString *DXPanelLocalized(NSString *key) {
     [items addObject:[self setting:@"KEYBOARD_PANEL_TOP" key:kDXPanelTopEnabled defaultValue:@YES cell:PSSwitchCell]];
     [items addObject:[self setting:@"KEYBOARD_PANEL_BOTTOM" key:kDXPanelBottomEnabled defaultValue:@YES cell:PSSwitchCell]];
     [items addObject:[self setting:@"KEYBOARD_PANEL_UNIFIED" key:kDXPanelUnified defaultValue:@NO cell:PSSwitchCell]];
+    group = [PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"GLOBAL_PANEL_SETTINGS")];
+    [group setProperty:DXPanelLocalized(@"GLOBAL_PANEL_FOOTER") forKey:@"footerText"];
+    [items addObject:group];
+    [items addObject:[self setting:@"GLOBAL_PANEL_ENABLED" key:kDXPanelGlobalEnabled defaultValue:@YES cell:PSSwitchCell]];
+    [items addObject:[self setting:@"GLOBAL_PANEL_DOCK_SWIPE" key:kDXPanelDockSwipeEnabled defaultValue:@YES cell:PSSwitchCell]];
     group = [PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"KEYBOARD_PANEL_CONTENT")];
     [group setProperty:DXPanelLocalized(@"KEYBOARD_PANEL_CONTENT_FOOTER") forKey:@"footerText"];
     [items addObject:group];

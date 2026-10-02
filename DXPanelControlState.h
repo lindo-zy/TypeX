@@ -10,7 +10,7 @@ static inline BOOL DXPanelControlRequestValid(id request) {
     NSString *action = request[@"action"], *token = request[@"token"], *source = request[@"source"];
     if (![action isKindOfClass:NSString.class] || ![token isKindOfClass:NSString.class] ||
         ![[NSUUID alloc] initWithUUIDString:token] || token.length != 36 ||
-        !([source isEqual:@"top"] || [source isEqual:@"bottom"])) return NO;
+        !([source isEqual:@"top"] || [source isEqual:@"bottom"] || [source isEqual:@"global"])) return NO;
     if ([action isEqual:@"brightness"] || [action isEqual:@"volume"]) {
         id value = request[@"value"];
         return [value isKindOfClass:NSNumber.class] && isfinite([value doubleValue]) &&

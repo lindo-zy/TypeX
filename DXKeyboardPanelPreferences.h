@@ -3,6 +3,8 @@
 
 #define kDXPanelTopEnabled @"keyboardpaneltopBOOL"
 #define kDXPanelBottomEnabled @"keyboardpanelbottomBOOL"
+#define kDXPanelGlobalEnabled @"keyboardpanelglobalBOOL"
+#define kDXPanelDockSwipeEnabled @"keyboardpaneldockswipeBOOL"
 #define kDXPanelUnified @"keyboardpanelunifiedBOOL"
 #define kDXPanelSystemTogglesVisible @"keyboardpanelsystemtogglesBOOL"
 #define kDXPanelSystemSlidersVisible @"keyboardpanelsystemslidersBOOL"
