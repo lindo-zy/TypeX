@@ -364,9 +364,9 @@
 
 #pragma mark - 人设库
 
-// 人设元素：{id, name, content, role, enabled}。三个默认人设的 role 分别为
-// image（图片问答）/ text（文字问答）/ chat（AI问答），全部可删可改；删空后
-// 请求经 defaultPersonaForRole 回退到 defaultPersonas 的出厂内容。
+// 人设元素：{id, name, content, role, enabled}。role 是历史字段仅随旧数据保留，
+// 不再参与默认人设选择；列表第一项即默认人设，全部可删可改，删空后请求回退
+// 面板内建的兜底提示词。
 + (NSDictionary *)personaDictWithID:(NSString *)personaID
                                name:(NSString *)name
                                role:(NSString *)role
@@ -378,19 +378,21 @@
              @"enabled": @(YES)};
 }
 
+// 出厂人设种子顺序即默认排序：AI问答助手在首位，保证全新安装的默认人设
+// 与旧版（role=chat）行为一致。
 + (NSArray<NSDictionary *> *)defaultPersonas {
-    return @[[self personaDictWithID:@"p-image"
+    return @[[self personaDictWithID:@"p-chat"
+                                name:@"AI问答助手"
+                                role:@"chat"
+                             content:@"你是AI问答助手。请用简洁中文回答用户的问题：先给结论，再补细节；准确、不编造。"],
+             [self personaDictWithID:@"p-image"
                                 name:@"截图分析助手"
                                 role:@"image"
                              content:@"你是截图分析助手。请根据用户发来的截图与问题，用简洁中文回答。先给结论，再补关键细节。不要编造截图中不存在的内容。"],
              [self personaDictWithID:@"p-text"
                                 name:@"文字助手"
                                 role:@"text"
-                             content:@"你是文字助手。请根据用户提供的文字与问题，用简洁中文回答。先给结论，再补关键细节。"],
-             [self personaDictWithID:@"p-chat"
-                                name:@"AI问答助手"
-                                role:@"chat"
-                             content:@"你是AI问答助手。请用简洁中文回答用户的问题：先给结论，再补细节；准确、不编造。"]];
+                             content:@"你是文字助手。请根据用户提供的文字与问题，用简洁中文回答。先给结论，再补关键细节。"]];
 }
 
 + (NSArray<NSDictionary *> *)personas {
@@ -400,12 +402,12 @@
     if ([value isKindOfClass:[NSArray class]]) return value;
 
     NSMutableArray<NSDictionary *> *seeded = [[self defaultPersonas] mutableCopy];
-    // 旧的单条人设文本迁入 AI问答助手，用户写过的提示词不丢。
+    // 旧的单条人设文本迁入 AI问答助手（种子首位），用户写过的提示词不丢。
     NSString *legacy = [self prefStringForKey:DXAIPrefPersona];
     if (legacy.length > 0) {
-        NSMutableDictionary *chat = [seeded[2] mutableCopy];
+        NSMutableDictionary *chat = [seeded[0] mutableCopy];
         chat[@"content"] = legacy;
-        seeded[2] = chat;
+        seeded[0] = chat;
     }
     if (manager.preferencesAvailable) [self setPersonas:seeded];
     return seeded;
@@ -427,16 +429,9 @@
     return nil;
 }
 
-+ (NSDictionary *)defaultPersonaForRole:(NSString *)role {
-    if (role.length == 0) return nil;
-    for (NSDictionary *persona in [self personas]) {
-        if ([persona isKindOfClass:[NSDictionary class]] &&
-            [persona[@"role"] isKindOfClass:[NSString class]] && [persona[@"role"] isEqualToString:role]) return persona;
-    }
-    for (NSDictionary *persona in [self defaultPersonas]) {
-        if ([persona[@"role"] isEqualToString:role]) return persona;
-    }
-    return nil;
++ (NSDictionary *)defaultPersona {
+    id first = [self personas].firstObject;
+    return [first isKindOfClass:[NSDictionary class]] ? first : nil;
 }
 
 #pragma mark - 配置读取

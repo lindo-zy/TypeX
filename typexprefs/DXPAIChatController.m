@@ -809,6 +809,8 @@ static NSString *DXAITrim(NSString *text) {
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
+    self.tableView.dragDelegate = self;
+    self.tableView.dropDelegate = self;
     self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [self.view addSubview:self.tableView];
 }
@@ -834,13 +836,15 @@ static NSString *DXAITrim(NSString *text) {
     NSDictionary *persona = [DXAIEngine personas][indexPath.row];
     cell.textLabel.text = [persona[@"name"] isKindOfClass:[NSString class]] ? persona[@"name"] : @"";
     cell.textLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightMedium];
-    NSString *role = [persona[@"role"] isKindOfClass:[NSString class]] ? persona[@"role"] : @"";
-    cell.detailTextLabel.text = [role isEqualToString:@"image"] ? LOCALIZED(@"AI_PERSONA_ROLE_IMAGE")
-                             : [role isEqualToString:@"text"]  ? LOCALIZED(@"AI_PERSONA_ROLE_TEXT")
-                             : [role isEqualToString:@"chat"]  ? LOCALIZED(@"AI_PERSONA_ROLE_CHAT")
-                             : @"";
+    // 第一项即默认人设（排序决定），不再展示历史 role 字段。
+    cell.detailTextLabel.text = indexPath.row == 0 ? LOCALIZED(@"AI_PERSONA_DEFAULT_MARK") : @"";
     cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
-    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    // 行尾固定拖动把手；拖动由表格的长按 drag & drop 承担，点行仍进编辑页。
+    UIImageView *handle = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"line.3.horizontal"]];
+    handle.contentMode = UIViewContentModeScaleAspectFit;
+    handle.tintColor = [UIColor secondaryLabelColor];
+    handle.frame = CGRectMake(0, 0, 24, 24);
+    cell.accessoryView = handle;
     return cell;
 }
 
@@ -852,8 +856,8 @@ static NSString *DXAITrim(NSString *text) {
     [self.navigationController pushViewController:[[DXPAIPersonaEditorController alloc] initWithPersonaID:personaID] animated:YES];
 }
 
-// 所有人设（含三个默认人设）一律可左滑删除；删空后请求按消息类型回退出厂
-// 人设内容（defaultPersonaForRole 的硬编码兜底），面板人设菜单为空则不弹。
+// 所有人设一律可左滑删除；删空后请求回退面板内建的兜底提示词，面板人设
+// 菜单为空则不弹。
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
     if (editingStyle != UITableViewCellEditingStyleDelete) return;
     NSMutableArray *personas = [[DXAIEngine personas] mutableCopy];
@@ -875,6 +879,49 @@ static NSString *DXAITrim(NSString *text) {
     [DXAIEngine setPersonas:personas];
     [self.tableView reloadData];
     [self.navigationController pushViewController:[[DXPAIPersonaEditorController alloc] initWithPersonaID:persona[@"id"]] animated:YES];
+}
+
+// 长按拖动排序：列表顺序即面板人设菜单顺序，拖到第一位的人设成为默认人设。
+// 本地拖动会话由表格跟踪落点间隙，数据源更新与 moveRow 动画在同一
+// beginUpdates 里提交。
+- (NSArray<UIDragItem *> *)tableView:(UITableView *)tableView itemsForBeginningDragSession:(id<UIDragSession>)session atIndexPath:(NSIndexPath *)indexPath {
+    (void)tableView; (void)session;
+    NSArray<NSDictionary *> *personas = [DXAIEngine personas];
+    if (indexPath.row < 0 || indexPath.row >= (NSInteger)personas.count) return @[];
+    NSDictionary *persona = personas[indexPath.row];
+    UIDragItem *item = [[UIDragItem alloc] initWithItemProvider:[[NSItemProvider alloc] initWithObject:persona[@"id"] ?: @""]];
+    item.localObject = persona;
+    return @[item];
+}
+
+- (UITableViewDropProposal *)tableView:(UITableView *)tableView dropSessionDidUpdate:(id<UIDropSession>)session withDestinationIndexPath:(NSIndexPath *)destinationIndexPath {
+    (void)tableView; (void)destinationIndexPath;
+    if (!session.localDragSession) return nil;
+    return [[UITableViewDropProposal alloc] initWithDropOperation:UIDropOperationMove
+        intent:UITableViewDropIntentInsertAtDestinationIndexPath];
+}
+
+- (void)tableView:(UITableView *)tableView performDropWithCoordinator:(id<UITableViewDropCoordinator>)coordinator {
+    NSIndexPath *destination = coordinator.destinationIndexPath;
+    id<UITableViewDropItem> dropItem = coordinator.items.firstObject;
+    if (!destination || !dropItem.sourceIndexPath) return;
+    NSDictionary *persona = dropItem.dragItem.localObject;
+    if (![persona isKindOfClass:[NSDictionary class]]) return;
+    NSMutableArray *personas = [[DXAIEngine personas] mutableCopy];
+    NSUInteger sourceRow = [personas indexOfObjectIdenticalTo:persona];
+    if (sourceRow == NSNotFound) return;
+    // 落点按当前序的插入位计（末尾追加=行数）；先移除源行，向下移动回缩一位。
+    NSInteger targetRow = MIN(MAX(destination.row, 0), (NSInteger)personas.count);
+    if (targetRow > (NSInteger)sourceRow) targetRow--;
+    if (targetRow == (NSInteger)sourceRow) return;
+    [tableView beginUpdates];
+    [personas removeObjectAtIndex:sourceRow];
+    [personas insertObject:persona atIndex:targetRow];
+    [tableView moveRowAtIndexPath:[NSIndexPath indexPathForRow:sourceRow inSection:0]
+        toIndexPath:[NSIndexPath indexPathForRow:targetRow inSection:0]];
+    [tableView endUpdates];
+    [DXAIEngine setPersonas:personas];
+    [tableView reloadData]; // 首行「默认」角标随排序移动
 }
 
 @end

@@ -296,13 +296,11 @@
 "AI_PERSONA_SECTION" = "AI 人设";
 "AI_PERSONA_ROW" = "人设";
 "AI_STREAM_ROW" = "流式输出";
-"AI_PERSONA_FOOTER" = "点击可改内容。左滑删除。右上角「+」添加新人设。添加后新人设按钮在框选菜单中默认为打开，人设名称则是按钮名称。";
+"AI_PERSONA_FOOTER" = "点击可改内容。长按拖动排序，第一位为默认人设。左滑删除。右上角「+」添加新人设。添加后新人设按钮在框选菜单中默认为打开，人设名称则是按钮名称。";
 "AI_PERSONA_EDIT_TITLE" = "编辑人设";
 "AI_PERSONA_NAME_HEADER" = "名称";
 "AI_PERSONA_CONTENT_HEADER" = "人设内容";
-"AI_PERSONA_ROLE_IMAGE" = "图片问答默认";
-"AI_PERSONA_ROLE_TEXT" = "文字问答默认";
-"AI_PERSONA_ROLE_CHAT" = "AI问答默认";
+"AI_PERSONA_DEFAULT_MARK" = "默认";
 "AI_PERSONA_NEW" = "新人设";
 "AI_HINT_QWEN" = "通义默认 qwen3.8-flash、qwen3-vl-flash。模型用逗号分隔。抓取走百炼 compatible-mode /v1/models。";
 "AI_HINT_DEEPSEEK" = "DeepSeek 默认 deepseek-chat、deepseek-reasoner。模型用逗号分隔，抓取走 /v1/models。";

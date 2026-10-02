@@ -297,13 +297,11 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "AI_PERSONA_SECTION" = "AI Persona";
 "AI_PERSONA_ROW" = "Persona";
 "AI_STREAM_ROW" = "Streaming Output";
-"AI_PERSONA_FOOTER" = "Tap a row to edit. Swipe left to delete. Use \"+\" to add a persona; new personas appear in the panel persona menu by default, and the persona name is the button title.";
+"AI_PERSONA_FOOTER" = "Tap a row to edit. Long-press and drag to reorder; the first persona is the default. Swipe left to delete. Use \"+\" to add a persona; new personas appear in the panel persona menu by default, and the persona name is the button title.";
 "AI_PERSONA_EDIT_TITLE" = "Edit Persona";
 "AI_PERSONA_NAME_HEADER" = "Name";
 "AI_PERSONA_CONTENT_HEADER" = "Persona Content";
-"AI_PERSONA_ROLE_IMAGE" = "Image Q&A default";
-"AI_PERSONA_ROLE_TEXT" = "Text Q&A default";
-"AI_PERSONA_ROLE_CHAT" = "AI Q&A default";
+"AI_PERSONA_DEFAULT_MARK" = "Default";
 "AI_PERSONA_NEW" = "New Persona";
 "AI_HINT_QWEN" = "Qwen defaults to qwen3.8-flash and qwen3-vl-flash. Comma-separate models. Fetch uses Bailian compatible-mode /v1/models.";
 "AI_HINT_DEEPSEEK" = "DeepSeek defaults to deepseek-chat and deepseek-reasoner. Comma-separate models. Fetch uses /v1/models.";

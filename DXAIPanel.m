@@ -1054,16 +1054,10 @@ static CGRect DXAIProbeKeyboardFrame(void) {
 
 - (void)startRequestForAssistantMessage:(DXAIMessage *)assistant {
     NSMutableArray *payload = [NSMutableArray array];
-    // 人设两级解析：会话内手动选择 → 按消息类型默认（带图走截图分析助手，
-    // 纯文本走文字助手）。
+    // 人设两级解析：会话内手动选择 → 列表第一项（设置页拖动排序的第一位
+    // 即默认人设）。
     NSDictionary *persona = [DXAIEngine personaForID:self.activePersonaID];
-    if (!persona) {
-        BOOL hasImage = NO;
-        for (DXAIMessage *message in self.messages) {
-            if (message.isUser) hasImage = message.image != nil;
-        }
-        persona = [DXAIEngine defaultPersonaForRole:hasImage ? @"image" : @"text"];
-    }
+    if (!persona) persona = [DXAIEngine defaultPersona];
     NSString *personaText = [persona isKindOfClass:[NSDictionary class]] ? persona[@"content"] : nil;
     if (![personaText isKindOfClass:[NSString class]] || personaText.length == 0) {
         personaText = @"你是AI问答助手：先给结论，再给细节；简洁、准确、不编造。";
@@ -1289,7 +1283,7 @@ static CGRect DXAIProbeKeyboardFrame(void) {
     }
     NSArray<NSDictionary *> *personas = [self menuPersonas];
     if (personas.count == 0) return;
-    NSString *activeID = self.activePersonaID ?: [DXAIEngine defaultPersonaForRole:@"chat"][@"id"];
+    NSString *activeID = self.activePersonaID ?: [DXAIEngine defaultPersona][@"id"];
     if (![activeID isKindOfClass:[NSString class]]) activeID = @"";
 
     CGFloat rowHeight = 36.0;

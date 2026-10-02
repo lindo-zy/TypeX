@@ -54,12 +54,12 @@
 + (void)updateCustomEngineWithID:(NSString *)engineID key:(NSString *)field value:(id)value;
 + (void)removeCustomEngineWithID:(NSString *)engineID; // 删除的是当前引擎时回退到首个内置
 
-// 人设库。三个默认人设（截图分析/文字/AI问答助手）不可删除仅可修改；
-// 旧的单条 aiPersona 文本首次读取时迁入 AI问答助手。
+// 人设库。列表顺序即面板人设菜单顺序，第一项为默认人设（设置页长按拖动
+// 排序决定）；旧的单条 aiPersona 文本首次读取时迁入 AI问答助手。
 + (NSArray<NSDictionary *> *)personas;
 + (void)setPersonas:(NSArray<NSDictionary *> *)personas;
 + (NSDictionary *)personaForID:(NSString *)personaID;
-+ (NSDictionary *)defaultPersonaForRole:(NSString *)role; // image / text / chat
++ (NSDictionary *)defaultPersona; // 列表第一项；列表为空时返回 nil
 
 // 面板行为偏好。
 + (BOOL)streamEnabled;

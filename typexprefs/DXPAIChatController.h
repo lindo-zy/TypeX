@@ -20,9 +20,9 @@
 - (instancetype)initWithEngineID:(NSString *)engineID;
 @end
 
-// 人设页：三个默认人设（不可删除仅可修改）+ 自定义人设（左滑删除），
-// 右上角「恢复默认配置」与「+」。
-@interface DXPAIPersonaController : PSViewController <UITableViewDelegate, UITableViewDataSource>
+// 人设页：人设列表（点行编辑、左滑删除、长按拖动排序，第一项为默认人设），
+// 右上角「+」添加。
+@interface DXPAIPersonaController : PSViewController <UITableViewDelegate, UITableViewDataSource, UITableViewDragDelegate, UITableViewDropDelegate>
 @property (strong, nonatomic) UITableView *tableView;
 @end
 
