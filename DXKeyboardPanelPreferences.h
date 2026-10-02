@@ -4,6 +4,8 @@
 #define kDXPanelTopEnabled @"keyboardpaneltopBOOL"
 #define kDXPanelBottomEnabled @"keyboardpanelbottomBOOL"
 #define kDXPanelUnified @"keyboardpanelunifiedBOOL"
+#define kDXPanelSystemTogglesVisible @"keyboardpanelsystemtogglesBOOL"
+#define kDXPanelSystemSlidersVisible @"keyboardpanelsystemslidersBOOL"
 #define kDXPanelColumns @"keyboardpanelcolumns"
 #define kDXPanelScale @"keyboardpanelscale"
 #define kDXPanelDark @"keyboardpaneldarkBOOL"

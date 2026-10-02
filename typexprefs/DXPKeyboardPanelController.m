@@ -86,6 +86,8 @@ static NSString *DXPanelLocalized(NSString *key) {
     group = [PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"KEYBOARD_PANEL_CONTENT")];
     [group setProperty:DXPanelLocalized(@"KEYBOARD_PANEL_CONTENT_FOOTER") forKey:@"footerText"];
     [items addObject:group];
+    [items addObject:[self setting:@"KEYBOARD_PANEL_SYSTEM_TOGGLES" key:kDXPanelSystemTogglesVisible defaultValue:@YES cell:PSSwitchCell]];
+    [items addObject:[self setting:@"KEYBOARD_PANEL_SYSTEM_SLIDERS" key:kDXPanelSystemSlidersVisible defaultValue:@YES cell:PSSwitchCell]];
     for (NSArray *profile in @[@[@"left", @"KEYBOARD_PANEL_LEFT"], @[@"right", @"KEYBOARD_PANEL_RIGHT"], @[@"common", @"KEYBOARD_PANEL_COMMON"]]) {
         PSSpecifier *link = [PSSpecifier preferenceSpecifierNamed:DXPanelLocalized(profile[1]) target:self set:nil get:nil
             detail:DXPKeyboardPanelItemsController.class cell:PSLinkCell edit:nil];

@@ -1,5 +1,6 @@
 #import "DXPanelSystemControlsView.h"
 #import "DXPanelControlState.h"
+#import "DXKeyboardPanelPreferences.h"
 
 @interface DXPanelPillSlider : UIControl
 @property(nonatomic) float value;
@@ -61,6 +62,8 @@
 @property(nonatomic) BOOL dark;
 @property(nonatomic) BOOL preview;
 @property(nonatomic) BOOL busy;
+@property(nonatomic, readwrite) BOOL showsToggleRow;
+@property(nonatomic, readwrite) BOOL showsSliderRow;
 @end
 @implementation DXPanelSystemControlsView
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -90,9 +93,26 @@
         self.message = [UILabel new]; self.message.font = [UIFont systemFontOfSize:10];
         self.message.textAlignment = NSTextAlignmentCenter; self.message.adjustsFontSizeToFitWidth = YES;
         [self addSubview:self.message];
+        self.showsToggleRow = YES; self.showsSliderRow = YES;
         [self configureDark:YES preview:NO];
     }
     return self;
+}
+- (void)configureWithPreferences:(NSDictionary *)preferences preview:(BOOL)preview {
+    if (!NSThread.isMainThread) return;
+    self.showsToggleRow = DXKeyboardPanelBool(preferences, kDXPanelSystemTogglesVisible, YES);
+    self.showsSliderRow = DXKeyboardPanelBool(preferences, kDXPanelSystemSlidersVisible, YES);
+    for (UIButton *button in self.buttons) button.hidden = !self.showsToggleRow;
+    for (UILabel *label in self.labels) label.hidden = !self.showsToggleRow;
+    self.brightness.hidden = !self.showsSliderRow;
+    self.volume.hidden = !self.showsSliderRow;
+    self.hidden = !self.showsToggleRow && !self.showsSliderRow;
+    self.message.hidden = self.hidden;
+    [self configureDark:DXKeyboardPanelBool(preferences, kDXPanelDark, YES) preview:preview];
+    [self setNeedsLayout];
+}
+- (CGFloat)preferredHeightForWidth:(CGFloat)width {
+    return DXPanelSystemControlsHeightForRows(width, self.showsToggleRow, self.showsSliderRow);
 }
 - (void)configureDark:(BOOL)dark preview:(BOOL)preview {
     self.dark = dark; self.preview = preview; self.userInteractionEnabled = !preview;
@@ -127,8 +147,8 @@
     }
 }
 - (void)showMessage:(NSString *)message { self.message.text = message; }
-- (void)tapped:(UIButton *)button { if (!self.preview && !self.busy && button.enabled && self.actionHandler) self.actionHandler(DXPanelToggleIdentifiers()[button.tag], nil); }
-- (void)adjusted:(DXPanelPillSlider *)slider { if (!self.preview && self.actionHandler) self.actionHandler(slider == self.brightness ? @"brightness" : @"volume", @(slider.value)); }
+- (void)tapped:(UIButton *)button { if (self.showsToggleRow && !self.preview && !self.busy && button.enabled && self.actionHandler) self.actionHandler(DXPanelToggleIdentifiers()[button.tag], nil); }
+- (void)adjusted:(DXPanelPillSlider *)slider { if (self.showsSliderRow && !self.preview && self.actionHandler) self.actionHandler(slider == self.brightness ? @"brightness" : @"volume", @(slider.value)); }
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat width = self.bounds.size.width, itemWidth = width / 5, circle = DXPanelControlCircle(width);
@@ -137,9 +157,9 @@
         self.buttons[index].layer.cornerRadius = circle / 2;
         self.labels[index].frame = CGRectMake(index * itemWidth, circle + 4, itemWidth, 24);
     }
-    CGFloat sliderTop = circle + 24 + 12, half = MAX(0, (width - 12) / 2);
+    CGFloat sliderTop = DXPanelSystemControlsSliderTop(width, self.showsToggleRow), half = MAX(0, (width - 12) / 2);
     self.brightness.frame = CGRectMake(0, sliderTop, half, 50);
     self.volume.frame = CGRectMake(half + 12, sliderTop, half, 50);
-    self.message.frame = CGRectMake(0, sliderTop + 50, width, 14);
+    self.message.frame = CGRectMake(0, MAX(0, [self preferredHeightForWidth:width] - 14), width, 14);
 }
 @end

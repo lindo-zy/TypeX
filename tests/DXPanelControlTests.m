@@ -2,6 +2,7 @@
 #import "../DXPanelControlSession.h"
 #import "../DXPanelControlLayout.h"
 #import "../DXKeyboardPanelLayout.h"
+#import "../DXKeyboardPanelPreferences.h"
 #import <notify.h>
 
 static NSUInteger checks;
@@ -69,6 +70,20 @@ int main(void) {
         for (NSNumber *width in @[@280, @343, @398, @1024]) {
             CGFloat controlsHeight = DXPanelSystemControlsHeight(width.doubleValue);
             check(controlsHeight >= 100 && controlsHeight < 200);
+            for (NSUInteger flags = 0; flags < 4; flags++) {
+                BOOL toggles = (flags & 1) != 0, sliders = (flags & 2) != 0;
+                NSDictionary *preferences = @{kDXPanelSystemTogglesVisible: @(toggles), kDXPanelSystemSlidersVisible: @(sliders)};
+                CGFloat rowHeight = DXPanelSystemControlsHeightForRows(width.doubleValue,
+                    DXKeyboardPanelBool(preferences, kDXPanelSystemTogglesVisible, YES),
+                    DXKeyboardPanelBool(preferences, kDXPanelSystemSlidersVisible, YES));
+                if (!flags) check(rowHeight == 0);
+                else if (toggles && sliders) check(rowHeight == controlsHeight);
+                else if (sliders) check(rowHeight == 64 && DXPanelSystemControlsSliderTop(width.doubleValue, NO) == 0);
+                else check(rowHeight < controlsHeight && rowHeight >= DXPanelControlCircle(width.doubleValue) + 28);
+                CGRect item = DXKeyboardPanelItemFrame(0, width.doubleValue, 4, 1);
+                item.origin.y += rowHeight;
+                check(CGRectGetMinY(item) == rowHeight);
+            }
             // The control block precedes the grid in one scrollable surface,
             // including viewports shorter than the controls themselves.
             for (NSNumber *height in @[@80, @170, @326]) {
@@ -77,6 +92,10 @@ int main(void) {
                 check(CGRectGetMinY(item) == controlsHeight && content > CGRectGetMaxY(item) && content > height.doubleValue);
             }
         }
+        check(DXKeyboardPanelBool(@{}, kDXPanelSystemTogglesVisible, YES));
+        check(DXKeyboardPanelBool(@{}, kDXPanelSystemSlidersVisible, YES));
+        check(DXKeyboardPanelBool(@{kDXPanelSystemSlidersVisible: @NO}, kDXPanelSystemTogglesVisible, YES));
+        check(DXKeyboardPanelBool(@{kDXPanelSystemTogglesVisible: @NO}, kDXPanelSystemSlidersVisible, YES));
         NSMutableArray *calls = [NSMutableArray array], *replies = [NSMutableArray array], *operations = [NSMutableArray array];
         __block NSDictionary *visible;
         __block NSUInteger updates = 0;

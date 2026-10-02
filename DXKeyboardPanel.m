@@ -305,29 +305,31 @@
     [panel addSubview:self.closeButton];
 
     self.systemControls = [DXPanelSystemControlsView new];
-    [self.systemControls configureDark:self.dark preview:NO];
+    [self.systemControls configureWithPreferences:preferences preview:NO];
     __weak typeof(self) weakSelf = self;
     __weak DXPanelSystemControlsView *controls = self.systemControls;
     NSString *configuration = [toolbar.configuration copy];
-    self.controlSession = [[DXPanelControlSession alloc] initWithRequester:^NSProgress *(NSString *action, NSNumber *value, DXPanelSystemControlReply reply) {
-        return DXRequestPanelSystemControl(action, value, configuration, reply);
-    } validity:^BOOL {
-        DXKeyboardPanel *owner = weakSelf;
-        return owner && controls && owner.systemControls == controls && [owner validSession];
-    } update:^(DXSystemOpenResult result, NSDictionary *state, BOOL busy, NSString *action) {
-        [controls applyState:state busy:busy];
-        if (result == DXSystemOpenSucceeded) [controls showMessage:nil];
-        else {
-            NSString *key = result == DXSystemOpenTimedOut ? @"SYSTEM_ACTION_TIMEOUT" :
-                (result == DXSystemOpenFailed ? @"SYSTEM_ACTION_FAILED" : @"SYSTEM_ACTION_UNAVAILABLE");
-            [controls showMessage:[bundle localizedStringForKey:key value:@"系统操作不可用" table:nil]];
-        }
-    }];
-    self.systemControls.actionHandler = ^(NSString *action, NSNumber *value) {
-        DXKeyboardPanel *owner = weakSelf;
-        if (owner.systemControls != controls || ![owner validSession]) { [owner dismiss]; return; }
-        [owner.controlSession enqueueAction:action value:value];
-    };
+    if (!self.systemControls.hidden) {
+        self.controlSession = [[DXPanelControlSession alloc] initWithRequester:^NSProgress *(NSString *action, NSNumber *value, DXPanelSystemControlReply reply) {
+            return DXRequestPanelSystemControl(action, value, configuration, reply);
+        } validity:^BOOL {
+            DXKeyboardPanel *owner = weakSelf;
+            return owner && controls && owner.systemControls == controls && [owner validSession];
+        } update:^(DXSystemOpenResult result, NSDictionary *state, BOOL busy, NSString *action) {
+            [controls applyState:state busy:busy];
+            if (result == DXSystemOpenSucceeded) [controls showMessage:nil];
+            else {
+                NSString *key = result == DXSystemOpenTimedOut ? @"SYSTEM_ACTION_TIMEOUT" :
+                    (result == DXSystemOpenFailed ? @"SYSTEM_ACTION_FAILED" : @"SYSTEM_ACTION_UNAVAILABLE");
+                [controls showMessage:[bundle localizedStringForKey:key value:@"系统操作不可用" table:nil]];
+            }
+        }];
+        self.systemControls.actionHandler = ^(NSString *action, NSNumber *value) {
+            DXKeyboardPanel *owner = weakSelf;
+            if (owner.systemControls != controls || ![owner validSession]) { [owner dismiss]; return; }
+            [owner.controlSession enqueueAction:action value:value];
+        };
+    }
 
     self.scroll = [[UIScrollView alloc] init];
     self.scroll.showsVerticalScrollIndicator = NO;
@@ -377,9 +379,10 @@
     [self layoutPanel];
     if (!self.window) return;
     [self.controlSession enqueueAction:@"state" value:nil];
-    NSLog(@"[TypeX][KeyboardPanel] open side=%@ toolbar=%@ items=%lu rect=%@ host=%@ source=%@",
+    NSLog(@"[TypeX][KeyboardPanel] open side=%@ toolbar=%@ items=%lu rect=%@ host=%@ source=%@ toggleRow=%d sliderRow=%d",
         profile, toolbar.configuration, (unsigned long)buttons.count, NSStringFromCGRect(self.overlay.panelRect),
-        NSStringFromClass(window.class), NSStringFromClass(toolbar.window.class));
+        NSStringFromClass(window.class), NSStringFromClass(toolbar.window.class),
+        self.systemControls.showsToggleRow, self.systemControls.showsSliderRow);
 }
 - (void)layoutPanel {
     if (!self.window) return;
@@ -399,7 +402,7 @@
     [self.panel viewWithTag:31].frame = CGRectMake((width - 38) / 2, 3, 38, 4);
     self.titleLabel.frame = CGRectMake(16, 10, MAX(0, width - 68), 28);
     self.closeButton.frame = CGRectMake(width - 48, 2, 44, 44);
-    CGFloat controlsHeight = DXPanelSystemControlsHeight(MAX(0, width - 16));
+    CGFloat controlsHeight = [self.systemControls preferredHeightForWidth:MAX(0, width - 16)];
     self.scroll.frame = CGRectMake(8, 46, MAX(0, width - 16), MAX(0, height - 54));
     self.systemControls.frame = CGRectMake(0, 0, self.scroll.bounds.size.width, controlsHeight);
     CGFloat itemWidth = self.scroll.bounds.size.width / self.columns;

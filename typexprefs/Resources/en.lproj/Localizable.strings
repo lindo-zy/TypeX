@@ -388,7 +388,9 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "KEYBOARD_PANEL_BOTTOM" = "Bottom toolbar long swipe";
 "KEYBOARD_PANEL_UNIFIED" = "Use one common panel";
 "KEYBOARD_PANEL_CONTENT" = "Panel content";
-"KEYBOARD_PANEL_CONTENT_FOOTER" = "Five system toggles and brightness/media-volume sliders appear at the top by default. Only your custom actions appear below. Both toolbars share these profiles; unified mode retains the left/right profiles.";
+"KEYBOARD_PANEL_CONTENT_FOOTER" = "The first row of system toggles and second row of brightness/media-volume sliders are shown by default. Each row can be hidden independently. Only your custom actions appear below. Both toolbars share these profiles; unified mode retains the left/right profiles.";
+"KEYBOARD_PANEL_SYSTEM_TOGGLES" = "Show first row: system toggles";
+"KEYBOARD_PANEL_SYSTEM_SLIDERS" = "Show second row: brightness and volume";
 "KEYBOARD_PANEL_LEFT" = "Left panel";
 "KEYBOARD_PANEL_RIGHT" = "Right panel";
 "KEYBOARD_PANEL_COMMON" = "Common panel";

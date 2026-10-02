@@ -387,7 +387,9 @@
 "KEYBOARD_PANEL_BOTTOM" = "底部工具栏长滑";
 "KEYBOARD_PANEL_UNIFIED" = "合并为通用面板";
 "KEYBOARD_PANEL_CONTENT" = "面板内容";
-"KEYBOARD_PANEL_CONTENT_FOOTER" = "顶部默认显示五个系统开关及亮度、媒体音量滑条。下方仅显示你添加的自定义动作。顶部与底部入口共用以下配置；通用模式下两种方向都打开通用面板，左右配置仍会保留。";
+"KEYBOARD_PANEL_CONTENT_FOOTER" = "第一排系统开关与第二排亮度、媒体音量滑条默认显示，可分别关闭隐藏。下方仅显示你添加的自定义动作。顶部与底部入口共用以下配置；通用模式下两种方向都打开通用面板，左右配置仍会保留。";
+"KEYBOARD_PANEL_SYSTEM_TOGGLES" = "显示第一排系统开关";
+"KEYBOARD_PANEL_SYSTEM_SLIDERS" = "显示第二排亮度与音量";
 "KEYBOARD_PANEL_LEFT" = "左面板";
 "KEYBOARD_PANEL_RIGHT" = "右面板";
 "KEYBOARD_PANEL_COMMON" = "通用面板";

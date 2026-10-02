@@ -44,7 +44,7 @@
     BOOL dark = DXKeyboardPanelBool(preferences, kDXPanelDark, YES);
     UIColor *textColor = dark ? UIColor.whiteColor : UIColor.labelColor;
     self.backgroundColor = dark ? [UIColor colorWithWhite:0.10 alpha:1] : UIColor.systemBackgroundColor;
-    [self.systemControls configureDark:dark preview:YES];
+    [self.systemControls configureWithPreferences:preferences preview:YES];
     self.titleLabel.textColor = textColor;
     self.emptyLabel.textColor = textColor;
     self.columns = (NSInteger)DXKeyboardPanelNumber(preferences, kDXPanelColumns, 4, 3, 5);
@@ -97,7 +97,7 @@
     [super layoutSubviews];
     CGFloat width = self.bounds.size.width;
     self.titleLabel.frame = CGRectMake(16, 10, MAX(0, width - 32), 28);
-    CGFloat controlsHeight = DXPanelSystemControlsHeight(MAX(0, width - 16));
+    CGFloat controlsHeight = [self.systemControls preferredHeightForWidth:MAX(0, width - 16)];
     self.scroll.frame = CGRectMake(8, 46, MAX(0, width - 16), MAX(0, self.bounds.size.height - 54));
     self.systemControls.frame = CGRectMake(0, 0, self.scroll.bounds.size.width, controlsHeight);
     CGFloat contentWidth = self.scroll.bounds.size.width;
