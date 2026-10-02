@@ -505,8 +505,6 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SF_SYMBOL_CATEGORY_whatsnew" = "What's New";
 "SF_SYMBOL_CATEGORY_draw" = "Draw";
 
-"SYSTEM_ACTIONS_SECTION" = "System Actions";
-"SYSTEM_ACTIONS_PICKER_FOOTER" = "Selecting one creates the matching system action automatically; rename or re-icon it later in Custom Actions.";
 "ICON_LIBRARY_ROW" = "Pick from Icon Library";
 "KEYBOARD_PANEL_PROFILES_FOOTER" = "Left, right and common panels have separate content and appearance settings. Swipe left or right on a toolbar for its matching panel. Swipe up from the Home Screen Dock for the common panel only.";
 "KEYBOARD_PANEL_ACTIONS" = "Configure panel actions";

@@ -24,7 +24,6 @@ static NSString *DXPanelLocalized(NSString *key) {
     [super viewDidLoad];
 }
 - (BOOL)showsBuiltInActionsSection { return NO; }
-- (BOOL)showsSystemActionsSection { return NO; }
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     (void)tableView; (void)section;
     return DXPanelLocalized(@"KEYBOARD_PANEL_PICKER_DELETE_FOOTER");

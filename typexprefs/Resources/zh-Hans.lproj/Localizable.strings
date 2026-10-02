@@ -504,8 +504,6 @@
 "SF_SYMBOL_CATEGORY_whatsnew" = "新增图标";
 "SF_SYMBOL_CATEGORY_draw" = "绘图";
 
-"SYSTEM_ACTIONS_SECTION" = "系统动作";
-"SYSTEM_ACTIONS_PICKER_FOOTER" = "选择后自动创建对应的系统动作，可在自定义动作管理页改名换图标。";
 "ICON_LIBRARY_ROW" = "从图标库选择";
 "KEYBOARD_PANEL_PROFILES_FOOTER" = "左面板、右面板和通用面板分别配置内容与外观。工具栏左滑打开左面板，右滑打开右面板；主屏幕 Dock 上划只打开通用面板。";
 "KEYBOARD_PANEL_ACTIONS" = "配置面板动作";
