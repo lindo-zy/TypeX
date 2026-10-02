@@ -14,9 +14,8 @@ static NSString *DXPanelLocalized(NSString *key) {
     return [[NSBundle bundleWithPath:bundlePath] localizedStringForKey:key value:key table:nil];
 }
 
-// Hide the basic-action section while retaining picker selection and in-place
-// creation. customActionsOnly belongs to management mode and would edit rows.
-// The panel picker lists custom + system actions only (系统动作点选即建).
+// List saved custom actions and the 添加 row only; system actions are created
+// through 添加, then selected here. customActionsOnly would edit rows on tap.
 @interface DXPKeyboardPanelActionPicker : DXPSubActionPickerController
 @end
 @implementation DXPKeyboardPanelActionPicker
@@ -25,9 +24,9 @@ static NSString *DXPanelLocalized(NSString *key) {
     [super viewDidLoad];
 }
 - (BOOL)showsBuiltInActionsSection { return NO; }
+- (BOOL)showsSystemActionsSection { return NO; }
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    (void)tableView;
-    if (section == self.systemSection) return DXPanelLocalized(@"SYSTEM_ACTIONS_PICKER_FOOTER");
+    (void)tableView; (void)section;
     return DXPanelLocalized(@"KEYBOARD_PANEL_PICKER_DELETE_FOOTER");
 }
 @end

@@ -30,11 +30,11 @@ static NSBundle *tweakBundle;
         if (![entry isKindOfClass:[NSDictionary class]]) continue;
         NSString *selector = entry[@"selector"];
         if (!DXIsLinkActionSelector(selector)) continue;
-        // 选择页不再出现网页链接（类型已退役）与系统动作条目（由独立的系统
-        // 动作分区承载）；管理页保留全部条目以便查看和删除。
+        // 网页链接已退役；系统动作仅在独立系统分区显示时去重，面板选择页
+        // 关闭该分区后仍需显示通过「添加」创建的系统动作。
         if (!self.customActionsOnly &&
             ([entry[kCustomActionTypeKey] isEqual:kCustomActionTypeURL] ||
-             [entry[kCustomActionTypeKey] isEqual:kCustomActionTypeSystem])) continue;
+             (self.showsSystemActionsSection && [entry[kCustomActionTypeKey] isEqual:kCustomActionTypeSystem]))) continue;
         [self.linkActions addObject:[entry mutableCopy]];
     }
 
@@ -233,7 +233,7 @@ static NSBundle *tweakBundle;
 #pragma mark - Table view
 
 // 分区布局：管理页只有自定义动作；选择页为 自定义 / 基础 / 系统，面板选择
-// 页可关掉基础分区（custom + system）。隐藏分区以 -1 表示。
+// 页关闭基础和系统分区。隐藏分区以 -1 表示。
 - (BOOL)showsBuiltInActionsSection { return YES; }
 - (BOOL)showsSystemActionsSection { return !self.customActionsOnly; }
 - (NSInteger)builtInSection {
