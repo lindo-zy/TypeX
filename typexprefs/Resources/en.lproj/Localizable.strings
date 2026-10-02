@@ -466,6 +466,11 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "ACTION_GROUP_TOOLS" = "Tools";
 "SF_SYMBOL_PICKER_TITLE" = "Icon Library";
 "SF_SYMBOL_SEARCH" = "Search symbol name";
+"SF_SYMBOL_LOADING" = "Loading local SF symbols…";
+"SF_SYMBOL_LOAD_FAILED" = "Could not load available SF symbols from local system resources";
+"SF_SYMBOL_NO_RESULTS" = "No matching symbols";
+"SF_SYMBOL_RETRY" = "Reload";
+"SF_SYMBOL_UNAVAILABLE" = "This symbol is currently unavailable. Choose another symbol.";
 
 "SYSTEM_ACTIONS_SECTION" = "System Actions";
 "SYSTEM_ACTIONS_PICKER_FOOTER" = "Selecting one creates the matching system action automatically; rename or re-icon it later in Custom Actions.";

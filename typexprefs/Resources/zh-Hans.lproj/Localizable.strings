@@ -465,6 +465,11 @@
 "ACTION_GROUP_TOOLS" = "工具";
 "SF_SYMBOL_PICKER_TITLE" = "图标库";
 "SF_SYMBOL_SEARCH" = "搜索图标名";
+"SF_SYMBOL_LOADING" = "正在加载本机 SF 图标…";
+"SF_SYMBOL_LOAD_FAILED" = "未能从本机系统资源获取可用的 SF 图标";
+"SF_SYMBOL_NO_RESULTS" = "没有匹配的图标";
+"SF_SYMBOL_RETRY" = "重新加载";
+"SF_SYMBOL_UNAVAILABLE" = "此图标当前不可用，请重新选择";
 
 "SYSTEM_ACTIONS_SECTION" = "系统动作";
 "SYSTEM_ACTIONS_PICKER_FOOTER" = "选择后自动创建对应的系统动作，可在自定义动作管理页改名换图标。";
