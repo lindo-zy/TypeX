@@ -149,14 +149,9 @@ static NSString *DXGlobalLocalized(NSString *key) {
         [[DXGlobalPanelWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     self.window.frame = scene ? scene.coordinateSpace.bounds : UIScreen.mainScreen.bounds;
     self.window.backgroundColor = UIColor.clearColor;
-    CGFloat level = UIWindowLevelAlert + 1;
-    #pragma clang diagnostic push
-    #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    for (UIWindow *candidate in UIApplication.sharedApplication.windows)
-        if (candidate != self.window && !candidate.hidden && candidate.screen == self.window.screen && isfinite(candidate.windowLevel))
-            level = MAX(level, candidate.windowLevel + 1);
-    #pragma clang diagnostic pop
-    self.window.windowLevel = level;
+    // Use a stable content level rather than overtaking SpringBoard's system
+    // overlays, which can place the panel above the screenshot capture range.
+    self.window.windowLevel = UIWindowLevelAlert + 1;
     DXGlobalPanelController *controller = [DXGlobalPanelController new];
     controller.owner = self;
     self.window.rootViewController = controller;
@@ -267,7 +262,8 @@ static NSString *DXGlobalLocalized(NSString *key) {
     [self.window layoutIfNeeded];
     [self layout];
     [self.controlSession enqueueAction:@"state" value:nil];
-    NSLog(@"[TypeX][GlobalPanel] open side=%@ origin=%@ items=%lu scene=%d", profile, origin, (unsigned long)buttons.count, scene != nil);
+    NSLog(@"[TypeX][GlobalPanel] open side=%@ origin=%@ items=%lu scene=%d level=%.0f",
+        profile, origin, (unsigned long)buttons.count, scene != nil, (double)self.window.windowLevel);
 }
 - (void)layout {
     if (!self.window || !self.panel) return;
