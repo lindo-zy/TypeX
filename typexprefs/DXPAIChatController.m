@@ -246,7 +246,7 @@ static NSString *DXAITrim(NSString *text) {
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == 0) return 1;
-    if (section == 2) return 3;
+    if (section == 2) return 2;
     // API Key + 模型 + 抓取（内置引擎多一个"获取 Key 网址"行；接口地址/名称
     // 在 AI 引擎页的自定义编辑器里改）。
     NSInteger rows = 3;
@@ -353,7 +353,7 @@ static NSString *DXAITrim(NSString *text) {
 }
 
 - (UITableViewCell *)personaCellForRow:(NSInteger)row {
-    if (row == 2) { // 流式输出
+    if (row == 1) { // 流式输出
         static NSString *switchIdentifier = @"DXPAISwitch";
         UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:switchIdentifier];
         if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:switchIdentifier];
@@ -372,8 +372,7 @@ static NSString *DXAITrim(NSString *text) {
     if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:linkIdentifier];
     cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     cell.textLabel.textColor = [UIColor labelColor];
-    cell.textLabel.text = (row == 0) ? LOCALIZED(@"AI_PERSONA_ROW")
-                        : LOCALIZED(@"AI_THEME_ROW");
+    cell.textLabel.text = LOCALIZED(@"AI_PERSONA_ROW");
     return cell;
 }
 
@@ -388,7 +387,6 @@ static NSString *DXAITrim(NSString *text) {
     }
     if (indexPath.section == 2) {
         if (indexPath.row == 0) [self.navigationController pushViewController:[[DXPAIPersonaController alloc] init] animated:YES];
-        else if (indexPath.row == 1) [self.navigationController pushViewController:[[DXPAIThemeController alloc] init] animated:YES];
         return;
     }
 
@@ -996,46 +994,6 @@ static NSString *DXAITrim(NSString *text) {
     personas[index] = persona;
     [DXAIEngine setPersonas:personas];
     [self.navigationController popViewControllerAnimated:YES];
-}
-
-@end
-
-#pragma mark - 窗口主题
-
-@implementation DXPAIThemeController
-
-- (void)viewDidLoad {
-    tweakBundle = [NSBundle bundleWithPath:bundlePath];
-    [tweakBundle load];
-
-    [super viewDidLoad];
-    self.title = LOCALIZED(@"AI_THEME_ROW");
-
-    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
-    self.tableView.delegate = self;
-    self.tableView.dataSource = self;
-    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [self.view addSubview:self.tableView];
-}
-
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return 3;
-}
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    static NSString *identifier = @"DXPAITheme";
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
-    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:identifier];
-    cell.textLabel.text = LOCALIZED(indexPath.row == 0 ? @"AI_THEME_SYSTEM" : indexPath.row == 1 ? @"AI_THEME_LIGHT" : @"AI_THEME_DARK");
-    cell.accessoryType = [DXAIEngine themeStyle] == indexPath.row
-        ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
-    return cell;
-}
-
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    DXAIPrefSetValue(@(indexPath.row), DXAIPrefTheme);
-    [tableView reloadData];
 }
 
 @end

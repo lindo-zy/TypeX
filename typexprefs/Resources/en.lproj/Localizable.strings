@@ -296,11 +296,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "AI_CUSTOM_MODEL_HINT" = "Model ID (e.g. gpt-4o-mini)";
 "AI_PERSONA_SECTION" = "AI Persona";
 "AI_PERSONA_ROW" = "Persona";
-"AI_THEME_ROW" = "AI Window Theme";
 "AI_STREAM_ROW" = "Streaming Output";
-"AI_THEME_SYSTEM" = "Follow System";
-"AI_THEME_LIGHT" = "Light";
-"AI_THEME_DARK" = "Dark";
 "AI_PERSONA_FOOTER" = "Tap a row to edit. Swipe left to delete. Use \"+\" to add a persona; new personas appear in the panel persona menu by default, and the persona name is the button title.";
 "AI_PERSONA_EDIT_TITLE" = "Edit Persona";
 "AI_PERSONA_NAME_HEADER" = "Name";

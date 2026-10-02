@@ -295,11 +295,7 @@
 "AI_CUSTOM_MODEL_HINT" = "模型标识（例 gpt-4o-mini）";
 "AI_PERSONA_SECTION" = "AI 人设";
 "AI_PERSONA_ROW" = "人设";
-"AI_THEME_ROW" = "问答窗口主题";
 "AI_STREAM_ROW" = "流式输出";
-"AI_THEME_SYSTEM" = "跟随系统";
-"AI_THEME_LIGHT" = "浅色";
-"AI_THEME_DARK" = "深色";
 "AI_PERSONA_FOOTER" = "点击可改内容。左滑删除。右上角「+」添加新人设。添加后新人设按钮在框选菜单中默认为打开，人设名称则是按钮名称。";
 "AI_PERSONA_EDIT_TITLE" = "编辑人设";
 "AI_PERSONA_NAME_HEADER" = "名称";

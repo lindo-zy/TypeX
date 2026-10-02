@@ -2,7 +2,7 @@
 #import <Preferences/PSSpecifier.h>
 
 // AI 问答设置主页（Root.plist 入口）：AI 引擎入口、当前引擎配置（API Key /
-// 模型 / 抓取 / 获取网址）、AI 人设 / 窗口主题 / 流式输出。
+// 模型 / 抓取 / 获取网址）、AI 人设 / 流式输出。
 @interface DXPAIChatController : PSViewController <UITableViewDelegate, UITableViewDataSource>
 @property (strong, nonatomic) UITableView *tableView;
 @end
@@ -30,9 +30,4 @@
 @interface DXPAIPersonaEditorController : PSViewController <UITableViewDelegate, UITableViewDataSource>
 @property (strong, nonatomic) UITableView *tableView;
 - (instancetype)initWithPersonaID:(NSString *)personaID;
-@end
-
-// 窗口主题：跟随系统 / 浅色 / 深色。
-@interface DXPAIThemeController : PSViewController <UITableViewDelegate, UITableViewDataSource>
-@property (strong, nonatomic) UITableView *tableView;
 @end

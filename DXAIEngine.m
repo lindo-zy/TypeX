@@ -510,11 +510,6 @@
     return [self prefStringForKey:DXAIPrefPersona] ?: @"";
 }
 
-+ (NSInteger)themeStyle {
-    id value = [DXPrefsManager sharedInstance].prefs[DXAIPrefTheme];
-    return [value isKindOfClass:[NSNumber class]] ? [value integerValue] : 0;
-}
-
 #pragma mark - 请求
 
 + (NSURLSession *)ephemeralSession {

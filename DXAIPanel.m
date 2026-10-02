@@ -377,7 +377,6 @@ static CGRect DXAIProbeKeyboardFrame(void) {
 - (void)updateAttachedImage:(UIImage *)image;
 - (void)inputFieldTextChanged;
 - (void)repositionAnimated:(BOOL)animated;
-- (void)applyTheme;
 - (void)cancelRunningRequest;
 - (void)focusInputField;              // 光标落进面板输入框（SB 承载打开即聚焦）
 - (void)hideIfEmptyOnKeyboardHide;    // 键盘收起且会话无输出时随键盘一起关闭
@@ -706,13 +705,6 @@ static CGRect DXAIProbeKeyboardFrame(void) {
         self.view.frame = cardFrame;
     }
     [self.view setNeedsLayout];
-}
-
-- (void)applyTheme {
-    NSInteger style = [DXAIEngine themeStyle];
-    self.view.window.overrideUserInterfaceStyle = (style == 1) ? UIUserInterfaceStyleLight
-                                          : (style == 2) ? UIUserInterfaceStyleDark
-                                          : UIUserInterfaceStyleUnspecified;
 }
 
 #pragma mark - 种子 / 状态刷新
@@ -1766,7 +1758,6 @@ static void DXAIScheduleInputFocus(DXAIChatPanelController *controller) {
     [controller applySeedText];
     [controller inputFieldTextChanged]; // 种子程序性写入不触发 textViewDidChange，状态手动刷新
 
-    [controller applyTheme];
     [controller refreshModelButton];
 
     g_aiPanelWindow.hidden = NO;
@@ -1790,7 +1781,6 @@ static void DXAIScheduleInputFocus(DXAIChatPanelController *controller) {
         UIImage *image = [UIPasteboard generalPasteboard].image;
         if (image && !controller.attachedImage) [controller updateAttachedImage:image];
     }
-    [controller applyTheme];
     [controller refreshModelButton];
 
     g_aiPanelWindow.hidden = NO;

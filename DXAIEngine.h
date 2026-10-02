@@ -11,7 +11,6 @@
 #define DXAIPrefCustomName       @"aiCustomName"
 #define DXAIPrefPersona          @"aiPersona"
 #define DXAIPrefStream           @"aiStreamBOOL"
-#define DXAIPrefTheme            @"aiTheme"
 // 自定义引擎列表（array of dict：id/name/endpoint/key/models/selected）与人设
 // 库（array of dict：id/name/content/role/enabled）。
 #define DXAIPrefCustomEngines    @"aiCustomEngines"
@@ -65,7 +64,6 @@
 // 面板行为偏好。
 + (BOOL)streamEnabled;
 + (NSString *)personaPrompt; // 兼容旧单条人设读取（现仅迁移前有效）
-+ (NSInteger)themeStyle; // 0 跟随系统 / 1 浅色 / 2 深色
 
 // 发送一轮对话。messages 为请求形状：{role, content}，content 是字符串或
 // OpenAI 视觉 parts 数组。stream 时 onDelta 增量回调，onDone 在结束/失败时
