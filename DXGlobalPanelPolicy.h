@@ -21,10 +21,12 @@ static inline NSString *DXGlobalPanelSideForNotification(NSString *name) {
     return nil;
 }
 
-// Begin in the Dock's lower background, above the system Home gesture area.
-static inline BOOL DXDockPanelOriginAllowed(double x, double y, double width, double height) {
-    return isfinite(x) && isfinite(y) && isfinite(width) && isfinite(height) && width > 0 && height > 0 &&
-        x >= 0 && x <= width && y >= fmax(0, height - 22) && y <= height;
+// Coordinates are relative to the visible Dock frame in its window. Include
+// the blank strip below it: those touches never reach a recognizer on the Dock.
+static inline BOOL DXDockPanelOriginAllowed(double x, double y, double width, double height, double below) {
+    return isfinite(x) && isfinite(y) && isfinite(width) && isfinite(height) && isfinite(below) &&
+        width > 0 && height > 0 && below >= 0 && x >= 0 && x <= width &&
+        y >= fmax(0, height - 30) && y <= height + below;
 }
 static inline BOOL DXDockPanelSwipeCompletes(double dx, double dy) {
     return isfinite(dx) && isfinite(dy) && dy <= -48 && -dy >= fabs(dx) * 1.5;

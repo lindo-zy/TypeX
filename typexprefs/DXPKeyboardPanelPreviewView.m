@@ -37,6 +37,7 @@
 }
 - (void)configureWithPreferences:(NSDictionary *)preferences side:(NSString *)side {
     if (!NSThread.isMainThread) return;
+    preferences = DXKeyboardPanelProfilePreferences(preferences, side);
     NSBundle *bundle = [NSBundle bundleWithPath:bundlePath];
     NSString *titleKey = [side isEqual:@"right"] ? @"KEYBOARD_PANEL_RIGHT" : ([side isEqual:@"common"] ? @"KEYBOARD_PANEL_COMMON" : @"KEYBOARD_PANEL_LEFT");
     self.titleLabel.text = [bundle localizedStringForKey:titleKey value:titleKey table:nil];

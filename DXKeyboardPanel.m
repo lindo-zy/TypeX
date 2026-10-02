@@ -222,6 +222,7 @@
 }
 - (void)presentFromToolbar:(DXCollectionView *)toolbar side:(NSString *)side {
     if (![NSThread isMainThread]) return;
+    if (![@[@"left", @"right", @"common"] containsObject:side]) return;
     DXPrefsManager *manager = DXPrefsManager.sharedInstance;
     if (!manager.preferencesAvailable || ![self visibleToolbar:toolbar]) return;
     NSDictionary *preferences = manager.prefs;
@@ -241,9 +242,10 @@
     self.input = input;
     self.sessionScene = scene;
     [self.toolbars addObject:toolbar];
-    NSString *profile = DXKeyboardPanelBool(preferences, kDXPanelUnified, NO) ? @"common" : side;
+    NSString *profile = side;
     NSArray *items = DXKeyboardPanelFilterCustomItems(DXKeyboardPanelItems(preferences, profile),
         preferences[kLinkActionskey], kLinkActionSelectorPrefix);
+    preferences = DXKeyboardPanelProfilePreferences(preferences, profile);
     self.scale = DXKeyboardPanelNumber(preferences, kDXPanelScale, 100, 70, 120) / 100;
     self.columns = (NSInteger)DXKeyboardPanelNumber(preferences, kDXPanelColumns, 4, 3, 5);
     self.dark = DXKeyboardPanelBool(preferences, kDXPanelDark, YES);

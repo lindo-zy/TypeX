@@ -385,9 +385,8 @@
 "KEYBOARD_PANEL_GESTURE_FOOTER" = "在顶部或底部工具栏向左长滑打开左面板，向右长滑打开右面板。单个按钮内滑动保留按钮动作；工具栏不再翻页。";
 "KEYBOARD_PANEL_TOP" = "顶部工具栏长滑";
 "KEYBOARD_PANEL_BOTTOM" = "底部工具栏长滑";
-"KEYBOARD_PANEL_UNIFIED" = "合并为通用面板";
 "KEYBOARD_PANEL_CONTENT" = "面板内容";
-"KEYBOARD_PANEL_CONTENT_FOOTER" = "第一排系统开关与第二排亮度、媒体音量滑条默认显示，可分别关闭隐藏。下方仅显示你添加的自定义动作。顶部与底部入口共用以下配置；通用模式下两种方向都打开通用面板，左右配置仍会保留。";
+"KEYBOARD_PANEL_CONTENT_FOOTER" = "系统开关、亮度与媒体音量显示、每行图标数和外观只影响当前面板。下方仅显示本面板添加的自定义动作。";
 "KEYBOARD_PANEL_SYSTEM_TOGGLES" = "显示第一排系统开关";
 "KEYBOARD_PANEL_SYSTEM_SLIDERS" = "显示第二排亮度与音量";
 "KEYBOARD_PANEL_LEFT" = "左面板";
@@ -396,7 +395,7 @@
 "GLOBAL_PANEL_SETTINGS" = "独立面板";
 "GLOBAL_PANEL_ENABLED" = "启用独立面板";
 "GLOBAL_PANEL_DOCK_SWIPE" = "主屏幕 Dock 底部上划";
-"GLOBAL_PANEL_FOOTER" = "从主屏幕 Dock 底部空白处向上滑动，打开通用面板，无需弹出键盘。图标点击和拖动保留。独立面板支持系统控制、链接、应用和快捷操作；需要输入框的文字和脚本动作请在键盘面板中执行。";
+"GLOBAL_PANEL_FOOTER" = "从主屏幕 Dock 底部或下方空白处向上滑动，只打开通用面板，无需弹出键盘。图标点击和拖动保留。独立面板支持系统控制、链接、应用和快捷操作；需要输入框的文字和脚本动作请在键盘面板中执行。";
 "GLOBAL_PANEL_INPUT_REQUIRED" = "该动作需要输入框，请在键盘面板中执行。";
 "KEYBOARD_PANEL_APPEARANCE" = "面板外观";
 "KEYBOARD_PANEL_DARK" = "深色背景";
@@ -514,3 +513,5 @@
 "SYSTEM_ACTIONS_SECTION" = "系统动作";
 "SYSTEM_ACTIONS_PICKER_FOOTER" = "选择后自动创建对应的系统动作，可在自定义动作管理页改名换图标。";
 "ICON_LIBRARY_ROW" = "从图标库选择";
+"KEYBOARD_PANEL_PROFILES_FOOTER" = "左面板、右面板和通用面板分别配置内容与外观。工具栏左滑打开左面板，右滑打开右面板；主屏幕 Dock 上划只打开通用面板。";
+"KEYBOARD_PANEL_ACTIONS" = "配置面板动作";

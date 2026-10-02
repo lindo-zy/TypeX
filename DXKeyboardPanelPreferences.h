@@ -5,7 +5,6 @@
 #define kDXPanelBottomEnabled @"keyboardpanelbottomBOOL"
 #define kDXPanelGlobalEnabled @"keyboardpanelglobalBOOL"
 #define kDXPanelDockSwipeEnabled @"keyboardpaneldockswipeBOOL"
-#define kDXPanelUnified @"keyboardpanelunifiedBOOL"
 #define kDXPanelSystemTogglesVisible @"keyboardpanelsystemtogglesBOOL"
 #define kDXPanelSystemSlidersVisible @"keyboardpanelsystemslidersBOOL"
 #define kDXPanelColumns @"keyboardpanelcolumns"
@@ -14,6 +13,23 @@
 #define kDXPanelLeftItems @"keyboardpanelleftitems"
 #define kDXPanelRightItems @"keyboardpanelrightitems"
 #define kDXPanelCommonItems @"keyboardpanelcommonitems"
+
+// Legacy shared values seed each profile until that profile is configured.
+// Every new write targets a profile key, so edits never affect another panel.
+static inline NSString *DXKeyboardPanelProfileKey(NSString *key, NSString *side) {
+    if (![@[@"left", @"right", @"common"] containsObject:side] || ![key hasPrefix:@"keyboardpanel"]) return nil;
+    return [@"keyboardpanel" stringByAppendingFormat:@"%@%@", side, [key substringFromIndex:13]];
+}
+
+static inline NSDictionary *DXKeyboardPanelProfilePreferences(NSDictionary *preferences, NSString *side) {
+    NSMutableDictionary *profile = [preferences isKindOfClass:NSDictionary.class] ? [preferences mutableCopy] : [NSMutableDictionary dictionary];
+    for (NSString *key in @[kDXPanelSystemTogglesVisible, kDXPanelSystemSlidersVisible, kDXPanelColumns, kDXPanelScale, kDXPanelDark]) {
+        NSString *scopedKey = DXKeyboardPanelProfileKey(key, side);
+        id value = scopedKey ? profile[scopedKey] : nil;
+        if (value) profile[key] = value;
+    }
+    return profile;
+}
 
 static inline NSString *DXKeyboardPanelItemsKey(NSString *side) {
     if ([side isEqualToString:@"right"]) return kDXPanelRightItems;

@@ -34,13 +34,18 @@ static NSString *DXPanelLocalized(NSString *key) {
 @interface DXPKeyboardPanelController ()
 @property(nonatomic, strong) DXPKeyboardPanelPreviewHeader *previewHeader;
 @property(nonatomic, strong) UISearchController *keyboardTestSearch;
+- (NSString *)profileSide;
 @end
 @implementation DXPKeyboardPanelController
+- (NSString *)profileSide {
+    NSString *side = [self.specifier propertyForKey:@"panelSide"];
+    return [@[@"left", @"right", @"common"] containsObject:side] ? side : nil;
+}
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"滑动面板";
-    NSString *side = DXKeyboardPanelBool([DXPrefsManager.sharedInstance readPrefs], kDXPanelUnified, NO) ? @"common" : @"left";
-    self.previewHeader = [[DXPKeyboardPanelPreviewHeader alloc] initWithSide:side allowsSelection:YES];
+    NSString *side = [self profileSide];
+    self.title = side ? self.specifier.name : DXPanelLocalized(@"KEYBOARD_PANEL_SETTINGS");
+    self.previewHeader = [[DXPKeyboardPanelPreviewHeader alloc] initWithSide:side ?: @"left" allowsSelection:!side];
     self.previewHeader.frame = CGRectMake(0, 0, self.table.bounds.size.width, self.previewHeader.bounds.size.height);
     self.table.tableHeaderView = self.previewHeader;
     self.keyboardTestSearch = [[UISearchController alloc] initWithSearchResultsController:nil];
@@ -69,35 +74,48 @@ static NSString *DXPanelLocalized(NSString *key) {
     PSSpecifier *specifier = [PSSpecifier preferenceSpecifierNamed:DXPanelLocalized(label) target:self
         set:@selector(setPreferenceValue:specifier:) get:@selector(readPreferenceValue:)
         detail:nil cell:cell edit:nil];
-    [specifier setProperty:key forKey:@"key"];
+    NSString *side = [self profileSide];
+    [specifier setProperty:side ? DXKeyboardPanelProfileKey(key, side) : key forKey:@"key"];
+    if (side) [specifier setProperty:key forKey:@"legacyKey"];
     [specifier setProperty:value forKey:@"default"];
     return specifier;
 }
 - (NSArray *)specifiers {
     if (_specifiers) return _specifiers;
     NSMutableArray *items = [NSMutableArray array];
-    PSSpecifier *group = [PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"KEYBOARD_PANEL_ENTRANCE")];
-    [group setProperty:DXPanelLocalized(@"KEYBOARD_PANEL_GESTURE_FOOTER") forKey:@"footerText"];
-    [items addObject:group];
-    [items addObject:[self setting:@"KEYBOARD_PANEL_TOP" key:kDXPanelTopEnabled defaultValue:@YES cell:PSSwitchCell]];
-    [items addObject:[self setting:@"KEYBOARD_PANEL_BOTTOM" key:kDXPanelBottomEnabled defaultValue:@YES cell:PSSwitchCell]];
-    [items addObject:[self setting:@"KEYBOARD_PANEL_UNIFIED" key:kDXPanelUnified defaultValue:@NO cell:PSSwitchCell]];
-    group = [PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"GLOBAL_PANEL_SETTINGS")];
-    [group setProperty:DXPanelLocalized(@"GLOBAL_PANEL_FOOTER") forKey:@"footerText"];
-    [items addObject:group];
-    [items addObject:[self setting:@"GLOBAL_PANEL_ENABLED" key:kDXPanelGlobalEnabled defaultValue:@YES cell:PSSwitchCell]];
-    [items addObject:[self setting:@"GLOBAL_PANEL_DOCK_SWIPE" key:kDXPanelDockSwipeEnabled defaultValue:@YES cell:PSSwitchCell]];
-    group = [PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"KEYBOARD_PANEL_CONTENT")];
+    NSString *side = [self profileSide];
+    if (!side) {
+        PSSpecifier *group = [PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"KEYBOARD_PANEL_ENTRANCE")];
+        [group setProperty:DXPanelLocalized(@"KEYBOARD_PANEL_GESTURE_FOOTER") forKey:@"footerText"];
+        [items addObject:group];
+        [items addObject:[self setting:@"KEYBOARD_PANEL_TOP" key:kDXPanelTopEnabled defaultValue:@YES cell:PSSwitchCell]];
+        [items addObject:[self setting:@"KEYBOARD_PANEL_BOTTOM" key:kDXPanelBottomEnabled defaultValue:@YES cell:PSSwitchCell]];
+        group = [PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"GLOBAL_PANEL_SETTINGS")];
+        [group setProperty:DXPanelLocalized(@"GLOBAL_PANEL_FOOTER") forKey:@"footerText"];
+        [items addObject:group];
+        [items addObject:[self setting:@"GLOBAL_PANEL_ENABLED" key:kDXPanelGlobalEnabled defaultValue:@YES cell:PSSwitchCell]];
+        [items addObject:[self setting:@"GLOBAL_PANEL_DOCK_SWIPE" key:kDXPanelDockSwipeEnabled defaultValue:@YES cell:PSSwitchCell]];
+        group = [PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"KEYBOARD_PANEL_CONTENT")];
+        [group setProperty:DXPanelLocalized(@"KEYBOARD_PANEL_PROFILES_FOOTER") forKey:@"footerText"];
+        [items addObject:group];
+        for (NSArray *profile in @[@[@"left", @"KEYBOARD_PANEL_LEFT"], @[@"right", @"KEYBOARD_PANEL_RIGHT"], @[@"common", @"KEYBOARD_PANEL_COMMON"]]) {
+            PSSpecifier *link = [PSSpecifier preferenceSpecifierNamed:DXPanelLocalized(profile[1]) target:self set:nil get:nil
+                detail:DXPKeyboardPanelController.class cell:PSLinkCell edit:nil];
+            [link setProperty:profile[0] forKey:@"panelSide"];
+            [items addObject:link];
+        }
+        _specifiers = items;
+        return _specifiers;
+    }
+    PSSpecifier *group = [PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"KEYBOARD_PANEL_CONTENT")];
     [group setProperty:DXPanelLocalized(@"KEYBOARD_PANEL_CONTENT_FOOTER") forKey:@"footerText"];
     [items addObject:group];
     [items addObject:[self setting:@"KEYBOARD_PANEL_SYSTEM_TOGGLES" key:kDXPanelSystemTogglesVisible defaultValue:@YES cell:PSSwitchCell]];
     [items addObject:[self setting:@"KEYBOARD_PANEL_SYSTEM_SLIDERS" key:kDXPanelSystemSlidersVisible defaultValue:@YES cell:PSSwitchCell]];
-    for (NSArray *profile in @[@[@"left", @"KEYBOARD_PANEL_LEFT"], @[@"right", @"KEYBOARD_PANEL_RIGHT"], @[@"common", @"KEYBOARD_PANEL_COMMON"]]) {
-        PSSpecifier *link = [PSSpecifier preferenceSpecifierNamed:DXPanelLocalized(profile[1]) target:self set:nil get:nil
-            detail:DXPKeyboardPanelItemsController.class cell:PSLinkCell edit:nil];
-        [link setProperty:profile[0] forKey:@"panelSide"];
-        [items addObject:link];
-    }
+    PSSpecifier *actions = [PSSpecifier preferenceSpecifierNamed:DXPanelLocalized(@"KEYBOARD_PANEL_ACTIONS") target:self set:nil get:nil
+        detail:DXPKeyboardPanelItemsController.class cell:PSLinkCell edit:nil];
+    [actions setProperty:side forKey:@"panelSide"];
+    [items addObject:actions];
     [items addObject:[PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"KEYBOARD_PANEL_APPEARANCE")]];
     [items addObject:[self setting:@"KEYBOARD_PANEL_DARK" key:kDXPanelDark defaultValue:@YES cell:PSSwitchCell]];
     for (NSArray *row in @[@[@"KEYBOARD_PANEL_COLUMNS", kDXPanelColumns, @4, @3, @5],
@@ -113,12 +131,15 @@ static NSString *DXPanelLocalized(NSString *key) {
     return _specifiers;
 }
 - (id)readPreferenceValue:(PSSpecifier *)specifier {
-    return [[DXPrefsManager sharedInstance] readPrefs][[specifier propertyForKey:@"key"]] ?: [specifier propertyForKey:@"default"];
+    NSDictionary *preferences = [[DXPrefsManager sharedInstance] readPrefs];
+    NSString *legacyKey = [specifier propertyForKey:@"legacyKey"];
+    return preferences[[specifier propertyForKey:@"key"]] ?: (legacyKey ? preferences[legacyKey] : nil) ?: [specifier propertyForKey:@"default"];
 }
 - (void)setPreferenceValue:(id)value specifier:(PSSpecifier *)specifier {
     NSString *key = [specifier propertyForKey:@"key"];
-    if ([key isEqualToString:kDXPanelColumns]) value = @(MIN(5, MAX(3, lround([value doubleValue]))));
-    if ([key isEqualToString:kDXPanelScale]) value = @(MIN(120, MAX(70, lround([value doubleValue] / 5) * 5)));
+    NSString *baseKey = [specifier propertyForKey:@"legacyKey"] ?: key;
+    if ([baseKey isEqualToString:kDXPanelColumns]) value = @(MIN(5, MAX(3, lround([value doubleValue]))));
+    if ([baseKey isEqualToString:kDXPanelScale]) value = @(MIN(120, MAX(70, lround([value doubleValue] / 5) * 5)));
     if (key.length && value) [[DXPrefsManager sharedInstance] setValue:value forKey:key];
     [self.previewHeader refresh];
 }

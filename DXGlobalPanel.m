@@ -126,9 +126,10 @@ static NSString *DXGlobalLocalized(NSString *key) {
     [[DXKeyboardPanel sharedInstance] dismiss];
     NSDictionary *preferences = manager.prefs;
     self.snapshot = [preferences copy];
-    NSString *profile = ![side isEqual:@"common"] && DXKeyboardPanelBool(preferences, kDXPanelUnified, NO) ? @"common" : side;
+    NSString *profile = [origin isEqual:@"dock"] ? @"common" : side;
     NSArray *entries = DXKeyboardPanelFilterCustomItems(DXKeyboardPanelItems(preferences, profile),
         preferences[kLinkActionskey], kLinkActionSelectorPrefix);
+    preferences = DXKeyboardPanelProfilePreferences(preferences, profile);
     self.scale = DXKeyboardPanelNumber(preferences, kDXPanelScale, 100, 70, 120) / 100;
     self.columns = (NSInteger)DXKeyboardPanelNumber(preferences, kDXPanelColumns, 4, 3, 5);
     BOOL dark = DXKeyboardPanelBool(preferences, kDXPanelDark, YES);

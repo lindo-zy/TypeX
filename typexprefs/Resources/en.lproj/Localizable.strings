@@ -386,9 +386,8 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "KEYBOARD_PANEL_GESTURE_FOOTER" = "Long swipe left or right across either toolbar to open its panel. Swipes confined to one button keep that button’s action. Toolbars no longer page.";
 "KEYBOARD_PANEL_TOP" = "Top toolbar long swipe";
 "KEYBOARD_PANEL_BOTTOM" = "Bottom toolbar long swipe";
-"KEYBOARD_PANEL_UNIFIED" = "Use one common panel";
 "KEYBOARD_PANEL_CONTENT" = "Panel content";
-"KEYBOARD_PANEL_CONTENT_FOOTER" = "The first row of system toggles and second row of brightness/media-volume sliders are shown by default. Each row can be hidden independently. Only your custom actions appear below. Both toolbars share these profiles; unified mode retains the left/right profiles.";
+"KEYBOARD_PANEL_CONTENT_FOOTER" = "System toggles, brightness/media-volume visibility, columns and appearance affect only this panel. Only this panel’s custom actions appear below.";
 "KEYBOARD_PANEL_SYSTEM_TOGGLES" = "Show first row: system toggles";
 "KEYBOARD_PANEL_SYSTEM_SLIDERS" = "Show second row: brightness and volume";
 "KEYBOARD_PANEL_LEFT" = "Left panel";
@@ -397,7 +396,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "GLOBAL_PANEL_SETTINGS" = "Independent panels";
 "GLOBAL_PANEL_ENABLED" = "Enable independent panels";
 "GLOBAL_PANEL_DOCK_SWIPE" = "Swipe up from the Home Screen Dock";
-"GLOBAL_PANEL_FOOTER" = "Swipe up from the blank bottom of the Home Screen Dock to open the common panel without a keyboard. Icon taps and dragging remain available. Independent panels support system controls, links, apps and quick actions. Use keyboard panels for text and scripts that require an input field.";
+"GLOBAL_PANEL_FOOTER" = "Swipe up from the blank bottom of or below the Home Screen Dock to open only the common panel without a keyboard. Icon taps and dragging remain available. Independent panels support system controls, links, apps and quick actions. Use keyboard panels for text and scripts that require an input field.";
 "GLOBAL_PANEL_INPUT_REQUIRED" = "This action needs an input field. Run it from a keyboard panel.";
 "KEYBOARD_PANEL_APPEARANCE" = "Panel appearance";
 "KEYBOARD_PANEL_DARK" = "Dark background";
@@ -515,3 +514,5 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SYSTEM_ACTIONS_SECTION" = "System Actions";
 "SYSTEM_ACTIONS_PICKER_FOOTER" = "Selecting one creates the matching system action automatically; rename or re-icon it later in Custom Actions.";
 "ICON_LIBRARY_ROW" = "Pick from Icon Library";
+"KEYBOARD_PANEL_PROFILES_FOOTER" = "Left, right and common panels have separate content and appearance settings. Swipe left or right on a toolbar for its matching panel. Swipe up from the Home Screen Dock for the common panel only.";
+"KEYBOARD_PANEL_ACTIONS" = "Configure panel actions";
