@@ -293,11 +293,10 @@ static NSString *DXPanelLocalized(NSString *key) {
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"PanelItem"];
-    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"PanelItem"];
+    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"PanelItem"];
     NSDictionary *entry = self.entries[indexPath.row];
     cell.textLabel.text = [self nameForEntry:entry];
     cell.imageView.image = [self imageForEntry:entry];
-    cell.detailTextLabel.text = DXPanelLocalized(@"KEYBOARD_PANEL_EDIT_HINT");
     // 行尾固定拖动把手，让可拖动性可见；拖动本身仍由表格的长按 drag & drop 承担。
     UIImageView *handle = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"line.3.horizontal"]];
     handle.contentMode = UIViewContentModeScaleAspectFit;

@@ -402,7 +402,6 @@
 "KEYBOARD_PANEL_COLUMNS" = "每行图标数";
 "KEYBOARD_PANEL_SCALE" = "内容大小（%）";
 "KEYBOARD_PANEL_ITEMS_FOOTER" = "只允许添加自定义动作，不支持基础动作。可先在自定义动作中创建系统动作、链接、应用、文本或脚本，再添加到面板。左滑删除，点击项目编辑；点右上角“编辑”后可拖动排序。删除仅移除本面板项目，自定义动作仍保留。";
-"KEYBOARD_PANEL_EDIT_HINT" = "左滑删除，点击编辑；长按条目拖动排序";
 "KEYBOARD_PANEL_PICKER_DELETE_FOOTER" = "点击项目选择动作，左滑可删除自定义动作。删除会同时移除它在工具栏、子动作和所有面板中的引用。";
 "KEYBOARD_PANEL_ITEM_APPEARANCE" = "编辑名称与图标";
 "KEYBOARD_PANEL_NAME" = "名称（留空使用动作名称）";
