@@ -15,6 +15,13 @@ static void writePlist(id object, NSString *directory, NSString *fileName, NSPro
     check([data writeToFile:[directory stringByAppendingPathComponent:fileName] atomically:YES]);
 }
 
+static DXPSFSymbolCategory *categoryForIdentifier(NSArray<DXPSFSymbolCategory *> *categories, NSString *identifier) {
+    for (DXPSFSymbolCategory *category in categories) {
+        if ([category.identifier isEqualToString:identifier]) return category;
+    }
+    return nil;
+}
+
 int main(void) {
     @autoreleasepool {
         NSString *root = [NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
@@ -65,6 +72,52 @@ int main(void) {
         names = [DXPSFSymbolCatalog namesFromResourceDirectories:@[broken] sourcePaths:NULL];
         check(names.count == 8000 && [names.lastObject isEqualToString:@"fixture.7999"]);
 
+        NSArray *available = @[@"doc", @"heart", @"star", @"gear", @"later", @"last", @"alpha", @"zebra"];
+        NSArray<DXPSFSymbolCategory *> *categories = [DXPSFSymbolCatalog categoriesFromResourceDirectories:@[first]
+            availableNames:available sourcePaths:&sources];
+        check(categories.count == 1 && [categories.firstObject.identifier isEqualToString:@"all"]);
+        check([categories.firstObject.symbolNames isEqual:available] && !categories.firstObject.iconName && !sources.count);
+        check(![DXPSFSymbolCatalog categoriesFromResourceDirectories:@[first] availableNames:@[] sourcePaths:NULL].count);
+        writePlist(@[@{@"key": @"all", @"icon": @"square.grid.2x2", @"title": @"All Metadata"},
+                     @{@"key": @"weather", @"icon": @"cloud.sun"}, @{@"key": @"variable"},
+                     @{@"key": @"multicolor"}, @{@"key": @"communication", @"icon": @"message"},
+                     @{@"key": @"empty"}, @{@"key": @"whatsnew"}, @{@"key": @42}],
+                   first, @"categories.plist", NSPropertyListXMLFormat_v1_0);
+        writePlist(@{@"doc": @[@"communication", @"multicolor", @"communication"],
+                     @"heart": @[@"weather", @"communication", @"variable"], @"star": @[@"multicolor", @"whatsnew"],
+                     @"gear": @42, @"last": @{@"categories": @[@"variable"]}, @"zebra": @[@"futurecategory"],
+                     @"not.available": @[@"weather"]}, first, @"symbol_categories.plist", NSPropertyListBinaryFormat_v1_0);
+        categories = [DXPSFSymbolCatalog categoriesFromResourceDirectories:@[first, first]
+            availableNames:available sourcePaths:&sources];
+        check([[categories valueForKey:@"identifier"] isEqual:@[@"all", @"multicolor", @"variable", @"weather", @"communication", @"futurecategory", @"whatsnew"]]);
+        check(sources.count == 2);
+        check([categories.firstObject.title isEqualToString:@"All Metadata"]);
+        check([categories.firstObject.iconName isEqualToString:@"square.grid.2x2"]);
+        check([categoryForIdentifier(categories, @"communication").symbolNames isEqual:@[@"doc", @"heart"]]);
+        check([categoryForIdentifier(categories, @"multicolor").symbolNames isEqual:@[@"doc", @"star"]]);
+        check([categoryForIdentifier(categories, @"variable").symbolNames isEqual:@[@"heart", @"last"]]);
+        check([categoryForIdentifier(categories, @"weather").symbolNames isEqual:@[@"heart"]]);
+        check(!categoryForIdentifier(categories, @"empty"));
+
+        writePlist(@{@"categories": @[@{@"key": @"communication", @"icon": @"other"}]},
+                   second, @"categories.plist", NSPropertyListBinaryFormat_v1_0);
+        writePlist(@{@"symbols": @{@"doc": @[@"weather", @"communication"]}},
+                   second, @"symbol_categories.plist", NSPropertyListXMLFormat_v1_0);
+        categories = [DXPSFSymbolCatalog categoriesFromResourceDirectories:@[first, second]
+            availableNames:available sourcePaths:NULL];
+        check([categoryForIdentifier(categories, @"communication").iconName isEqualToString:@"message"]);
+        check([categoryForIdentifier(categories, @"weather").symbolNames isEqual:@[@"doc", @"heart"]]);
+        check(categoryForIdentifier(categories, @"communication").symbolNames.count == 2);
+        check([[DXPSFSymbolCatalog categoriesFromResourceDirectories:@[first] availableNames:@[@"heart", @"heart"]
+            sourcePaths:NULL].firstObject.symbolNames isEqual:@[@"heart"]]);
+
+        check([[@"invalid category plist" dataUsingEncoding:NSUTF8StringEncoding]
+            writeToFile:[first stringByAppendingPathComponent:@"categories.plist"] atomically:YES]);
+        categories = [DXPSFSymbolCatalog categoriesFromResourceDirectories:@[first] availableNames:available sourcePaths:NULL];
+        check(categories.count == 7); // Readable membership stays usable without category definitions.
+        check(!categoryForIdentifier(categories, @"weather").iconName);
+        check([categoryForIdentifier(categories, @"weather").symbolNames isEqual:@[@"heart"]]);
+
         // Exercise the actual macOS system resources when present. This tests
         // Foundation catalog parsing, not iOS UIImage rendering or Settings UI.
         NSArray *local = [DXPSFSymbolCatalog namesFromResourceDirectories:
@@ -72,6 +125,16 @@ int main(void) {
         if (sources.count) {
             check(local.count > 0 && [NSSet setWithArray:local].count == local.count);
             NSLog(@"Local macOS catalog: %lu names from %lu resources", (unsigned long)local.count, (unsigned long)sources.count);
+            NSArray<DXPSFSymbolCategory *> *localCategories = [DXPSFSymbolCatalog categoriesFromResourceDirectories:
+                [DXPSFSymbolCatalog systemResourceDirectories] availableNames:local sourcePaths:&sources];
+            if (sources.count) {
+                check(localCategories.count > 1 && [localCategories.firstObject.symbolNames isEqual:local]);
+                NSSet *allowed = [NSSet setWithArray:local];
+                for (DXPSFSymbolCategory *category in localCategories) {
+                    check(category.symbolNames.count > 0 && [[NSSet setWithArray:category.symbolNames] isSubsetOfSet:allowed]);
+                }
+                NSLog(@"Local macOS categories: %lu", (unsigned long)localCategories.count);
+            }
         }
         check([[NSFileManager defaultManager] removeItemAtPath:root error:NULL]);
         NSLog(@"PASS: %lu local SF catalog checks", (unsigned long)checks);
