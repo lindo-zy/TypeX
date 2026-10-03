@@ -84,16 +84,10 @@ static NSString *DXPanelLocalized(NSString *key) {
     NSMutableArray *items = [NSMutableArray array];
     NSString *side = [self profileSide];
     if (!side) {
-        PSSpecifier *group = [PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"KEYBOARD_PANEL_ENTRANCE")];
-        [group setProperty:DXPanelLocalized(@"KEYBOARD_PANEL_GESTURE_FOOTER") forKey:@"footerText"];
-        [items addObject:group];
-        [items addObject:[self setting:@"KEYBOARD_PANEL_TOP" key:kDXPanelTopEnabled defaultValue:@YES cell:PSSwitchCell]];
-        [items addObject:[self setting:@"KEYBOARD_PANEL_BOTTOM" key:kDXPanelBottomEnabled defaultValue:@YES cell:PSSwitchCell]];
-        group = [PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"GLOBAL_PANEL_SETTINGS")];
+        PSSpecifier *group = [PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"GLOBAL_PANEL_SETTINGS")];
         [group setProperty:DXPanelLocalized(@"GLOBAL_PANEL_FOOTER") forKey:@"footerText"];
         [items addObject:group];
         [items addObject:[self setting:@"GLOBAL_PANEL_ENABLED" key:kDXPanelGlobalEnabled defaultValue:@YES cell:PSSwitchCell]];
-        [items addObject:[self setting:@"GLOBAL_PANEL_DOCK_SWIPE" key:kDXPanelDockSwipeEnabled defaultValue:@YES cell:PSSwitchCell]];
         group = [PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"KEYBOARD_PANEL_CONTENT")];
         [group setProperty:DXPanelLocalized(@"KEYBOARD_PANEL_PROFILES_FOOTER") forKey:@"footerText"];
         [items addObject:group];

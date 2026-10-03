@@ -39,6 +39,7 @@
 "BACKUP_FOOTER" = "将全部配置导出为文件，保存到“文件”App 中妥善保管；恢复时选择备份文件，将覆盖当前全部配置。备份文件包含完整配置（含 AI 引擎密钥），请勿随意分享。";
 
 "KEYBOARD_PANEL_SETTINGS" = "滑动面板";
+"GESTURE_SETTINGS" = "手势设置";
 
 // Independent status-bar gesture entries.
 "STATUS_BAR_SETTINGS" = "状态栏手势";

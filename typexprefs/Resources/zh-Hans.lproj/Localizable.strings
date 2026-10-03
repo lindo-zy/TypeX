@@ -374,6 +374,14 @@
 "RESTORE_FAILED_MESSAGE" = "无法读取有效的 TypeX 备份文件";
 
 // Keyboard-covering swipe panels
+"GESTURE_SETTINGS" = "手势设置";
+"DOCK_GESTURE_SETTINGS" = "Dock 手势设置";
+"DOCK_GESTURE_FOOTER" = "在主屏幕 Dock 的空白处（包括图标之间或下方）向上滑动，打开通用面板，无需弹出键盘。需在“滑动面板”中启用独立面板。图标点击和拖动保留。";
+"KEYBOARD_GESTURE_SETTINGS" = "键盘工具栏手势";
+"TOOLBAR_BUTTON_GESTURES" = "按钮手势";
+"TOOLBAR_BUTTON_GESTURES_FOOTER" = "进入对应工具栏后选择按钮，分别配置点按、长按和上下左右滑动动作。";
+"TOP_BUTTON_GESTURES" = "顶部按钮手势";
+"BOTTOM_BUTTON_GESTURES" = "底部按钮手势";
 "KEYBOARD_PANEL_SETTINGS" = "滑动面板";
 "KEYBOARD_PANEL_ENTRANCE" = "面板入口";
 "KEYBOARD_PANEL_GESTURE_FOOTER" = "在顶部或底部工具栏向左长滑打开左面板，向右长滑打开右面板。单个按钮内滑动保留按钮动作；工具栏不再翻页。";
@@ -389,7 +397,7 @@
 "GLOBAL_PANEL_SETTINGS" = "独立面板";
 "GLOBAL_PANEL_ENABLED" = "启用独立面板";
 "GLOBAL_PANEL_DOCK_SWIPE" = "主屏幕 Dock 底部上划";
-"GLOBAL_PANEL_FOOTER" = "从主屏幕 Dock 的空白处（包括图标之间或下方）向上滑动，只打开通用面板，无需弹出键盘。图标点击和拖动保留。独立面板支持系统控制、链接、应用和快捷操作；需要输入框的文字和脚本动作请在键盘面板中执行。";
+"GLOBAL_PANEL_FOOTER" = "独立面板无需弹出键盘，支持系统控制、链接、应用和快捷操作；需要输入框的文字和脚本动作请在键盘面板中执行。";
 "GLOBAL_PANEL_INPUT_REQUIRED" = "该动作需要输入框，请在键盘面板中执行。";
 "KEYBOARD_PANEL_APPEARANCE" = "面板外观";
 "KEYBOARD_PANEL_DARK" = "深色背景";

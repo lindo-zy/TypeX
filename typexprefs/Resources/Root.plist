@@ -62,9 +62,9 @@
 			<key>cell</key>
 			<string>PSLinkCell</string>
 			<key>detail</key>
-			<string>DXPStatusBarGestureController</string>
+			<string>DXPGestureSettingsController</string>
 			<key>label</key>
-			<string>STATUS_BAR_SETTINGS</string>
+			<string>GESTURE_SETTINGS</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
