@@ -19,11 +19,19 @@ static NSDictionary *DXStatusDefinition(NSDictionary *preferences, NSString *sel
         if ([entry isKindOfClass:NSDictionary.class] && [entry[@"selector"] isEqual:selector]) return entry;
     return nil;
 }
-static void DXStatusSaveBinding(NSString *slot, NSString *field, id value) {
-    if (!slot.length || !field.length) return;
+static BOOL DXStatusSlotValid(NSString *slot) {
+    if (![slot isKindOfClass:NSString.class]) return NO;
+    NSArray *parts = [slot componentsSeparatedByString:@"."];
+    return parts.count == 2 && [DXStatusBarSlot(parts[0], parts[1]) isEqual:slot];
+}
+static BOOL DXStatusSaveBinding(NSString *slot, NSString *field, id value) {
+    if (!DXStatusSlotValid(slot) || !field.length) {
+        NSLog(@"[TypeX][StatusBarSettings] save rejected: invalid slot or field");
+        return NO;
+    }
     DXPrefsManager *manager = DXPrefsManager.sharedInstance;
     NSMutableDictionary *preferences = [[manager readPrefs] mutableCopy];
-    if (!preferences) return;
+    if (!preferences) return NO;
     id stored = preferences[kDXStatusBarBindings];
     NSMutableDictionary *bindings = [stored isKindOfClass:NSDictionary.class] ? [stored mutableCopy] : [NSMutableDictionary dictionary];
     NSMutableDictionary *entry = [DXStatusBarBinding(preferences, slot) mutableCopy];
@@ -31,10 +39,13 @@ static void DXStatusSaveBinding(NSString *slot, NSString *field, id value) {
     bindings[slot] = entry;
     preferences[kDXStatusBarBindings] = bindings;
     [manager writePrefs:preferences];
+    id saved = DXStatusBarBinding([manager readPrefs], slot)[field];
+    BOOL success = value ? [saved isEqual:value] : saved == nil;
+    NSLog(@"[TypeX][StatusBarSettings] save slot=%@ field=%@ success=%d", slot, field, success);
+    return success;
 }
 
 @interface DXPStatusBarActionPicker : PSListController
-@property(nonatomic, copy) NSString *slot;
 @property(nonatomic) BOOL selectAfterSave;
 @end
 @interface DXPStatusBarGestureEntryController : PSListController
@@ -97,7 +108,7 @@ static void DXStatusSaveBinding(NSString *slot, NSString *field, id value) {
     [action setProperty:slot forKey:@"statusBarSlot"];
     [items addObject:action];
     PSSpecifier *clear = [PSSpecifier preferenceSpecifierNamed:DXStatusLocalized(@"STATUS_BAR_CLEAR") target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
-    [clear setButtonAction:@selector(clearAction:)];
+    clear->action = @selector(clearAction:);
     [items addObject:clear];
     _specifiers = items; return items;
 }
@@ -120,10 +131,20 @@ static void DXStatusSaveBinding(NSString *slot, NSString *field, id value) {
     DXStatusSaveBinding([self.specifier propertyForKey:@"statusBarSlot"], @"selector", nil);
     [self reloadSpecifiers];
 }
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *item = [self respondsToSelector:@selector(specifierAtIndexPath:)] ? [self specifierAtIndexPath:indexPath] : nil;
+    if (item && item->action == @selector(clearAction:)) {
+        [tableView deselectRowAtIndexPath:indexPath animated:YES];
+        [self clearAction:item];
+        return;
+    }
+    [super tableView:tableView didSelectRowAtIndexPath:indexPath];
+}
 @end
 
 @implementation DXPStatusBarActionPicker
-- (void)viewDidLoad { [super viewDidLoad]; self.title = DXStatusLocalized(@"CHOOSE_ACTION"); self.slot = [self.specifier propertyForKey:@"statusBarSlot"]; }
+- (NSString *)slot { return [self.specifier propertyForKey:@"statusBarSlot"]; }
+- (void)viewDidLoad { [super viewDidLoad]; self.title = DXStatusLocalized(@"CHOOSE_ACTION"); }
 - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self reloadSpecifiers]; }
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
@@ -137,7 +158,7 @@ static void DXStatusSaveBinding(NSString *slot, NSString *field, id value) {
         PSSpecifier *item = [PSSpecifier preferenceSpecifierNamed:DXStatusLocalized([@"STATUS_BAR_PANEL_" stringByAppendingString:side.uppercaseString])
             target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         [item setProperty:[@"__typex_statusbar_panel_" stringByAppendingString:side] forKey:@"actionSelector"];
-        [item setButtonAction:@selector(selectAction:)]; [items addObject:item];
+        item->action = @selector(selectAction:); [items addObject:item];
     }
     PSSpecifier *group = [PSSpecifier groupSpecifierWithName:DXStatusLocalized(@"CUSTOM_ACTIONS")];
     [group setProperty:DXStatusLocalized(@"STATUS_BAR_PICKER_FOOTER") forKey:@"footerText"];
@@ -150,18 +171,29 @@ static void DXStatusSaveBinding(NSString *slot, NSString *field, id value) {
             target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         [item setProperty:entry[@"selector"] forKey:@"actionSelector"];
         [item setProperty:[DXHelper imageForIconConfig:entry[@"icon"] defaultSymbolName:@"link"] forKey:@"iconImage"];
-        [item setButtonAction:@selector(selectAction:)]; [items addObject:item];
+        item->action = @selector(selectAction:); [items addObject:item];
     }
     PSSpecifier *add = [PSSpecifier preferenceSpecifierNamed:DXStatusLocalized(@"ADD") target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
-    [add setButtonAction:@selector(addAction:)]; [items addObject:add];
+    add->action = @selector(addAction:); [items addObject:add];
     _specifiers = items; return items;
 }
 - (void)selectAction:(PSSpecifier *)specifier {
     NSString *selector = [specifier propertyForKey:@"actionSelector"];
+    if (![selector isKindOfClass:NSString.class] || !selector.length) return;
     NSDictionary *entry = DXStatusDefinition([[DXPrefsManager sharedInstance] readPrefs], selector);
-    if (!DXStatusBarPanelSide(selector) && !DXGlobalCustomActionSupported(entry)) { [self reloadSpecifiers]; return; }
-    DXStatusSaveBinding(self.slot, @"selector", selector);
-    [self.navigationController popViewControllerAnimated:YES];
+    if (!DXStatusBarPanelSide(selector) && (!DXIsLinkActionSelector(selector) || !DXGlobalCustomActionSupported(entry))) { [self reloadSpecifiers]; return; }
+    if (DXStatusSaveBinding(self.slot, @"selector", selector)) [self.navigationController popViewControllerAnimated:YES];
+}
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    // The row owns the action payload; pass its specifier explicitly.
+    PSSpecifier *item = [self respondsToSelector:@selector(specifierAtIndexPath:)] ? [self specifierAtIndexPath:indexPath] : nil;
+    if (item && (item->action == @selector(selectAction:) || item->action == @selector(addAction:))) {
+        [tableView deselectRowAtIndexPath:indexPath animated:YES];
+        if (item->action == @selector(selectAction:)) [self selectAction:item];
+        else [self addAction:item];
+        return;
+    }
+    [super tableView:tableView didSelectRowAtIndexPath:indexPath];
 }
 - (void)addAction:(PSSpecifier *)specifier {
     (void)specifier;
@@ -180,19 +212,24 @@ static void DXStatusSaveBinding(NSString *slot, NSString *field, id value) {
         @"type": type, @"name": [DXPLinkActionEditorController displayNameForType:type],
         @"icon": [DXPLinkActionEditorController defaultIconForType:type], @"link": @""} mutableCopy];
     __weak typeof(self) weakSelf = self;
+    __weak DXPLinkActionEditorController *weakEditor = editor;
+    NSString *slot = [self.slot copy];
+    __block BOOL completed = NO;
     editor.completion = ^(NSDictionary *entry) {
         DXPStatusBarActionPicker *picker = weakSelf;
-        if (!picker) return;
+        if (completed || !picker || !DXStatusSlotValid(slot) || ![picker.slot isEqual:slot] ||
+            ![picker.navigationController.viewControllers containsObject:picker] ||
+            picker.navigationController.topViewController != weakEditor) return;
         DXPrefsManager *manager = DXPrefsManager.sharedInstance;
         NSMutableDictionary *preferences = [[manager readPrefs] mutableCopy];
-        if (!preferences) return;
+        if (!preferences || ![entry isKindOfClass:NSDictionary.class] || !DXIsLinkActionSelector(entry[@"selector"])) return;
         id stored = preferences[kLinkActionskey];
         NSMutableArray *definitions = [stored isKindOfClass:NSArray.class] ? [stored mutableCopy] : [NSMutableArray array];
         [definitions addObject:entry]; preferences[kLinkActionskey] = definitions;
+        completed = YES;
         [manager writePrefs:preferences];
-        if (DXGlobalCustomActionSupported(entry)) {
-            DXStatusSaveBinding(picker.slot, @"selector", entry[@"selector"]);
-            picker.selectAfterSave = YES;
+        if (DXGlobalCustomActionSupported(DXStatusDefinition([manager readPrefs], entry[@"selector"]))) {
+            picker.selectAfterSave = DXStatusSaveBinding(slot, @"selector", entry[@"selector"]);
         }
     };
     [editor setRootController:self.rootController]; [editor setParentController:self]; [self pushController:editor];
