@@ -509,3 +509,24 @@
 "SF_SYMBOL_COLUMNS_TWO" = "双列";
 "SF_SYMBOL_COLUMNS_THREE" = "三列";
 "SF_SYMBOL_COLUMNS_FOUR" = "四列";
+
+// Independent status-bar gesture entries.
+"STATUS_BAR_SETTINGS" = "状态栏手势";
+"STATUS_BAR_LANDSCAPE" = "横屏也启用";
+"STATUS_BAR_LEFT" = "左边区域";
+"STATUS_BAR_MIDDLE" = "中间区域";
+"STATUS_BAR_RIGHT" = "右边区域";
+"STATUS_BAR_TAP" = "单击";
+"STATUS_BAR_DOUBLETAP" = "双击";
+"STATUS_BAR_LONGPRESS" = "长按";
+"STATUS_BAR_LEFTSWIPE" = "左滑";
+"STATUS_BAR_RIGHTSWIPE" = "右滑";
+"STATUS_BAR_FOOTER" = "每个区域的五种手势分别配置，默认关闭，设备未解锁时禁用。区域按当前状态栏宽度划分，刘海切口无法触摸，灵动岛和原生控件保留系统操作。";
+"STATUS_BAR_ENTRY_FOOTER" = "每个手势绑定一个动作。未选择动作时不接管触摸；同一区域同时启用单击和双击时，单击会稍作等待。上下拖动保留系统操作。";
+"STATUS_BAR_UNASSIGNED" = "未选择";
+"STATUS_BAR_CLEAR" = "清除动作";
+"STATUS_BAR_PANELS" = "打开面板";
+"STATUS_BAR_PANEL_LEFT" = "左侧面板";
+"STATUS_BAR_PANEL_RIGHT" = "右侧面板";
+"STATUS_BAR_PANEL_COMMON" = "通用面板";
+"STATUS_BAR_PICKER_FOOTER" = "选择或添加系统动作、打开应用、App 快捷项或链接。文字、JavaScript 和需要当前输入内容的动作不适用于状态栏。";

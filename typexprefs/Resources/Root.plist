@@ -59,6 +59,14 @@
 			<string>KEYBOARD_PANEL_SETTINGS</string>
 		</dict>
 		<dict>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>detail</key>
+			<string>DXPStatusBarGestureController</string>
+			<key>label</key>
+			<string>STATUS_BAR_SETTINGS</string>
+		</dict>
+		<dict>
 			<key>PostNotification</key>
 			<string>com.lindo.typex/prefschanged</string>
 			<key>cell</key>

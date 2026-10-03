@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #include <math.h>
+#import "DXSystemActionCatalog.h"
 
 // New independent entrypoints. Existing keyboard/script protocols are untouched.
 #define DXGlobalPanelLeftNotification @"com.lindo.typex/panel-left"
@@ -38,4 +39,14 @@ static inline BOOL DXGlobalPanelActionNeedsInput(NSDictionary *entry) {
     NSString *type = [entry[@"type"] isKindOfClass:NSString.class] ? entry[@"type"] : @"";
     NSString *link = [entry[@"link"] isKindOfClass:NSString.class] ? entry[@"link"] : @"";
     return [type isEqual:@"text"] || [type isEqual:@"javascript"] || [link containsString:@"@@@"];
+}
+
+static inline BOOL DXGlobalCustomActionSupported(id entry) {
+    if (![entry isKindOfClass:NSDictionary.class] || DXGlobalPanelActionNeedsInput(entry)) return NO;
+    NSString *type = DXGlobalPanelString(entry[@"type"]);
+    if ([type isEqual:@"system"]) return DXSystemActionDefinition(entry[@"systemaction"]) != nil;
+    NSString *payload = DXGlobalPanelNormalizedPayload(entry[@"link"]);
+    if (!payload.length) return NO;
+    if ([type isEqual:@"shortcut"]) return [DXGlobalPanelString(entry[@"shortcuttype"]) length] > 0;
+    return !type.length || [@[@"openapp", @"urlscheme", @"url"] containsObject:type];
 }

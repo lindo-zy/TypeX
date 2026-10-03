@@ -510,3 +510,24 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SF_SYMBOL_COLUMNS_TWO" = "Two";
 "SF_SYMBOL_COLUMNS_THREE" = "Three";
 "SF_SYMBOL_COLUMNS_FOUR" = "Four";
+
+// Independent status-bar gesture entries.
+"STATUS_BAR_SETTINGS" = "Status Bar Gestures";
+"STATUS_BAR_LANDSCAPE" = "Enable in Landscape";
+"STATUS_BAR_LEFT" = "Left Area";
+"STATUS_BAR_MIDDLE" = "Middle Area";
+"STATUS_BAR_RIGHT" = "Right Area";
+"STATUS_BAR_TAP" = "Single Tap";
+"STATUS_BAR_DOUBLETAP" = "Double Tap";
+"STATUS_BAR_LONGPRESS" = "Long Press";
+"STATUS_BAR_LEFTSWIPE" = "Swipe Left";
+"STATUS_BAR_RIGHTSWIPE" = "Swipe Right";
+"STATUS_BAR_FOOTER" = "Configure five gestures independently in each area. Off by default and disabled while locked. Areas follow the current status bar width. The notch is not touchable; Dynamic Island and native controls keep their system interactions.";
+"STATUS_BAR_ENTRY_FOOTER" = "Bind one action to this gesture. Unassigned gestures leave touches alone. A single tap waits briefly when double tap is enabled in the same area. Vertical drags keep their system behavior.";
+"STATUS_BAR_UNASSIGNED" = "Unassigned";
+"STATUS_BAR_CLEAR" = "Clear Action";
+"STATUS_BAR_PANELS" = "Open Panel";
+"STATUS_BAR_PANEL_LEFT" = "Left Panel";
+"STATUS_BAR_PANEL_RIGHT" = "Right Panel";
+"STATUS_BAR_PANEL_COMMON" = "Common Panel";
+"STATUS_BAR_PICKER_FOOTER" = "Choose or add a system action, app, App Quick Action, or link. Text, JavaScript, and actions requiring the current input are unavailable here.";

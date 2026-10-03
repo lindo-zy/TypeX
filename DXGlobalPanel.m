@@ -1,5 +1,6 @@
 #import "DXGlobalPanel.h"
 #import "DXGlobalPanelPolicy.h"
+#import "DXGlobalActionExecutor.h"
 #import "DXGlobalPanelGeometry.h"
 #import "DXKeyboardPanelPreferences.h"
 #import "DXKeyboardPanelLayout.h"
@@ -298,18 +299,7 @@ static NSString *DXGlobalLocalized(NSString *key) {
     if (DXGlobalPanelActionNeedsInput(entry)) {
         [self showMessage:DXGlobalLocalized(@"GLOBAL_PANEL_INPUT_REQUIRED")]; return;
     }
-    NSString *type = [entry[@"type"] isKindOfClass:NSString.class] ? entry[@"type"] : @"";
-    NSString *payload = DXGlobalPanelNormalizedPayload(entry[@"link"]);
-    NSString *systemAction = DXGlobalPanelString(entry[kCustomActionSystemIdentifierKey]);
-    NSString *shortcutType = DXGlobalPanelString(entry[kCustomActionShortcutTypeKey]);
-    BOOL application = [type isEqual:kCustomActionTypeOpenApp] || (!type.length && DXIsValidBundleIdentifier(payload));
-    NSURL *url = nil;
-    if ([type isEqual:kCustomActionTypeURL] || [type isEqual:kCustomActionTypeURLScheme] || !type.length) {
-        if (DXIsOpenableSchemeURLString(payload)) url = [NSURL URLWithString:payload];
-        if ([type isEqual:kCustomActionTypeURL] && (!url.host.length || ![@[@"http", @"https"] containsObject:url.scheme.lowercaseString])) url = nil;
-    }
-    if (!([type isEqual:kCustomActionTypeSystem] || [type isEqual:kCustomActionTypeShortcut] ||
-          (application && DXIsValidBundleIdentifier(payload)) || url)) {
+    if (!DXGlobalCustomActionSupported(entry)) {
         [self showMessage:DXGlobalLocalized(@"CUSTOM_ACTION_LINK_ERROR")]; return;
     }
     // Close synchronously before any navigation or confirmation. No delayed
@@ -318,26 +308,7 @@ static NSString *DXGlobalLocalized(NSString *key) {
     DXSystemOpenReply reply = ^(DXSystemOpenResult result) {
         NSLog(@"[TypeX][GlobalPanel] action result=%llu", (unsigned long long)result);
     };
-    if ([type isEqual:kCustomActionTypeSystem]) { DXRunSystemAction(systemAction, reply); return; }
-    if ([type isEqual:kCustomActionTypeShortcut]) { DXOpenSystemShortcut(payload, shortcutType, reply); return; }
-    if (application) {
-        if ([entry[kCustomActionUsePullOverKey] isKindOfClass:NSNumber.class] && [entry[kCustomActionUsePullOverKey] boolValue] && [DXShortcutsGenerator isPullOverXInstalled]) {
-            int token = NOTIFY_TOKEN_INVALID;
-            uint64_t state = DXPullOverOpenStateForBundleIdentifier(payload);
-            BOOL published = state && notify_register_check(kPullOverOpenRequestIdentifier.UTF8String, &token) == NOTIFY_STATUS_OK &&
-                notify_set_state(token, state) == NOTIFY_STATUS_OK && notify_post(kPullOverOpenRequestIdentifier.UTF8String) == NOTIFY_STATUS_OK;
-            if (token != NOTIFY_TOKEN_INVALID) notify_cancel(token);
-            if (published) return;
-        }
-        DXOpenSystemApplication(payload, reply); return;
-    }
-    if (DXIsSensitiveOpenScheme(url.scheme)) { DXOpenSensitiveSystemURL(url, reply); return; }
-    UIApplication *app = UIApplication.sharedApplication;
-    if (![app respondsToSelector:@selector(openURL:options:completionHandler:)]) { reply(DXSystemOpenUnavailable); return; }
-    @try {
-        // Ordinary schemes stay single-shot, including a swallowed completion.
-        [app openURL:url options:@{} completionHandler:^(BOOL success) { reply(success ? DXSystemOpenSucceeded : DXSystemOpenFailed); }];
-    } @catch (__unused NSException *exception) { reply(DXSystemOpenFailed); }
+    DXExecuteGlobalCustomAction(entry, reply);
 }
 - (void)showMessage:(NSString *)message {
     self.message.text = message;
