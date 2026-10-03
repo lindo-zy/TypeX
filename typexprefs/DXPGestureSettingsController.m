@@ -75,7 +75,7 @@ static NSString *DXGestureLocalized(NSString *key) {
     if (_specifiers) return _specifiers;
     PSSpecifier *group = [PSSpecifier groupSpecifierWithName:nil];
     [group setProperty:DXGestureLocalized(@"DOCK_GESTURE_FOOTER") forKey:@"footerText"];
-    _specifiers = @[group, [self toggle:@"GLOBAL_PANEL_DOCK_SWIPE" key:kDXPanelDockSwipeEnabled]];
+    _specifiers = [@[group, [self toggle:@"GLOBAL_PANEL_DOCK_SWIPE" key:kDXPanelDockSwipeEnabled]] mutableCopy];
     return _specifiers;
 }
 @end
