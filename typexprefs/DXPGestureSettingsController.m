@@ -1,6 +1,5 @@
 #import "DXPGestureSettingsController.h"
 #import "DXPStatusBarGestureController.h"
-#import "DXPManageShortcutsController.h"
 #import "../DXKeyboardPanelPreferences.h"
 #import "../DXHelper.h"
 #import "../common.h"
@@ -89,15 +88,6 @@ static NSString *DXGestureLocalized(NSString *key) {
     [items addObject:group];
     [items addObject:[self toggle:@"KEYBOARD_PANEL_TOP" key:kDXPanelTopEnabled]];
     [items addObject:[self toggle:@"KEYBOARD_PANEL_BOTTOM" key:kDXPanelBottomEnabled]];
-    group = [PSSpecifier groupSpecifierWithName:DXGestureLocalized(@"TOOLBAR_BUTTON_GESTURES")];
-    [group setProperty:DXGestureLocalized(@"TOOLBAR_BUTTON_GESTURES_FOOTER") forKey:@"footerText"];
-    [items addObject:group];
-    for (NSArray *toolbar in @[@[@"top", @"TOP_BUTTON_GESTURES"], @[@"bottom", @"BOTTOM_BUTTON_GESTURES"]]) {
-        PSSpecifier *link = [PSSpecifier preferenceSpecifierNamed:DXGestureLocalized(toolbar[1]) target:self
-            set:nil get:nil detail:DXPManageShortcutsController.class cell:PSLinkCell edit:nil];
-        [link setProperty:toolbar[0] forKey:@"configuration"];
-        [items addObject:link];
-    }
     _specifiers = items;
     return _specifiers;
 }

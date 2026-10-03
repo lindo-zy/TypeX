@@ -379,10 +379,6 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "DOCK_GESTURE_SETTINGS" = "Dock Gesture Settings";
 "DOCK_GESTURE_FOOTER" = "Swipe up from blank space in or below the Home Screen Dock, including between icons, to open the common panel without showing the keyboard. Enable independent panels in Swipe panels first. Icon taps and dragging keep their behavior.";
 "KEYBOARD_GESTURE_SETTINGS" = "Keyboard Toolbar Gestures";
-"TOOLBAR_BUTTON_GESTURES" = "Button Gestures";
-"TOOLBAR_BUTTON_GESTURES_FOOTER" = "Open a toolbar and choose a button to configure tap, long press, and swipes in each direction.";
-"TOP_BUTTON_GESTURES" = "Top Button Gestures";
-"BOTTOM_BUTTON_GESTURES" = "Bottom Button Gestures";
 "KEYBOARD_PANEL_SETTINGS" = "Swipe panels";
 "KEYBOARD_PANEL_ENTRANCE" = "Panel entrances";
 "KEYBOARD_PANEL_GESTURE_FOOTER" = "Long swipe left or right across either toolbar to open its panel. Swipes confined to one button keep that button’s action. Toolbars no longer page.";

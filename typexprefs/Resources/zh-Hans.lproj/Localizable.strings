@@ -378,10 +378,6 @@
 "DOCK_GESTURE_SETTINGS" = "Dock 手势设置";
 "DOCK_GESTURE_FOOTER" = "在主屏幕 Dock 的空白处（包括图标之间或下方）向上滑动，打开通用面板，无需弹出键盘。需在“滑动面板”中启用独立面板。图标点击和拖动保留。";
 "KEYBOARD_GESTURE_SETTINGS" = "键盘工具栏手势";
-"TOOLBAR_BUTTON_GESTURES" = "按钮手势";
-"TOOLBAR_BUTTON_GESTURES_FOOTER" = "进入对应工具栏后选择按钮，分别配置点按、长按和上下左右滑动动作。";
-"TOP_BUTTON_GESTURES" = "顶部按钮手势";
-"BOTTOM_BUTTON_GESTURES" = "底部按钮手势";
 "KEYBOARD_PANEL_SETTINGS" = "滑动面板";
 "KEYBOARD_PANEL_ENTRANCE" = "面板入口";
 "KEYBOARD_PANEL_GESTURE_FOOTER" = "在顶部或底部工具栏向左长滑打开左面板，向右长滑打开右面板。单个按钮内滑动保留按钮动作；工具栏不再翻页。";
