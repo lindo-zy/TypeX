@@ -46,9 +46,9 @@ int main(void) {
         check([DXGlobalPanelNormalizedPayload(NSNull.null) isEqual:@""]);
         check([DXGlobalPanelString(@42) isEqual:@""]);
         CGRect portrait = DXGlobalPanelFrame(CGRectMake(0, 0, 390, 844), 47, 34);
-        check(CGRectEqualToRect(portrait, CGRectMake(10, 280, 370, 520)));
+        check(CGRectEqualToRect(portrait, CGRectMake(10, 500, 370, 300)));
         CGRect landscape = DXGlobalPanelFrame(CGRectMake(0, 0, 844, 390), 0, 21);
-        check(CGRectEqualToRect(landscape, CGRectMake(172, 20, 500, 339)));
+        check(CGRectEqualToRect(landscape, CGRectMake(172, 59, 500, 300)));
         check(CGRectIsNull(DXGlobalPanelFrame(CGRectZero, 0, 0)));
         check(CGRectIsNull(DXGlobalPanelFrame(CGRectMake(0, 0, 100, 100), 0, 0)));
         check(CGRectIsNull(DXGlobalPanelFrame(CGRectMake(0, 0, 390, 844), NAN, 34)));
