@@ -376,7 +376,15 @@
 // Keyboard-covering swipe panels
 "GESTURE_SETTINGS" = "手势设置";
 "DOCK_GESTURE_SETTINGS" = "Dock 手势设置";
-"DOCK_GESTURE_FOOTER" = "在主屏幕 Dock 的空白处（包括图标之间或下方）向上滑动，打开通用面板，无需弹出键盘。需在“滑动面板”中启用独立面板。图标点击和拖动保留。";
+"DOCK_GESTURE_FOOTER" = "从主屏幕 Dock 空白处（包括图标之间或下方）上滑、左滑或右滑，执行各自选择的动作。选择面板时需启用独立面板；其他动作不依赖面板开关。图标点击、长按和拖动保留。";
+"DOCK_ENABLE_UP" = "启用上滑";
+"DOCK_ACTION_UP" = "上滑动作";
+"DOCK_ENABLE_LEFT" = "启用左滑";
+"DOCK_ACTION_LEFT" = "左滑动作";
+"DOCK_ENABLE_RIGHT" = "启用右滑";
+"DOCK_ACTION_RIGHT" = "右滑动作";
+"DOCK_ACTION_NONE" = "不执行动作";
+"DOCK_ACTION_PICKER_FOOTER" = "每个方向仅执行一个动作。支持无需输入框的系统动作、应用、快捷操作和链接；不支持文本、脚本或含输入占位符的链接。";
 "KEYBOARD_GESTURE_SETTINGS" = "键盘工具栏手势";
 "KEYBOARD_PANEL_SETTINGS" = "滑动面板";
 "KEYBOARD_PANEL_ENTRANCE" = "面板入口";

@@ -377,7 +377,15 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 // Keyboard-covering swipe panels
 "GESTURE_SETTINGS" = "Gesture Settings";
 "DOCK_GESTURE_SETTINGS" = "Dock Gesture Settings";
-"DOCK_GESTURE_FOOTER" = "Swipe up from blank space in or below the Home Screen Dock, including between icons, to open the common panel without showing the keyboard. Enable independent panels in Swipe panels first. Icon taps and dragging keep their behavior.";
+"DOCK_GESTURE_FOOTER" = "Swipe up, left or right from blank space in or below the Home Screen Dock, including between icons, to run each direction's action. Panel actions require independent panels; other actions do not. Icon taps, long presses and dragging keep their behavior.";
+"DOCK_ENABLE_UP" = "Enable swipe up";
+"DOCK_ACTION_UP" = "Swipe up action";
+"DOCK_ENABLE_LEFT" = "Enable swipe left";
+"DOCK_ACTION_LEFT" = "Swipe left action";
+"DOCK_ENABLE_RIGHT" = "Enable swipe right";
+"DOCK_ACTION_RIGHT" = "Swipe right action";
+"DOCK_ACTION_NONE" = "No action";
+"DOCK_ACTION_PICKER_FOOTER" = "Each direction runs one action. Supports system actions, apps, Quick Actions and links that need no input field. Text, scripts and links with input placeholders are unavailable.";
 "KEYBOARD_GESTURE_SETTINGS" = "Keyboard Toolbar Gestures";
 "KEYBOARD_PANEL_SETTINGS" = "Swipe panels";
 "KEYBOARD_PANEL_ENTRANCE" = "Panel entrances";

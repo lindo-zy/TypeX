@@ -1,5 +1,6 @@
 #import "DXPGestureSettingsController.h"
 #import "DXPStatusBarGestureController.h"
+#import "DXPDockGestureController.h"
 #import "../DXKeyboardPanelPreferences.h"
 #import "../DXHelper.h"
 #import "../common.h"
@@ -12,8 +13,6 @@ static NSString *DXGestureLocalized(NSString *key) {
 // The moved switches retain their original keys and defaults.
 @interface DXPPanelGestureController : PSListController
 - (PSSpecifier *)toggle:(NSString *)label key:(NSString *)key;
-@end
-@interface DXPDockGestureController : DXPPanelGestureController
 @end
 @interface DXPKeyboardGestureController : DXPPanelGestureController
 @end
@@ -66,16 +65,6 @@ static NSString *DXGestureLocalized(NSString *key) {
     NSString *key = [specifier propertyForKey:@"key"];
     if (key.length && [value isKindOfClass:NSNumber.class])
         [[DXPrefsManager sharedInstance] setValue:@([value boolValue]) forKey:key];
-}
-@end
-
-@implementation DXPDockGestureController
-- (NSArray *)specifiers {
-    if (_specifiers) return _specifiers;
-    PSSpecifier *group = [PSSpecifier groupSpecifierWithName:nil];
-    [group setProperty:DXGestureLocalized(@"DOCK_GESTURE_FOOTER") forKey:@"footerText"];
-    _specifiers = [@[group, [self toggle:@"GLOBAL_PANEL_DOCK_SWIPE" key:kDXPanelDockSwipeEnabled]] mutableCopy];
-    return _specifiers;
 }
 @end
 

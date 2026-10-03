@@ -1,11 +1,15 @@
 #import "DXGlobalPanel.h"
 #import "DXGlobalPanelPolicy.h"
 #import "DXDockPanelTouchPolicy.h"
+#import "DXDockGesturePolicy.h"
+#import "DXGlobalActionExecutor.h"
 #import "DXKeyboardPanelPreferences.h"
 #import "common.h"
 #import <objc/runtime.h>
 
 static char DXDockPanelHandlerKey;
+static char DXDockRecognizerKey;
+static NSHashTable *DXDockGestureHandlers;
 static void DXTryInstallGlobalPanelHooks(void);
 
 @interface DXDockPanelGestureHandler : NSObject <UIGestureRecognizerDelegate>
@@ -13,36 +17,78 @@ static void DXTryInstallGlobalPanelHooks(void);
 @property(nonatomic, weak) UIWindow *sourceWindow;
 @property(nonatomic, weak) UIWindow *installedWindow;
 @property(nonatomic, strong) UIPanGestureRecognizer *pan;
+@property(nonatomic, copy) NSDictionary *snapshot;
+@property(nonatomic, copy) NSString *direction;
+@property(nonatomic, assign) CGRect sourceFrame;
+@property(nonatomic, assign) CGRect sourceBounds;
+@property(nonatomic, assign) NSUInteger generation;
 @property(nonatomic, assign) BOOL opened;
 @property(nonatomic, assign) BOOL loggedRejectedTouch;
-- (BOOL)enabled;
-- (void)upwardPan:(UIPanGestureRecognizer *)gesture;
+- (BOOL)available;
+- (BOOL)hasAction:(NSString *)direction preferences:(NSDictionary *)preferences;
+- (BOOL)validSession;
+- (void)clearSession;
+- (void)invalidated:(NSNotification *)notification;
+- (void)dockPan:(UIPanGestureRecognizer *)gesture;
 @end
 
 @implementation DXDockPanelGestureHandler
+- (instancetype)init {
+    if ((self = [super init])) {
+        for (NSString *name in @[UIApplicationWillResignActiveNotification, UISceneWillDeactivateNotification,
+            UIDeviceOrientationDidChangeNotification, @"typeXLayoutChanged"])
+            [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(invalidated:) name:name object:nil];
+    }
+    return self;
+}
 - (void)dealloc {
+    [NSNotificationCenter.defaultCenter removeObserver:self];
     UIWindow *window = _installedWindow;
     UIPanGestureRecognizer *pan = _pan;
     if (!window || !pan) return;
-    if (NSThread.isMainThread) [window removeGestureRecognizer:pan];
-    else dispatch_async(dispatch_get_main_queue(), ^{ [window removeGestureRecognizer:pan]; });
+    void (^remove)(void) = ^{ pan.enabled = NO; if (pan.view == window) [window removeGestureRecognizer:pan]; };
+    if (NSThread.isMainThread) remove(); else dispatch_async(dispatch_get_main_queue(), remove);
 }
-- (BOOL)enabled {
+- (void)clearSession {
+    self.sourceWindow = nil; self.snapshot = nil; self.direction = nil; self.opened = NO;
+}
+- (void)invalidated:(NSNotification *)notification {
+    (void)notification;
+    if (!NSThread.isMainThread) {
+        __weak typeof(self) weakSelf = self;
+        dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf invalidated:nil]; });
+        return;
+    }
+    self.generation++;
+    [self clearSession];
+}
+- (BOOL)available {
     DXPrefsManager *manager = DXPrefsManager.sharedInstance;
-    if (!NSThread.isMainThread || !manager.preferencesAvailable || !self.dock.window || self.dock.window.hidden ||
+    if (!NSThread.isMainThread || !manager.preferencesAvailable || !self.dock.window || self.dock.window != self.installedWindow ||
+        !DXDockPanelViewVisible(self.dock, self.installedWindow) ||
         [[DXGlobalPanel sharedInstance] isVisible] || ![DXGlobalPanel deviceUnlocked]) return NO;
-    for (UIView *view = self.dock; view; view = view.superview)
-        if (view.hidden || view.alpha < 0.01) return NO;
+    UIWindowScene *scene = self.dock.window.windowScene;
+    if (scene && scene.activationState != UISceneActivationStateForegroundActive) return NO;
     CGRect frame = [self.dock convertRect:self.dock.bounds toView:self.dock.window];
-    if (CGRectIsEmpty(CGRectIntersection(frame, self.dock.window.bounds))) return NO;
-    return DXKeyboardPanelBool(manager.prefs, kEnabledkey, YES) &&
-        DXKeyboardPanelBool(manager.prefs, kDXPanelGlobalEnabled, YES) &&
-        DXKeyboardPanelBool(manager.prefs, kDXPanelDockSwipeEnabled, YES);
+    if (CGRectIsNull(frame) || CGRectIsInfinite(frame) || CGRectIsEmpty(CGRectIntersection(frame, self.dock.window.bounds))) return NO;
+    return DXKeyboardPanelBool(manager.prefs, kEnabledkey, YES);
+}
+- (BOOL)hasAction:(NSString *)direction preferences:(NSDictionary *)preferences {
+    NSString *selector = DXDockGestureSelector(preferences, direction);
+    if (DXDockGesturePanelSide(selector)) return DXKeyboardPanelBool(preferences, kDXPanelGlobalEnabled, YES);
+    return DXIsLinkActionSelector(selector) && DXGlobalCustomActionSupported(DXDockGestureDefinition(preferences, selector, kLinkActionskey));
+}
+- (BOOL)validSession {
+    return self.snapshot && self.sourceWindow && [self available] && self.sourceWindow == self.dock.window &&
+        [self.snapshot isEqual:DXPrefsManager.sharedInstance.prefs] &&
+        CGRectEqualToRect(self.sourceFrame, [self.dock convertRect:self.dock.bounds toView:self.sourceWindow]) &&
+        CGRectEqualToRect(self.sourceBounds, self.sourceWindow.bounds);
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldReceiveTouch:(UITouch *)touch {
-    (void)gesture;
-    self.sourceWindow = nil;
-    self.opened = NO;
+    if (!NSThread.isMainThread || gesture != self.pan) return NO;
+    // A second finger invalidates the first finger's pending action as well.
+    if (self.snapshot && self.pan.numberOfTouches > 0) { [self invalidated:nil]; return NO; }
+    [self invalidated:nil];
     UIWindow *window = self.dock.window;
     if (window != self.installedWindow || touch.window != window) return NO;
     CGPoint point = [touch locationInView:window];
@@ -52,51 +98,87 @@ static void DXTryInstallGlobalPanelHooks(void);
     if (!DXDockPanelTouchIsBackground(self.dock, touch.view, point)) {
         if (!self.loggedRejectedTouch) {
             self.loggedRejectedTouch = YES;
-            NSLog(@"[TypeX][GlobalPanel] dock swipe rejected: icon/control hit=%@", NSStringFromClass(touch.view.class));
+            NSLog(@"[TypeX][DockGesture] rejected icon/control hit=%@", NSStringFromClass(touch.view.class));
         }
         return NO;
     }
-    if (![self enabled]) {
-        DXPrefsManager *manager = DXPrefsManager.sharedInstance;
-        NSLog(@"[TypeX][GlobalPanel] dock swipe gated prefs=%d enabled=%d global=%d dock=%d unlocked=%d panelVisible=%d",
-            manager.preferencesAvailable, DXKeyboardPanelBool(manager.prefs, kEnabledkey, YES),
-            DXKeyboardPanelBool(manager.prefs, kDXPanelGlobalEnabled, YES), DXKeyboardPanelBool(manager.prefs, kDXPanelDockSwipeEnabled, YES),
-            [DXGlobalPanel deviceUnlocked], [[DXGlobalPanel sharedInstance] isVisible]);
-        return NO;
-    }
+    if (![self available]) return NO;
+    NSDictionary *preferences = DXPrefsManager.sharedInstance.prefs;
+    BOOL active = NO;
+    for (NSString *direction in DXDockGestureDirections()) active |= [self hasAction:direction preferences:preferences];
+    if (!active) return NO;
     self.sourceWindow = self.dock.window;
-    NSLog(@"[TypeX][GlobalPanel] dock swipe tracking zone=%@ hit=%@",
+    self.snapshot = [preferences copy]; self.sourceFrame = frame; self.sourceBounds = window.bounds;
+    NSLog(@"[TypeX][DockGesture] tracking request=%lu zone=%@ hit=%@", (unsigned long)self.generation,
         point.y > CGRectGetMaxY(frame) ? @"below" : @"inside", NSStringFromClass(touch.view.class));
     return YES;
 }
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)recognizer {
-    if (![self enabled] || self.sourceWindow != self.dock.window || ![recognizer isKindOfClass:UIPanGestureRecognizer.class]) return NO;
+    if (recognizer != self.pan || ![self validSession]) { [self invalidated:nil]; return NO; }
     UIPanGestureRecognizer *pan = (UIPanGestureRecognizer *)recognizer;
     CGPoint delta = [pan translationInView:self.sourceWindow];
     if (CGPointEqualToPoint(delta, CGPointZero)) delta = [pan velocityInView:self.sourceWindow];
-    BOOL begins = isfinite(delta.x) && isfinite(delta.y) && delta.y < 0 && -delta.y >= fabs(delta.x) * 1.5;
-    if (!begins) self.sourceWindow = nil;
-    return begins;
+    NSString *direction = DXDockGestureDirection(delta.x, delta.y);
+    if (![self hasAction:direction preferences:self.snapshot]) { [self invalidated:nil]; return NO; }
+    self.direction = direction;
+    return YES;
+}
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer *)other {
+    // Only a configured Dock horizontal gesture receives precedence over a
+    // background pan. Disabled/unassigned directions fail in ShouldBegin.
+    return gesture == self.pan && !objc_getAssociatedObject(other, &DXDockRecognizerKey) &&
+        [other isKindOfClass:UIPanGestureRecognizer.class] && ![other isKindOfClass:UIScreenEdgePanGestureRecognizer.class] &&
+        [self validSession] && ([self hasAction:@"left" preferences:self.snapshot] || [self hasAction:@"right" preferences:self.snapshot]);
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other {
-    // SpringBoard's background pan must not prevent our bounded upward pan.
-    return gesture == self.pan && self.sourceWindow && [other isKindOfClass:UIPanGestureRecognizer.class];
+    if (!NSThread.isMainThread || gesture != self.pan) return NO;
+    // Preserve the existing upward-panel arbitration; horizontal gestures
+    // avoid requesting simultaneous Home Screen paging.
+    CGPoint delta = [self.pan translationInView:self.sourceWindow];
+    if (CGPointEqualToPoint(delta, CGPointZero)) delta = [self.pan velocityInView:self.sourceWindow];
+    NSString *direction = self.direction ?: DXDockGestureDirection(delta.x, delta.y);
+    return gesture == self.pan && [direction isEqual:@"up"] && [self hasAction:@"up" preferences:self.snapshot] && [self validSession] &&
+        !objc_getAssociatedObject(other, &DXDockRecognizerKey) && [other isKindOfClass:UIPanGestureRecognizer.class];
 }
-- (void)upwardPan:(UIPanGestureRecognizer *)gesture {
+- (void)dockPan:(UIPanGestureRecognizer *)gesture {
+    if (!NSThread.isMainThread || gesture != self.pan) return;
     if (gesture.state == UIGestureRecognizerStateCancelled || gesture.state == UIGestureRecognizerStateFailed) {
-        if (self.sourceWindow && !self.opened) NSLog(@"[TypeX][GlobalPanel] dock swipe cancelled state=%ld", (long)gesture.state);
-        self.sourceWindow = nil; self.opened = NO; return;
+        if (self.sourceWindow && !self.opened) NSLog(@"[TypeX][DockGesture] cancelled request=%lu state=%ld", (unsigned long)self.generation, (long)gesture.state);
+        [self invalidated:nil]; return;
     }
     if ((gesture.state == UIGestureRecognizerStateChanged || gesture.state == UIGestureRecognizerStateEnded) &&
-        !self.opened && [self enabled] && self.sourceWindow == self.dock.window) {
+        !self.opened && [self validSession] && [self hasAction:self.direction preferences:self.snapshot]) {
         CGPoint delta = [gesture translationInView:self.sourceWindow];
-        if (DXDockPanelSwipeCompletes(delta.x, delta.y)) {
+        NSString *selector = DXDockGestureSelector(self.snapshot, self.direction);
+        NSString *side = DXDockGesturePanelSide(selector);
+        // Keep the old up-to-panel timing. New horizontal and custom actions
+        // execute on release so cancellation never commits a pending action.
+        BOOL ready = gesture.state == UIGestureRecognizerStateEnded || (side && [self.direction isEqual:@"up"]);
+        if (ready && DXDockGestureCompletes(self.direction, delta.x, delta.y)) {
             self.opened = YES;
-            NSLog(@"[TypeX][GlobalPanel] dock swipe accepted");
-            [[DXGlobalPanel sharedInstance] presentSide:@"common" fromWindow:self.sourceWindow origin:@"dock"];
+            NSString *direction = self.direction;
+            NSUInteger request = self.generation;
+            NSLog(@"[TypeX][DockGesture] trigger request=%lu direction=%@ panel=%d", (unsigned long)request, direction, side != nil);
+            if (side) {
+                // The legacy 'dock' origin always forces the common profile.
+                [DXGlobalPanel.sharedInstance presentSide:side fromWindow:self.sourceWindow origin:@"dockgesture"];
+            } else {
+                NSDictionary *snapshot = self.snapshot;
+                __weak typeof(self) weakSelf = self;
+                __weak UIWindow *source = self.sourceWindow;
+                DXExecuteGlobalCustomAction(DXDockGestureDefinition(snapshot, selector, kLinkActionskey), ^(DXSystemOpenResult result) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        DXDockPanelGestureHandler *handler = weakSelf;
+                        BOOL current = handler && handler.generation == request && source && handler.dock.window == source &&
+                            [handler available] && [snapshot isEqual:DXPrefsManager.sharedInstance.prefs];
+                        NSLog(@"[TypeX][DockGesture] result request=%lu direction=%@ status=%llu current=%d",
+                            (unsigned long)request, direction, (unsigned long long)result, current);
+                    });
+                });
+            }
         }
     }
-    if (gesture.state == UIGestureRecognizerStateEnded) { self.sourceWindow = nil; self.opened = NO; }
+    if (gesture.state == UIGestureRecognizerStateEnded) [self clearSession];
 }
 @end
 
@@ -104,11 +186,11 @@ static void DXInstallDockPanelGesture(UIView *dock) {
     if (!NSThread.isMainThread) return;
     DXDockPanelGestureHandler *handler = objc_getAssociatedObject(dock, &DXDockPanelHandlerKey);
     if (handler && handler.installedWindow == dock.window && handler.pan.view == dock.window) return;
-    [handler.installedWindow removeGestureRecognizer:handler.pan];
+    [handler invalidated:nil];
+    handler.pan.enabled = NO;
+    if (handler.pan && handler.pan.view == handler.installedWindow) [handler.installedWindow removeGestureRecognizer:handler.pan];
     handler.pan = nil;
     handler.installedWindow = nil;
-    handler.sourceWindow = nil;
-    handler.opened = NO;
     if (!dock.window) {
         objc_setAssociatedObject(dock, &DXDockPanelHandlerKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         return;
@@ -116,16 +198,19 @@ static void DXInstallDockPanelGesture(UIView *dock) {
     handler = [DXDockPanelGestureHandler new];
     handler.dock = dock;
     handler.installedWindow = dock.window;
-    UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:handler action:@selector(upwardPan:)];
+    if (!DXDockGestureHandlers) DXDockGestureHandlers = [NSHashTable weakObjectsHashTable];
+    [DXDockGestureHandlers addObject:handler];
+    UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:handler action:@selector(dockPan:)];
     pan.minimumNumberOfTouches = 1;
     pan.maximumNumberOfTouches = 1;
     pan.cancelsTouchesInView = YES;
     pan.delaysTouchesBegan = NO;
     pan.delegate = handler;
     handler.pan = pan;
+    objc_setAssociatedObject(pan, &DXDockRecognizerKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(dock, &DXDockPanelHandlerKey, handler, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [dock.window addGestureRecognizer:pan];
-    NSLog(@"[TypeX][GlobalPanel] dock gesture installed class=%@ window=%@", NSStringFromClass(dock.class), NSStringFromClass(dock.window.class));
+    NSLog(@"[TypeX][DockGesture] installed directions=up,left,right class=%@ window=%@", NSStringFromClass(dock.class), NSStringFromClass(dock.window.class));
 }
 
 %group TypeXGlobalDock
@@ -140,6 +225,7 @@ static void DXInstallDockPanelGesture(UIView *dock) {
 %group TypeXGlobalTransition
 %hook SBMainSwitcherControllerCoordinator
 - (void)layoutStateTransitionCoordinator:(id)coordinator transitionDidBeginWithTransitionContext:(id)context {
+    for (DXDockPanelGestureHandler *handler in DXDockGestureHandlers.allObjects) [handler invalidated:nil];
     [[DXGlobalPanel sharedInstance] dismiss];
     %orig;
 }

@@ -1,6 +1,7 @@
 #import "DXPCustomActionViewController.h"
 #import "../DXKeyboardPanelPreferences.h"
 #import "../DXStatusBarGesturePolicy.h"
+#import "../DXDockGesturePolicy.h"
 #import "DXPSubActionPickerController.h"
 #import "DXPLinkActionEditorController.h"
 #import "../DXHelper.h"
@@ -86,6 +87,7 @@ static NSBundle *tweakBundle;
 // A deleted definition must not remain selected by another button or gesture.
 - (void)removeReferencesToSelector:(NSString *)selector fromPreferences:(NSMutableDictionary *)preferences {
     DXStatusBarRemoveActionReferences(preferences, selector);
+    DXDockGestureRemoveActionReferences(preferences, selector);
     NSMutableSet<NSString *> *keys = [NSMutableSet set];
     for (NSString *configuration in @[@"bottom", @"top"]) {
         for (NSInteger gesture = DXShortcutGestureLongPress; gesture <= DXShortcutGestureTap; gesture++) {
