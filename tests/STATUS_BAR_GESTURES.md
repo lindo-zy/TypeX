@@ -10,12 +10,14 @@
 
 动作选择修复（2026-10-03）：
 
-- 定位范围：Settings 中的动作行点击和绑定保存。原页面只设置 `buttonAction`，未设置行 `action`，没有显式传递被点击行的 specifier；保存槽位缺失时会直接返回，但页面仍退出。iOS 原生 Preferences 的具体分发行为尚未实机验证。
+- 问题表现：用户确认点击动作后返回，但仍显示未分配。
+- 根因（源码／替身复现）：选择页在 `viewDidLoad` 缓存 `statusBarSlot`。如果导航 specifier 稍后绑定，缓存仍为空，保存函数直接返回，选择页却无条件退出。对同一晚绑定场景调用修复前的生产方法，结果是 `returns=1 binding=unassigned`；修复后是 `returns=1 binding=__typex_statusbar_panel_left`。设备上 Preferences 的实际初始化时序尚未验证。
 - 修复：设置行 `action` 并在 table delegate 中显式传入对应 specifier；实时读取槽位，校验合法槽位和动作，读回确认写入后再退出。新增动作保存需匹配当前导航页面和原始槽位。
 - 本地：`python3 tests/run-statusbar-settings.py` 编译生产设置控制器，以 Preferences／导航替身验证 15 个槽位的面板和自定义动作选择、清空、添加／取消、写入失败、删除后选择和过期编辑回调。替身测试不代表原生 Preferences 点击已验证。
 - 设备验收：在 iOS 16／17 进入左区单击，分别选择面板和已有动作，返回后名称立即更新，退出设置再进入仍保留；添加系统动作保存后回到手势页，取消添加不改绑定，清空后显示未分配。重复测试其他区域和手势，确认不会串槽位；关闭手势开关后选动作不应自动开启。syslog 的 `[TypeX][StatusBarSettings] save slot=... field=selector success=1` 应只对应操作的槽位。
 - 边界：状态栏识别 Hook、动作执行器、键盘和 Dock 协议沿用现有实现。Dock 设置也使用 `buttonAction`，是否存在相同设备故障尚未确认，另行定位。
 - 已知测试问题：`run-gesture-actions.py` 在修复前的 `e575ecd` 也因生成的测试头未导入 Dock 策略而无法编译（`DXDockGestureRemoveActionReferences` 未声明）；本次未修改该通用测试脚本。状态栏配置／动作选择及设置资源测试独立通过。
+- 交付验证：生产设置控制器替身测试 823 项、状态栏配置 59 项、设置搜索／布局 4508 项及中文资源检查通过。修复合入 `dev` 后经 `./build.sh` 生成 4.1.10 两套包，验证 arm64／arm64e、iOS 最低版本、DEB 元数据、资源和安装／卸载脚本；iCloud 两端 SHA-256 一致，坚果云上传 2 个包并对账全部一致。实际安装／卸载、原生设置点击、手势执行及冷／热启动未验证。
 
 在 iOS 16／17 对应目标设备上：
 
