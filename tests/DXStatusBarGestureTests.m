@@ -45,6 +45,32 @@ int main(void) {
         check(!DXGlobalCustomActionSupported(@{@"type": @"javascript", @"link": @"app://"}));
         check(!DXGlobalCustomActionSupported(@{@"type": @"urlscheme", @"link": @"app://search?q=@@@"}));
         check(!DXGlobalCustomActionSupported(@[]));
+        check(DXStatusBarHostAllowed(@"SpringBoard", nil));
+        check(DXStatusBarHostAllowed(@"Safari", @"app"));
+        check(DXStatusBarHostAllowed(@"Safari", @"APP"));
+        check(!DXStatusBarHostAllowed(@"extension", @"appex"));
+        check(!DXStatusBarHostAllowed(@"daemon", nil));
+        for (NSString *slot in slots) {
+            NSDictionary *request = @{@"slot": slot, @"selector": @"__typex_statusbar_panel_common", @"landscape": @NO};
+            NSMutableDictionary *live = [@{kDXStatusBarEnabled: @YES,
+                kDXStatusBarBindings: @{slot: @{@"enabled": @YES, @"selector": request[@"selector"]}}} mutableCopy];
+            check(DXStatusBarRequestValid(request));
+            check([DXStatusBarRequestSelector(live, request, @"master") isEqual:request[@"selector"]]);
+            live[@"master"] = @NO; check(!DXStatusBarRequestSelector(live, request, @"master"));
+            live[@"master"] = @YES; live[kDXStatusBarEnabled] = @NO; check(!DXStatusBarRequestSelector(live, request, @"master"));
+            live[kDXStatusBarEnabled] = @YES;
+            NSMutableDictionary *changed = [request mutableCopy]; changed[@"selector"] = @"different";
+            check(!DXStatusBarRequestSelector(live, changed, @"master"));
+            changed[@"selector"] = request[@"selector"]; changed[@"landscape"] = @YES;
+            check(!DXStatusBarRequestSelector(live, changed, @"master"));
+            live[kDXStatusBarLandscape] = @YES; check(DXStatusBarRequestSelector(live, changed, @"master") != nil);
+        }
+        for (id malformed in @[@[], @{}, @{@"slot": @"left.tap.extra", @"selector": @"action", @"landscape": @NO},
+            @{@"slot": @"left.tap", @"selector": @"", @"landscape": @NO},
+            @{@"slot": @"left.tap", @"selector": @"action", @"landscape": @"NO"},
+            @{@"slot": @"left.tap", @"selector": @"action", @"landscape": @2},
+            @{@"slot": @"left.tap", @"selector": @"action", @"landscape": @NO, @"definition": @{}}])
+            check(!DXStatusBarRequestValid(malformed));
         printf("PASS: %lu status-bar configuration, region and action checks\n", (unsigned long)checks);
     }
     return 0;

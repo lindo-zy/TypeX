@@ -1,6 +1,7 @@
 #import "DXPGesturePickerController.h"
 #import "DXPSubActionsController.h"
 #import "DXPSFSymbolPickerController.h"
+#import "DXPGestureActionCell.h"
 #import "../DXHelper.h"
 #import "../DXShortcutsGenerator.h"
 #import "../common.h"
@@ -93,6 +94,19 @@ static NSBundle *tweakBundle;
 - (NSString *)selectedActionForGesture:(DXShortcutGestureType)gesture identifier:(NSString *)identifier {
     NSDictionary *prefs = [[DXPrefsManager sharedInstance] readPrefs];
     return DXGestureActionSelectors(prefs, identifier, (int)gesture, self.configuration).firstObject;
+}
+- (NSString *)readGestureActionSummary:(PSSpecifier *)specifier {
+    NSNumber *kind = [specifier propertyForKey:@"typexGestureType"];
+    if (![kind isKindOfClass:NSNumber.class]) return LOCALIZED(@"STATUS_BAR_UNASSIGNED");
+    NSString *identifier = self.pendingNewEntry ? kNewButtonPendingIdentifier : self.identifier;
+    NSArray *selectors = DXGestureActionSelectors([DXPrefsManager.sharedInstance readPrefs], identifier, kind.intValue, self.configuration);
+    NSMutableArray *names = [NSMutableArray array];
+    for (NSString *selector in selectors) {
+        NSString *name = [self canonicalEntryForSelector:selector][@"label"];
+        if (!name.length) name = [DXHelper localizedStringForActionNamed:selector shortName:NO bundle:tweakBundle];
+        if (name.length) [names addObject:name];
+    }
+    return names.count ? [names componentsJoinedByString:@" · "] : LOCALIZED(@"STATUS_BAR_UNASSIGNED");
 }
 
 // All preference stores that carry per-button entries: six gesture stores
@@ -438,8 +452,9 @@ static NSBundle *tweakBundle;
 
         for (NSArray *gestureRow in [self gestureRows]) {
             NSString *label = LOCALIZED(gestureRow[1]);
-            PSSpecifier *gestureSpec = [PSSpecifier preferenceSpecifierNamed:label target:nil set:nil get:nil detail:NSClassFromString(@"DXPSubActionsController") cell:PSLinkListCell edit:nil];
+            PSSpecifier *gestureSpec = [PSSpecifier preferenceSpecifierNamed:label target:self set:nil get:@selector(readGestureActionSummary:) detail:NSClassFromString(@"DXPSubActionsController") cell:PSLinkCell edit:nil];
             [gestureSpec setProperty:label forKey:@"label"];
+            [gestureSpec setProperty:gestureRow[0] forKey:@"typexGestureType"];
             [snippetEntrySpecifiers addObject:gestureSpec];
         }
 
@@ -474,6 +489,10 @@ static NSBundle *tweakBundle;
 // 显示组三行的 cell 定制：图标行 imageView 实时预览（键入即刷新，去重注册），
 // 名称行清掉复用残留的预览图，图标库行预览生效图标。
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *gestureItem = [self specifierAtIndexPath:indexPath];
+    if ([[gestureItem propertyForKey:@"typexGestureType"] isKindOfClass:NSNumber.class])
+        return DXPGestureActionCell(tableView, @"DXPToolbarGestureRecord", gestureItem.name, [self readGestureActionSummary:gestureItem], nil,
+            UITableViewCellAccessoryDisclosureIndicator);
     // 图标库行整行用自绘 cell（标准 textLabel/imageView/chevron），彻底绕开
     // PSTableCell 对无 detail PSLinkCell 的弱化灰渲染与私有标题标签——此前
     // 改 textLabel 颜色与按 textLabel 文本匹配点击全部落空即根因于此。
@@ -539,7 +558,7 @@ static NSBundle *tweakBundle;
     }
 
     // 图标库行：推入 SF 图标库；选中后经 setIconValue: 的既有校验回写并刷新。
-    // specifier 指针比对为主，标签匹配兜底（与下方手势行的匹配方式一致）。
+    // specifier 指针比对为主，标签匹配兜底。
     BOOL isLibraryRow = (self.iconLibrarySpec && [self specifierAtIndexPath:indexPath] == self.iconLibrarySpec) ||
         [cell.textLabel.text isEqualToString:LOCALIZED(@"ICON_LIBRARY_ROW")];
     if (isLibraryRow) {
@@ -577,17 +596,10 @@ static NSBundle *tweakBundle;
         return;
     }
 
-    // The custom name/icon rows are plain edit-text cells handled by
-    // Preferences; only gesture rows push the action editor. Rows are matched
-    // by label so the position of the row in the list does not matter here.
-    NSInteger gestureType = -1;
-    for (NSArray *gestureRow in [self gestureRows]) {
-        if ([cell.textLabel.text isEqualToString:LOCALIZED(gestureRow[1])]) {
-            gestureType = [gestureRow[0] integerValue];
-            break;
-        }
-    }
-    if (gestureType < 0) {
+    // Match the row's stable metadata, never a private Preferences label.
+    id kind = [[self specifierAtIndexPath:indexPath] propertyForKey:@"typexGestureType"];
+    NSInteger gestureType = [kind isKindOfClass:NSNumber.class] ? [kind integerValue] : -1;
+    if (gestureType < DXShortcutGestureLongPress || gestureType > DXShortcutGestureTap) {
         [tableView deselectRowAtIndexPath:indexPath animated:YES];
         return;
     }

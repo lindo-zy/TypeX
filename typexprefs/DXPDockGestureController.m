@@ -1,5 +1,6 @@
 #import "DXPDockGestureController.h"
 #import "DXPLinkActionEditorController.h"
+#import "DXPGestureActionCell.h"
 #import "../DXDockGesturePolicy.h"
 #import "../DXHelper.h"
 #import "../common.h"
@@ -18,7 +19,10 @@ static BOOL DXDockSaveSelector(NSString *direction, NSString *selector) {
     bindings[direction] = selector;
     preferences[kDXDockGestureBindings] = bindings;
     [manager writePrefs:preferences];
-    return YES;
+    id saved = [manager readPrefs][kDXDockGestureBindings];
+    BOOL success = [saved isKindOfClass:NSDictionary.class] && [saved[direction] isEqual:selector];
+    NSLog(@"[TypeX][DockSettings] save direction=%@ success=%d", direction, success);
+    return success;
 }
 
 @interface DXPDockActionPicker : PSListController
@@ -65,6 +69,13 @@ static BOOL DXDockSaveSelector(NSString *direction, NSString *selector) {
     NSString *name = DXGlobalPanelString(entry[@"name"]);
     return name.length ? name : DXDockLocalized(@"DEFAULT_BUTTON_NAME");
 }
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *item = [self specifierAtIndexPath:indexPath];
+    if (item.cellType == PSLinkCell && [item propertyForKey:@"dockDirection"])
+        return DXPGestureActionCell(tableView, @"DXPDockActionRecord", item.name, [self readActionName:item], nil,
+            UITableViewCellAccessoryDisclosureIndicator);
+    return [super tableView:tableView cellForRowAtIndexPath:indexPath];
+}
 @end
 
 @implementation DXPDockActionPicker
@@ -78,7 +89,7 @@ static BOOL DXDockSaveSelector(NSString *direction, NSString *selector) {
 - (PSSpecifier *)action:(NSString *)name selector:(NSString *)selector {
     PSSpecifier *item = [PSSpecifier preferenceSpecifierNamed:name target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
     [item setProperty:selector forKey:@"actionSelector"];
-    [item setButtonAction:@selector(selectAction:)];
+    item->action = @selector(selectAction:);
     return item;
 }
 - (NSArray *)specifiers {
@@ -102,7 +113,7 @@ static BOOL DXDockSaveSelector(NSString *direction, NSString *selector) {
         [items addObject:item];
     }
     PSSpecifier *add = [PSSpecifier preferenceSpecifierNamed:DXDockLocalized(@"ADD") target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
-    [add setButtonAction:@selector(addAction:)]; [items addObject:add];
+    add->action = @selector(addAction:); [items addObject:add];
     _specifiers = items; return items;
 }
 - (void)selectAction:(PSSpecifier *)specifier {
@@ -113,6 +124,25 @@ static BOOL DXDockSaveSelector(NSString *direction, NSString *selector) {
         [self reloadSpecifiers]; return;
     }
     if (DXDockSaveSelector(self.direction, selector)) [self.navigationController popViewControllerAnimated:YES];
+}
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *item = [self specifierAtIndexPath:indexPath];
+    if (item && (item->action == @selector(selectAction:) || item->action == @selector(addAction:))) {
+        NSString *chosen = DXGlobalPanelString(DXDockGestureConfiguredSelector([DXPrefsManager.sharedInstance readPrefs], self.direction));
+        BOOL checked = [chosen isEqual:[item propertyForKey:@"actionSelector"]];
+        return DXPGestureActionCell(tableView, @"DXPDockActionChoice", item.name, nil, [item propertyForKey:@"iconImage"],
+            checked ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone);
+    }
+    return [super tableView:tableView cellForRowAtIndexPath:indexPath];
+}
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *item = [self specifierAtIndexPath:indexPath];
+    if (item && (item->action == @selector(selectAction:) || item->action == @selector(addAction:))) {
+        [tableView deselectRowAtIndexPath:indexPath animated:YES];
+        if (item->action == @selector(selectAction:)) [self selectAction:item]; else [self addAction:item];
+        return;
+    }
+    [super tableView:tableView didSelectRowAtIndexPath:indexPath];
 }
 - (void)addAction:(PSSpecifier *)specifier {
     (void)specifier;
@@ -131,18 +161,22 @@ static BOOL DXDockSaveSelector(NSString *direction, NSString *selector) {
         @"icon": [DXPLinkActionEditorController defaultIconForType:type], @"link": @""} mutableCopy];
     __weak typeof(self) weakSelf = self;
     __weak DXPLinkActionEditorController *weakEditor = editor;
+    NSString *direction = [self.direction copy];
+    __block BOOL completed = NO;
     editor.completion = ^(NSDictionary *entry) {
         DXPDockActionPicker *picker = weakSelf;
-        if (!picker || ![picker.navigationController.viewControllers containsObject:picker] ||
-            picker.navigationController.topViewController != weakEditor || !DXDockGestureEnabledKey(picker.direction)) return;
+        if (completed || !picker || ![picker.direction isEqual:direction] || ![picker.navigationController.viewControllers containsObject:picker] ||
+            picker.navigationController.topViewController != weakEditor || !DXDockGestureEnabledKey(direction)) return;
         DXPrefsManager *manager = DXPrefsManager.sharedInstance;
         NSMutableDictionary *preferences = [[manager readPrefs] mutableCopy];
         if (!preferences || ![entry isKindOfClass:NSDictionary.class] || !DXIsLinkActionSelector(entry[@"selector"])) return;
         id stored = preferences[kLinkActionskey];
         NSMutableArray *definitions = [stored isKindOfClass:NSArray.class] ? [stored mutableCopy] : [NSMutableArray array];
         [definitions addObject:entry]; preferences[kLinkActionskey] = definitions;
+        completed = YES;
         [manager writePrefs:preferences];
-        if (DXGlobalCustomActionSupported(entry)) picker.selectAfterSave = DXDockSaveSelector(picker.direction, entry[@"selector"]);
+        if (DXGlobalCustomActionSupported(DXDockGestureDefinition([manager readPrefs], entry[@"selector"], kLinkActionskey)))
+            picker.selectAfterSave = DXDockSaveSelector(direction, entry[@"selector"]);
     };
     [editor setRootController:self.rootController]; [editor setParentController:self]; [self pushController:editor];
 }

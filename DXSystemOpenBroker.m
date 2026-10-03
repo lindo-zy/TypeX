@@ -5,6 +5,10 @@
 #import "DXSystemActionExecutor.h"
 #import "DXPanelControlState.h"
 #import "DXKeyboardPanelPreferences.h"
+#import "DXStatusBarGesturePolicy.h"
+#import "DXGlobalPanelPolicy.h"
+#import "DXGlobalPanel.h"
+#import "DXGlobalActionExecutor.h"
 #import <notify.h>
 #import "common.h"
 #import <objc/message.h>
@@ -60,6 +64,36 @@ static void DXPerformSystemOpen(NSDictionary *request, DXSystemOpenReply reply) 
     NSString *kind = request[@"kind"];
     NSString *payload = request[@"payload"];
     if (![kind isKindOfClass:NSString.class] || ![payload isKindOfClass:NSString.class] || !payload.length) {
+        reply(DXSystemOpenInvalid);
+        return;
+    }
+    if ([kind isEqual:@"statusbar-gesture"]) {
+        NSTimeInterval age = NSDate.date.timeIntervalSince1970 - [request[@"created"] doubleValue];
+        if (!(age >= 0 && age <= 1.5)) { reply(DXSystemOpenExpired); return; }
+        NSData *data = [payload dataUsingEncoding:NSUTF8StringEncoding];
+        id binding = data.length <= 1024 ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+        if (!DXStatusBarRequestValid(binding)) { reply(DXSystemOpenInvalid); return; }
+        DXPrefsManager *manager = DXPrefsManager.sharedInstance;
+        [manager reload];
+        NSString *selector = manager.preferencesAvailable ? DXStatusBarRequestSelector(manager.prefs, binding, kEnabledkey) : nil;
+        if (!selector || ![DXGlobalPanel deviceUnlocked] || [DXGlobalPanel.sharedInstance isVisible]) {
+            NSLog(@"[TypeX][StatusBarGesture] dispatch rejected slot=%@ gate=binding/lock/panel", binding[@"slot"]);
+            reply(DXSystemOpenUnavailable); return;
+        }
+        NSLog(@"[TypeX][StatusBarGesture] dispatch slot=%@", binding[@"slot"]);
+        NSString *side = DXStatusBarPanelSide(selector);
+        if (side) {
+            [DXGlobalPanel.sharedInstance presentSide:side fromWindow:nil origin:@"statusbar"];
+            reply([DXGlobalPanel.sharedInstance isVisible] ? DXSystemOpenSucceeded : DXSystemOpenUnavailable);
+            return;
+        }
+        id definitions = manager.prefs[kLinkActionskey];
+        for (id entry in [definitions isKindOfClass:NSArray.class] ? definitions : @[]) {
+            if (![entry isKindOfClass:NSDictionary.class] || ![entry[@"selector"] isEqual:selector]) continue;
+            if (!DXIsLinkActionSelector(selector) || !DXGlobalCustomActionSupported(entry)) { reply(DXSystemOpenInvalid); return; }
+            DXExecuteGlobalCustomAction(entry, reply);
+            return;
+        }
         reply(DXSystemOpenInvalid);
         return;
     }
@@ -187,6 +221,14 @@ static void DXSubmitSystemOpen(NSString *kind, NSString *payload, DXSystemOpenRe
         return;
     }
     DXSendDarwinOpenRequest(kind, payload, reply);
+}
+
+void DXRequestStatusBarGesture(NSString *slot, NSString *expectedSelector, BOOL landscape, DXSystemOpenReply reply) {
+    NSDictionary *request = @{@"slot": slot ?: @"", @"selector": expectedSelector ?: @"", @"landscape": @(landscape)};
+    if (!DXStatusBarRequestValid(request)) { if (reply) reply(DXSystemOpenInvalid); return; }
+    NSData *data = [NSJSONSerialization dataWithJSONObject:request options:0 error:nil];
+    if (!data.length || data.length > 1024) { if (reply) reply(DXSystemOpenInvalid); return; }
+    DXSubmitSystemOpen(@"statusbar-gesture", [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding], reply);
 }
 
 void DXOpenSystemApplication(NSString *bundleIdentifier, DXSystemOpenReply reply) {

@@ -1,5 +1,6 @@
 #import "DXPStatusBarGestureController.h"
 #import "DXPLinkActionEditorController.h"
+#import "DXPGestureActionCell.h"
 #import "../DXStatusBarGesturePolicy.h"
 #import "../DXGlobalPanelPolicy.h"
 #import "../DXHelper.h"
@@ -18,6 +19,15 @@ static NSDictionary *DXStatusDefinition(NSDictionary *preferences, NSString *sel
     for (id entry in definitions)
         if ([entry isKindOfClass:NSDictionary.class] && [entry[@"selector"] isEqual:selector]) return entry;
     return nil;
+}
+static NSString *DXStatusActionName(NSDictionary *preferences, NSString *slot) {
+    NSString *selector = DXGlobalPanelString(DXStatusBarBinding(preferences, slot)[@"selector"]);
+    NSString *side = DXStatusBarPanelSide(selector);
+    if (side) return DXStatusLocalized([@"STATUS_BAR_PANEL_" stringByAppendingString:side.uppercaseString]);
+    NSDictionary *entry = DXStatusDefinition(preferences, selector);
+    if (!DXIsLinkActionSelector(selector) || !DXGlobalCustomActionSupported(entry)) return DXStatusLocalized(@"STATUS_BAR_UNASSIGNED");
+    NSString *name = DXGlobalPanelString(entry[@"name"]);
+    return name.length ? name : DXStatusLocalized(@"DEFAULT_BUTTON_NAME");
 }
 static BOOL DXStatusSlotValid(NSString *slot) {
     if (![slot isKindOfClass:NSString.class]) return NO;
@@ -53,6 +63,7 @@ static BOOL DXStatusSaveBinding(NSString *slot, NSString *field, id value) {
 
 @implementation DXPStatusBarGestureController
 - (void)viewDidLoad { [super viewDidLoad]; self.title = DXStatusLocalized(@"STATUS_BAR_SETTINGS"); }
+- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self reloadSpecifiers]; }
 - (PSSpecifier *)toggle:(NSString *)title key:(NSString *)key {
     PSSpecifier *item = [PSSpecifier preferenceSpecifierNamed:DXStatusLocalized(title) target:self
         set:@selector(setPreferenceValue:specifier:) get:@selector(readPreferenceValue:) detail:nil cell:PSSwitchCell edit:nil];
@@ -87,6 +98,14 @@ static BOOL DXStatusSaveBinding(NSString *slot, NSString *field, id value) {
     NSString *key = [specifier propertyForKey:@"key"];
     if (key.length) [[DXPrefsManager sharedInstance] setValue:@(DXStatusBarFlag(value)) forKey:key];
 }
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *item = [self specifierAtIndexPath:indexPath];
+    NSString *slot = [item propertyForKey:@"statusBarSlot"];
+    if (item.cellType == PSLinkCell && slot.length)
+        return DXPGestureActionCell(tableView, @"DXPStatusGestureRecord", item.name,
+            DXStatusActionName([DXPrefsManager.sharedInstance readPrefs], slot), nil, UITableViewCellAccessoryDisclosureIndicator);
+    return [super tableView:tableView cellForRowAtIndexPath:indexPath];
+}
 @end
 
 @implementation DXPStatusBarGestureEntryController
@@ -116,12 +135,14 @@ static BOOL DXStatusSaveBinding(NSString *slot, NSString *field, id value) {
     return @(DXStatusBarFlag(DXStatusBarBinding([[DXPrefsManager sharedInstance] readPrefs], [specifier propertyForKey:@"statusBarSlot"])[@"enabled"]));
 }
 - (id)readActionName:(PSSpecifier *)specifier {
-    NSDictionary *preferences = [[DXPrefsManager sharedInstance] readPrefs];
-    NSString *selector = DXGlobalPanelString(DXStatusBarBinding(preferences, [specifier propertyForKey:@"statusBarSlot"])[@"selector"]);
-    NSString *side = DXStatusBarPanelSide(selector);
-    NSDictionary *entry = DXStatusDefinition(preferences, selector);
-    NSString *name = side ? DXStatusLocalized([@"STATUS_BAR_PANEL_" stringByAppendingString:side.uppercaseString]) : DXGlobalPanelString(entry[@"name"]);
-    return name.length && (side || DXGlobalCustomActionSupported(entry)) ? name : DXStatusLocalized(@"STATUS_BAR_UNASSIGNED");
+    return DXStatusActionName([DXPrefsManager.sharedInstance readPrefs], [specifier propertyForKey:@"statusBarSlot"]);
+}
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *item = [self specifierAtIndexPath:indexPath];
+    if (item.cellType == PSLinkCell)
+        return DXPGestureActionCell(tableView, @"DXPStatusActionRecord", item.name, [self readActionName:item], nil,
+            UITableViewCellAccessoryDisclosureIndicator);
+    return [super tableView:tableView cellForRowAtIndexPath:indexPath];
 }
 - (void)setPreferenceValue:(id)value specifier:(PSSpecifier *)specifier {
     DXStatusSaveBinding([specifier propertyForKey:@"statusBarSlot"], @"enabled", @(DXStatusBarFlag(value)));
@@ -183,6 +204,16 @@ static BOOL DXStatusSaveBinding(NSString *slot, NSString *field, id value) {
     NSDictionary *entry = DXStatusDefinition([[DXPrefsManager sharedInstance] readPrefs], selector);
     if (!DXStatusBarPanelSide(selector) && (!DXIsLinkActionSelector(selector) || !DXGlobalCustomActionSupported(entry))) { [self reloadSpecifiers]; return; }
     if (DXStatusSaveBinding(self.slot, @"selector", selector)) [self.navigationController popViewControllerAnimated:YES];
+}
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *item = [self specifierAtIndexPath:indexPath];
+    if (item && (item->action == @selector(selectAction:) || item->action == @selector(addAction:))) {
+        NSString *chosen = DXGlobalPanelString(DXStatusBarBinding([DXPrefsManager.sharedInstance readPrefs], self.slot)[@"selector"]);
+        BOOL checked = chosen.length && [chosen isEqual:[item propertyForKey:@"actionSelector"]];
+        return DXPGestureActionCell(tableView, @"DXPStatusActionChoice", item.name, nil, [item propertyForKey:@"iconImage"],
+            checked ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone);
+    }
+    return [super tableView:tableView cellForRowAtIndexPath:indexPath];
 }
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     // The row owns the action payload; pass its specifier explicitly.

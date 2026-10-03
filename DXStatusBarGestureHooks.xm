@@ -1,6 +1,6 @@
 #import "DXStatusBarGestures.h"
 #import "DXStatusBarGesturePolicy.h"
-#import "DXGlobalActionExecutor.h"
+#import "DXSystemOpenBroker.h"
 #import "DXGlobalPanel.h"
 #import "DXGlobalPanelPolicy.h"
 #import "DXKeyboardPanelPreferences.h"
@@ -35,13 +35,22 @@ static BOOL DXIsStatusView(UIView *view) {
 @property(nonatomic, weak) UIView *anchor;
 @property(nonatomic, weak) UIWindow *window;
 @property(nonatomic, strong) NSArray<UIGestureRecognizer *> *recognizers;
+@property(nonatomic, copy) NSString *lastRejection;
+@property(nonatomic, copy) NSString *lastConfiguration;
 - (void)refresh;
 - (BOOL)available;
+- (BOOL)reject:(NSString *)reason;
 - (BOOL)hasAction:(NSString *)kind region:(NSString *)region preferences:(NSDictionary *)preferences;
 - (void)recognized:(UIGestureRecognizer *)gesture;
 @end
 
 @implementation DXStatusGestureHandler
+- (BOOL)reject:(NSString *)reason {
+    if (![self.lastRejection isEqual:reason])
+        NSLog(@"[TypeX][StatusBarGesture] rejected host=%@ gate=%@", NSProcessInfo.processInfo.processName, reason);
+    self.lastRejection = reason;
+    return NO;
+}
 - (void)dealloc {
     UIWindow *window = _window;
     NSArray *recognizers = _recognizers;
@@ -49,19 +58,25 @@ static BOOL DXIsStatusView(UIView *view) {
     else dispatch_async(dispatch_get_main_queue(), ^{ for (UIGestureRecognizer *gesture in recognizers) { gesture.enabled = NO; [window removeGestureRecognizer:gesture]; } });
 }
 - (BOOL)available {
-    if (!NSThread.isMainThread || !self.anchor || !self.window || self.anchor.window != self.window || self.window.hidden ||
-        ![DXGlobalPanel deviceUnlocked] || [DXGlobalPanel.sharedInstance isVisible]) return NO;
-    for (UIView *view = self.anchor; view; view = view.superview) if (view.hidden || view.alpha < 0.01) return NO;
+    if (!NSThread.isMainThread) return NO;
+    if (!self.anchor || !self.window || self.anchor.window != self.window || self.window.hidden) return [self reject:@"window"];
+    BOOL springBoard = [NSProcessInfo.processInfo.processName isEqual:@"SpringBoard"];
+    if (springBoard) {
+        if (![DXGlobalPanel deviceUnlocked] || [DXGlobalPanel.sharedInstance isVisible]) return [self reject:@"lock/panel"];
+    } else if (UIApplication.sharedApplication.applicationState != UIApplicationStateActive) return [self reject:@"inactive-app"];
+    for (UIView *view = self.anchor; view; view = view.superview) if (view.hidden || view.alpha < 0.01) return [self reject:@"hidden-anchor"];
     UIWindowScene *scene = self.window.windowScene;
-    if (scene && scene.activationState != UISceneActivationStateForegroundActive) return NO;
+    if (scene && scene.activationState != UISceneActivationStateForegroundActive) return [self reject:@"inactive-scene"];
     DXPrefsManager *manager = DXPrefsManager.sharedInstance;
-    if (!manager.preferencesAvailable || !DXKeyboardPanelBool(manager.prefs, kEnabledkey, YES) || !DXStatusBarFlag(manager.prefs[kDXStatusBarEnabled])) return NO;
+    if (!manager.preferencesAvailable) [manager reload];
+    if (!manager.preferencesAvailable || !DXKeyboardPanelBool(manager.prefs, kEnabledkey, YES) || !DXStatusBarFlag(manager.prefs[kDXStatusBarEnabled])) return [self reject:@"preferences/enabled"];
     UIInterfaceOrientation orientation = self.window.windowScene.interfaceOrientation;
     BOOL landscape = UIInterfaceOrientationIsLandscape(orientation) ||
         (orientation == UIInterfaceOrientationUnknown && self.window.bounds.size.width > self.window.bounds.size.height);
-    if (landscape && !DXStatusBarFlag(manager.prefs[kDXStatusBarLandscape])) return NO;
+    if (landscape && !DXStatusBarFlag(manager.prefs[kDXStatusBarLandscape])) return [self reject:@"landscape-disabled"];
     CGRect frame = [self.anchor convertRect:self.anchor.bounds toView:self.window];
-    return !CGRectIsEmpty(frame) && !CGRectIsEmpty(CGRectIntersection(frame, self.window.bounds));
+    if (CGRectIsEmpty(frame) || CGRectIsEmpty(CGRectIntersection(frame, self.window.bounds))) return [self reject:@"geometry"];
+    return YES;
 }
 - (BOOL)hasAction:(NSString *)kind region:(NSString *)region preferences:(NSDictionary *)preferences {
     NSString *selector = DXStatusBarSelector(preferences, DXStatusBarSlot(region, kind));
@@ -76,6 +91,16 @@ static BOOL DXIsStatusView(UIView *view) {
 - (void)refresh {
     if (!NSThread.isMainThread) return;
     NSDictionary *preferences = DXPrefsManager.sharedInstance.prefs;
+    NSUInteger configured = 0;
+    for (NSString *region in DXStatusBarRegions()) for (NSString *kind in DXStatusBarGestures())
+        if ([self hasAction:kind region:region preferences:preferences]) configured++;
+    NSString *summary = [NSString stringWithFormat:@"%d/%d/%lu", DXPrefsManager.sharedInstance.preferencesAvailable,
+        DXStatusBarFlag(preferences[kDXStatusBarEnabled]), (unsigned long)configured];
+    if (![self.lastConfiguration isEqual:summary]) {
+        self.lastConfiguration = summary;
+        NSLog(@"[TypeX][StatusBarGesture] config host=%@ available=%d enabled=%d slots=%lu", NSProcessInfo.processInfo.processName,
+            DXPrefsManager.sharedInstance.preferencesAvailable, DXStatusBarFlag(preferences[kDXStatusBarEnabled]), (unsigned long)configured);
+    }
     for (UIGestureRecognizer *gesture in self.recognizers) {
         gesture.enabled = NO;
         objc_setAssociatedObject(gesture, &DXStatusSessionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -95,7 +120,7 @@ static BOOL DXIsStatusView(UIView *view) {
     if (![self available] || touch.window != self.window) return NO;
     // Leave native controls and the system's Live Activity affordances alone.
     for (UIView *view = touch.view; view && view != self.window; view = view.superview) {
-        if ([view isKindOfClass:UIControl.class] || [NSStringFromClass(view.class) containsString:@"Aperture"]) return NO;
+        if ([view isKindOfClass:UIControl.class] || [NSStringFromClass(view.class) containsString:@"Aperture"]) return [self reject:@"native-control"];
     }
     CGPoint point = [touch locationInView:self.anchor];
     NSString *region = DXStatusBarRegion(point.x, point.y, self.anchor.bounds.size.width, self.anchor.bounds.size.height);
@@ -105,6 +130,7 @@ static BOOL DXIsStatusView(UIView *view) {
     BOOL enabled = [kind isEqual:@"horizontal"] ? ([self hasAction:@"leftswipe" region:region preferences:preferences] ||
         [self hasAction:@"rightswipe" region:region preferences:preferences]) : [self hasAction:kind region:region preferences:preferences];
     if (!enabled) return NO;
+    self.lastRejection = nil;
     DXStatusGestureSession *previous = objc_getAssociatedObject(gesture, &DXStatusSessionKey);
     if ([kind isEqual:@"doubletap"] && touch.tapCount > 1 && previous &&
         (![previous.region isEqual:region] || ![previous.preferences isEqual:preferences])) return NO;
@@ -158,20 +184,17 @@ static BOOL DXIsStatusView(UIView *view) {
     session.dispatched = YES;
     NSString *slot = DXStatusBarSlot(session.region, kind);
     NSString *selector = DXStatusBarSelector(session.preferences, slot);
-    NSLog(@"[TypeX][StatusBarGesture] trigger slot=%@", slot);
+    NSLog(@"[TypeX][StatusBarGesture] trigger host=%@ slot=%@", NSProcessInfo.processInfo.processName, slot);
     if (DXKeyboardPanelBool(session.preferences, kEnabledHaptickey, YES)) {
         UIImpactFeedbackGenerator *feedback = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
         [feedback impactOccurred];
     }
-    NSString *side = DXStatusBarPanelSide(selector);
-    if (side) { [DXGlobalPanel.sharedInstance presentSide:side fromWindow:self.window origin:@"statusbar"]; return; }
-    for (id entry in session.preferences[kLinkActionskey]) {
-        if (![entry isKindOfClass:NSDictionary.class] || ![entry[@"selector"] isEqual:selector]) continue;
-        DXExecuteGlobalCustomAction(entry, ^(DXSystemOpenResult result) {
-            NSLog(@"[TypeX][StatusBarGesture] result slot=%@ status=%llu", slot, (unsigned long long)result);
-        });
-        return;
-    }
+    UIInterfaceOrientation orientation = self.window.windowScene.interfaceOrientation;
+    BOOL landscape = UIInterfaceOrientationIsLandscape(orientation) ||
+        (orientation == UIInterfaceOrientationUnknown && self.window.bounds.size.width > self.window.bounds.size.height);
+    DXRequestStatusBarGesture(slot, selector, landscape, ^(DXSystemOpenResult result) {
+        NSLog(@"[TypeX][StatusBarGesture] result host=%@ slot=%@ status=%llu", NSProcessInfo.processInfo.processName, slot, (unsigned long long)result);
+    });
 }
 @end
 
@@ -214,7 +237,8 @@ static void DXInstallStatusGestures(UIView *view) {
     [DXStatusHandlers addObject:handler];
     for (UIGestureRecognizer *gesture in recognizers) [anchor.window addGestureRecognizer:gesture];
     [handler refresh];
-    NSLog(@"[TypeX][StatusBarGesture] installed view=%@ window=%@", NSStringFromClass(anchor.class), NSStringFromClass(anchor.window.class));
+    NSLog(@"[TypeX][StatusBarGesture] installed host=%@ view=%@ window=%@", NSProcessInfo.processInfo.processName,
+        NSStringFromClass(anchor.class), NSStringFromClass(anchor.window.class));
 }
 
 static void DXScanStatusViews(UIView *view) {
@@ -266,7 +290,7 @@ static void DXTryStatusHooks(void) {
 }
 
 void DXStartStatusBarGestures(void) {
-    if (![NSProcessInfo.processInfo.processName isEqual:@"SpringBoard"]) return;
+    if (!DXStatusBarHostAllowed(NSProcessInfo.processInfo.processName, NSBundle.mainBundle.bundleURL.pathExtension)) return;
     dispatch_async(dispatch_get_main_queue(), ^{
         static dispatch_once_t once;
         dispatch_once(&once, ^{
@@ -277,6 +301,16 @@ void DXStartStatusBarGestures(void) {
                 for (DXStatusGestureHandler *handler in DXStatusHandlers.allObjects) [handler refresh];
             }];
             [center addObserverForName:UIApplicationDidFinishLaunchingNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) { DXTryStatusHooks(); }];
+            [center addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) {
+                [DXPrefsManager.sharedInstance reload];
+                DXTryStatusHooks();
+                for (DXStatusGestureHandler *handler in DXStatusHandlers.allObjects) [handler refresh];
+            }];
+            for (NSString *name in @[UIApplicationWillResignActiveNotification, UISceneWillDeactivateNotification]) {
+                [center addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) {
+                    for (DXStatusGestureHandler *handler in DXStatusHandlers.allObjects) [handler refresh];
+                }];
+            }
             [center addObserverForName:UIDeviceOrientationDidChangeNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) {
                 for (DXStatusGestureHandler *handler in DXStatusHandlers.allObjects) [handler refresh];
             }];

@@ -23,7 +23,7 @@ cleanup = controller[controller.index("- (void)removeReferencesToSelector:"):
 with tempfile.TemporaryDirectory(prefix="typex-gesture-tests-") as tmp:
     tmp = pathlib.Path(tmp)
     (tmp / "GestureProduction.h").write_text(
-        '#import <Foundation/Foundation.h>\n#import "DXKeyboardPanelPreferences.h"\n#import "DXToolbarGesturePolicy.h"\n#import "DXStatusBarGesturePolicy.h"\n' + defines + "\n" + numeric_defines + "\n" + scoped + capacity + gestures +
+        '#import <Foundation/Foundation.h>\n#import "DXKeyboardPanelPreferences.h"\n#import "DXToolbarGesturePolicy.h"\n#import "DXStatusBarGesturePolicy.h"\n#import "DXDockGesturePolicy.h"\n' + defines + "\n" + numeric_defines + "\n" + scoped + capacity + gestures +
         '\n@interface GestureCleanup : NSObject\n'
         '- (void)removeReferencesToSelector:(NSString *)selector fromPreferences:(NSMutableDictionary *)preferences;\n'
         '@end\n@implementation GestureCleanup\n' + cleanup + '@end\n')

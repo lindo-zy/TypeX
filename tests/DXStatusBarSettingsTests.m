@@ -7,6 +7,17 @@ static PSSpecifier *rowForAction(PSListController *controller, SEL callback, NSS
         if (row->action == callback && (!selector || [[row propertyForKey:@"actionSelector"] isEqual:selector])) return row;
     return nil;
 }
+static NSIndexPath *pathForRow(PSListController *controller, PSSpecifier *row) {
+    NSInteger section = -1, rowIndex = -1;
+    for (PSSpecifier *item in controller.specifiers) {
+        if (item.cellType == PSGroupCell) { section++; rowIndex = -1; } else rowIndex++;
+        if (item == row) { NSUInteger indexes[] = {(NSUInteger)section, (NSUInteger)rowIndex}; return [NSIndexPath indexPathWithIndexes:indexes length:2]; }
+    }
+    check(NO); return nil;
+}
+static UITableViewCell *render(PSListController *controller, PSSpecifier *row) {
+    return [controller tableView:[UITableView new] cellForRowAtIndexPath:pathForRow(controller, row)];
+}
 static void click(PSSpecifier *row) {
     check(row && row->action && [row.target respondsToSelector:row->action]);
     PSListController *controller = row.target;
@@ -59,10 +70,24 @@ int main(void) {
             check([DXStatusBarBinding(manager.preferences, slot)[@"enabled"] isEqual:@NO]);
             check(picker.navigationController.pops == 1);
             check([manager.preferences[@"unrelated"] isEqual:@42]);
+            DXPStatusBarActionPicker *reopened = pickerForSlot(slot);
+            NSUInteger checked = 0;
+            for (PSSpecifier *choice in reopened.specifiers) if (choice.cellType == PSButtonCell) {
+                UITableViewCell *cell = render(reopened, choice);
+                BOOL selected = [selector isEqual:[choice propertyForKey:@"actionSelector"]];
+                check((cell.accessoryType == UITableViewCellAccessoryCheckmark) == selected);
+                check(!!(cell.accessibilityTraits & UIAccessibilityTraitSelected) == selected);
+                if (selected) checked++;
+            }
+            check(checked == 1);
             for (NSString *other in bindings) if (![other isEqual:slot]) check([DXStatusBarBinding(manager.preferences, other) isEqual:bindings[other]]);
 
             DXPStatusBarGestureEntryController *entry = [DXPStatusBarGestureEntryController new];
             entry.specifier = picker.specifier;
+            for (PSSpecifier *record in entry.specifiers) if (record.cellType == PSLinkCell)
+                check([render(entry, record).detailTextLabel.text isEqual:DXStatusActionName(manager.preferences, slot)]);
+            for (PSSpecifier *record in root.specifiers) if ([[record propertyForKey:@"statusBarSlot"] isEqual:slot])
+                check([render(root, record).detailTextLabel.text isEqual:DXStatusActionName(manager.preferences, slot)]);
             click(rowForAction(entry, @selector(clearAction:), nil));
             check(!DXStatusBarBinding(manager.preferences, slot)[@"selector"]);
             check([DXStatusBarBinding(manager.preferences, slot)[@"enabled"] isEqual:@NO]);
@@ -119,6 +144,45 @@ int main(void) {
             check(manager.writes == writes && !picker.selectAfterSave && [manager.preferences isEqual:baseline]);
             if (changedSlot) break;
         }
+        for (NSString *direction in DXDockGestureDirections()) for (NSString *selector in @[@"", @"__typex_dock_panel_right", custom]) {
+            manager.preferences = @{kLinkActionskey: @[definition], kDXDockGestureBindings: @{direction: selector}, @"unrelated": @42};
+            DXPDockActionPicker *dock = [DXPDockActionPicker new]; dock.specifier = [PSSpecifier new];
+            [dock.specifier setProperty:direction forKey:@"dockDirection"];
+            dock.navigationController = [UINavigationController new]; dock.navigationController.viewControllers = @[[PSViewController new], dock];
+            NSUInteger checked = 0;
+            for (PSSpecifier *choice in dock.specifiers) if (choice.cellType == PSButtonCell) {
+                BOOL selected = [selector isEqual:[choice propertyForKey:@"actionSelector"]];
+                check((render(dock, choice).accessoryType == UITableViewCellAccessoryCheckmark) == selected);
+                if (selected) checked++;
+            }
+            check(checked == 1);
+            DXPDockGestureController *settings = [DXPDockGestureController new];
+            for (PSSpecifier *record in settings.specifiers) if (record.cellType == PSLinkCell && [[record propertyForKey:@"dockDirection"] isEqual:direction])
+                check([render(settings, record).detailTextLabel.text isEqual:[settings readActionName:record]]);
+            click(rowForAction(dock, @selector(selectAction:), @"__typex_dock_panel_left"));
+            check(dock.navigationController.pops == 1 && [DXDockGestureConfiguredSelector(manager.preferences, direction) isEqual:@"__typex_dock_panel_left"]);
+            check([manager.preferences[@"unrelated"] isEqual:@42]);
+        }
+        ToolbarGestureRecord *record = [ToolbarGestureRecord new]; record.identifier = @"button";
+        record.fullOrder = @[@{@"selector": @"copy:", @"label": @"Copy"}, @{@"selector": @"paste:", @"label": @"Paste"}];
+        for (NSString *configuration in @[@"top", @"bottom"]) for (NSInteger kind = DXShortcutGestureLongPress; kind <= DXShortcutGestureTap; kind++) {
+            record.configuration = configuration; record.pendingNewEntry = NO;
+            PSSpecifier *item = [PSSpecifier new]; [item setProperty:@(kind) forKey:@"typexGestureType"];
+            NSString *key = DXCustomActionsKeyForGesture((int)kind, configuration);
+            manager.preferences = @{key: @[@{@"identifier": record.identifier, @"selectors": @[@"copy:", custom, @"paste:"]}], kLinkActionskey: @[definition]};
+            check([[record readGestureActionSummary:item] isEqual:@"Copy · Safari · Paste"]);
+            manager.preferences = @{key: @[@{@"identifier": record.identifier, @"selectors": @[]}]};
+            check([[record readGestureActionSummary:item] isEqual:LOCALIZED(@"STATUS_BAR_UNASSIGNED")]);
+            record.pendingNewEntry = YES;
+            manager.preferences = @{key: @[@{@"identifier": kNewButtonPendingIdentifier, @"selectors": @[@"paste:"]}]};
+            check([[record readGestureActionSummary:item] isEqual:@"Paste"]);
+            record.configuration = [configuration isEqual:@"top"] ? @"bottom" : @"top";
+            check([[record readGestureActionSummary:item] isEqual:LOCALIZED(@"STATUS_BAR_UNASSIGNED")]);
+        }
+        UITableView *reuseTable = [UITableView new];
+        reuseTable.reusableCell = DXPGestureActionCell(reuseTable, @"choice", @"Selected", @"Record", [UIImage new], UITableViewCellAccessoryCheckmark);
+        UITableViewCell *reused = DXPGestureActionCell(reuseTable, @"choice", @"Other", nil, nil, UITableViewCellAccessoryNone);
+        check(reused == reuseTable.reusableCell && !reused.detailTextLabel.text && !reused.imageView.image && !(reused.accessibilityTraits & UIAccessibilityTraitSelected));
         printf("PASS: %lu production status-bar Settings row-action, persistence, isolation and lifecycle checks (Preferences/UI doubles)\n", (unsigned long)checks);
     }
     return 0;

@@ -11,6 +11,10 @@ static NSDictionary *TestQuickAction(void) {
     return @{@"bundleID": @"com.example.shortcuts", @"shortcutType": @"item.中文/\"quoted\""};
 }
 
+static NSDictionary *TestStatusBarGesture(void) {
+    return @{@"slot": @"middle.doubletap", @"selector": @"__typex_statusbar_panel_common", @"landscape": @NO};
+}
+
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
         if (argc < 2) return 64;
@@ -25,6 +29,10 @@ int main(int argc, const char *argv[]) {
                 if ([request[@"kind"] isEqualToString:@"quick-action"]) {
                     NSData *data = [request[@"payload"] dataUsingEncoding:NSUTF8StringEncoding];
                     equal = [[NSJSONSerialization JSONObjectWithData:data options:0 error:nil] isEqual:TestQuickAction()];
+                }
+                if ([request[@"kind"] isEqualToString:@"statusbar-gesture"]) {
+                    NSData *data = [request[@"payload"] dataUsingEncoding:NSUTF8StringEncoding];
+                    equal = [[NSJSONSerialization JSONObjectWithData:data options:0 error:nil] isEqual:TestStatusBarGesture()];
                 }
                 if ([mode isEqualToString:@"server-silent-reply"]) {
                     DXOpenPending *staged = [DXOpenPending new];
@@ -43,7 +51,7 @@ int main(int argc, const char *argv[]) {
             puts("READY"); fflush(stdout);
             dispatch_main();
         }
-        if ([mode isEqualToString:@"send"] || [mode isEqualToString:@"send-quick"] || [mode isEqualToString:@"absent"] ||
+        if ([mode isEqualToString:@"send"] || [mode isEqualToString:@"send-quick"] || [mode isEqualToString:@"send-statusbar"] || [mode isEqualToString:@"absent"] ||
             [mode isEqualToString:@"oversize"] || [mode isEqualToString:@"expired"]) {
             BOOL absent = [mode isEqualToString:@"absent"];
             BOOL oversize = [mode isEqualToString:@"oversize"];
@@ -51,7 +59,9 @@ int main(int argc, const char *argv[]) {
             BOOL quick = [mode isEqualToString:@"send-quick"];
             if (quick) payload = [[NSString alloc] initWithData:[NSJSONSerialization dataWithJSONObject:TestQuickAction() options:0 error:nil]
                                                      encoding:NSUTF8StringEncoding];
-            DXSendDarwinOpenRequest(quick ? @"quick-action" : @"sensitive-url", payload, ^(DXSystemOpenResult result) {
+            BOOL statusbar = [mode isEqualToString:@"send-statusbar"];
+            if (statusbar) payload = [[NSString alloc] initWithData:[NSJSONSerialization dataWithJSONObject:TestStatusBarGesture() options:0 error:nil] encoding:NSUTF8StringEncoding];
+            DXSendDarwinOpenRequest(statusbar ? @"statusbar-gesture" : (quick ? @"quick-action" : @"sensitive-url"), payload, ^(DXSystemOpenResult result) {
                 DXSystemOpenResult expected = absent ? DXSystemOpenTimedOut : (oversize ? DXSystemOpenInvalid :
                     ([mode isEqualToString:@"expired"] ? DXSystemOpenExpired : DXSystemOpenSucceeded));
                 // Repost the consumed doorbell; the server must not execute twice.

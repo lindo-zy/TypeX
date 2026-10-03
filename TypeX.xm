@@ -1380,12 +1380,12 @@ static void shortcutRefreshRequestCallback(CFNotificationCenterRef center,
                                                                  name:UIKeyboardWillHideNotification
                                                                object:nil];
                     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, reloadPrefsNotificationCallback, (CFStringRef)kPrefsChangedIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+                    DXStartStatusBarGestures();
                     if (isSpringBoard) {
                         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, shortcutRefreshRequestCallback, (CFStringRef)kShortcutRefreshRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, aiChatRequestCallback, (CFStringRef)kAIChatRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                         DXStartSystemOpenBroker();
                         DXStartGlobalPanel();
-                        DXStartStatusBarGestures();
                         uint32_t pullOverStatus = notify_register_check(kPullOverOpenRequestIdentifier.UTF8String,
                                                                        &gPullOverOpenStateToken);
                         if (pullOverStatus == NOTIFY_STATUS_OK) {
