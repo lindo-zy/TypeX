@@ -35,11 +35,17 @@
     [self updateValueLabel];
 }
 - (void)updateValueLabel {
-    BOOL columns = [[self.specifier propertyForKey:@"key"] isEqual:kDXPanelColumns];
+    BOOL columns = [self isColumnsSpecifier];
     self.settingValue.text = [NSString stringWithFormat:columns ? @"%ld 个" : @"%ld%%", (long)lroundf(self.slider.value)];
 }
+// Per-side pages store the profile key in "key" and the shared base key in
+// "legacyKey" (DXPKeyboardPanelController -setting:key:...); match on the base.
+- (BOOL)isColumnsSpecifier {
+    NSString *baseKey = [self.specifier propertyForKey:@"legacyKey"] ?: [self.specifier propertyForKey:@"key"];
+    return [baseKey isEqual:kDXPanelColumns];
+}
 - (void)changed:(UISlider *)sender {
-    BOOL columns = [[self.specifier propertyForKey:@"key"] isEqual:kDXPanelColumns];
+    BOOL columns = [self isColumnsSpecifier];
     sender.value = columns ? lroundf(sender.value) : lroundf(sender.value / 5) * 5;
     [self updateValueLabel];
     [self.specifier performSetterWithValue:@(sender.value)];
