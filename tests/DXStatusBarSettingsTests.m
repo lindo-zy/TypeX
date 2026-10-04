@@ -8,6 +8,12 @@ static PSSpecifier *rowForAction(PSListController *controller, SEL callback, NSS
         if (row->action == callback && (!selector || [[row propertyForKey:@"actionSelector"] isEqual:selector])) return row;
     return nil;
 }
+static PSSpecifier *toolbarRow(PSListController *controller, NSString *configuration, NSString *direction) {
+    for (PSSpecifier *item in controller.specifiers)
+        if ([[item propertyForKey:@"toolbarConfiguration"] isEqual:configuration] &&
+            [[item propertyForKey:@"toolbarDirection"] isEqual:direction]) return item;
+    return nil;
+}
 static NSIndexPath *pathForRow(PSListController *controller, PSSpecifier *row) {
     NSInteger section = -1, rowIndex = -1;
     for (PSSpecifier *item in controller.specifiers) {
@@ -169,6 +175,60 @@ int main(void) {
             click(rowForAction(dock, @selector(selectAction:), @"__typex_panel_test-left"));
             check(dock.navigationController.pops == 1 && [DXDockGestureConfiguredSelector(manager.preferences, direction) isEqual:@"__typex_panel_test-left"]);
             check([manager.preferences[@"unrelated"] isEqual:@42]);
+        }
+        // Compile and exercise the actual toolbar Settings controller. The
+        // parent list used to return Preferences' plain cell with no record.
+        for (NSString *configuration in @[@"top", @"bottom"]) for (NSString *direction in @[@"left", @"right"]) {
+            NSString *slot = DXToolbarBindingSlot(configuration, direction);
+            NSDictionary *originalBindings = @{@"top.left": @"copyAction:", @"top.right": custom,
+                @"bottom.left": @"pasteAction:", @"bottom.right": @"__typex_panel_keyboard-only"};
+            manager.preferences = @{kDXPanels: DXTestMixedPanels(), kLinkActionskey: @[definition],
+                kDXToolbarBindings: originalBindings, kDXPanelTopEnabled: @NO, kDXPanelBottomEnabled: @NO, @"unrelated": @42};
+            DXPKeyboardGestureController *settings = [DXPKeyboardGestureController new];
+            PSSpecifier *bindingRow = toolbarRow(settings, configuration, direction);
+            check(bindingRow != nil);
+            DXPToolbarBindingController *editor = [DXPToolbarBindingController new];
+            [editor viewDidLoad]; editor.specifier = bindingRow; // Late specifier assignment.
+            editor.navigationController = [UINavigationController new];
+            editor.navigationController.viewControllers = @[settings, editor];
+            for (NSString *selector in @[@"__typex_panel_keyboard-only", custom, @"copyAction:"]) {
+                [editor chooseAction:rowForAction(editor, @selector(chooseAction:), nil)];
+                DXPSubActionPickerController *picker = editor.navigationController.topViewController;
+                check([picker.selectedSelector isEqual:DXToolbarAction(manager.preferences, configuration, direction)]);
+                picker.completion(selector);
+                NSUInteger savedWrites = manager.writes; picker.completion(selector); check(manager.writes == savedWrites);
+                [editor.navigationController popViewControllerAnimated:NO];
+                [editor viewWillAppear:NO]; [settings viewWillAppear:NO];
+                bindingRow = toolbarRow(settings, configuration, direction);
+                NSString *expected = [selector isEqual:custom] ? @"Safari" : [selector isEqual:@"copyAction:"] ? @"copyAction:" : @"Keyboard only";
+                UITableViewCell *cell = render(settings, bindingRow);
+                check([cell.detailTextLabel.text isEqual:expected]);
+                check(cell.accessoryType == UITableViewCellAccessoryDisclosureIndicator && [cell.textLabel.text isEqual:bindingRow.name]);
+                check([render(editor, rowForAction(editor, @selector(chooseAction:), nil)).detailTextLabel.text isEqual:expected]);
+                DXPKeyboardGestureController *reopened = [DXPKeyboardGestureController new];
+                check([render(reopened, toolbarRow(reopened, configuration, direction)).detailTextLabel.text isEqual:expected]);
+                check([manager.preferences[@"unrelated"] isEqual:@42]);
+                check([manager.preferences[kDXPanelTopEnabled] isEqual:@NO] && [manager.preferences[kDXPanelBottomEnabled] isEqual:@NO]);
+                for (NSString *other in originalBindings) if (![other isEqual:slot])
+                    check([manager.preferences[kDXToolbarBindings][other] isEqual:originalBindings[other]]);
+            }
+            manager.ignoreWrites = YES;
+            check(![editor saveSelector:custom]);
+            check([render(settings, bindingRow).detailTextLabel.text isEqual:@"copyAction:"]);
+            manager.ignoreWrites = NO;
+            check(![editor saveSelector:@"__typex_panel_test-left"]); // Wrong panel kind.
+            check([editor saveSelector:custom]);
+            NSMutableDictionary *renamed = [manager.preferences mutableCopy];
+            NSMutableDictionary *renamedDefinition = [definition mutableCopy]; renamedDefinition[@"name"] = @"Renamed browser";
+            renamed[kLinkActionskey] = @[renamedDefinition]; manager.preferences = renamed;
+            check([render(settings, bindingRow).detailTextLabel.text isEqual:@"Renamed browser"]);
+            renamed[kLinkActionskey] = @[]; manager.preferences = renamed;
+            check([render(settings, bindingRow).detailTextLabel.text isEqual:DXGestureLocalized(@"STATUS_BAR_UNASSIGNED")]);
+            click(rowForAction(editor, @selector(clearAction:), nil));
+            check([manager.preferences[kDXToolbarBindings][slot] isEqual:@""]);
+            check([render(settings, bindingRow).detailTextLabel.text isEqual:DXGestureLocalized(@"STATUS_BAR_UNASSIGNED")]);
+            manager.preferences = nil;
+            check([render(settings, bindingRow).detailTextLabel.text isEqual:DXGestureLocalized(@"STATUS_BAR_UNASSIGNED")]);
         }
         ToolbarGestureRecord *record = [ToolbarGestureRecord new]; record.identifier = @"button";
         record.fullOrder = @[@{@"selector": @"copy:", @"label": @"Copy"}, @{@"selector": @"paste:", @"label": @"Paste"}];

@@ -142,6 +142,31 @@ typedef NS_ENUM(NSInteger, PSCellType) { PSGroupCell, PSLinkCell, PSSwitchCell, 
 @end
 @interface DXPStatusBarGestureController : PSListController @end
 @interface DXPDockGestureController : PSListController @end
+@interface DXPGestureSettingsController : PSListController @end
+@interface DXPSubActionPickerController : PSListController
+@property(nonatomic, copy) NSString *actionContextKind, *selectedSelector;
+@property(nonatomic, copy) NSArray *fullOrder;
+@property(nonatomic, copy) void (^completion)(NSString *);
+@end
+@implementation DXPSubActionPickerController @end
+@interface DXShortcutsGenerator : NSObject
+@property(nonatomic, readonly) NSArray *selectorNames;
++ (instancetype)sharedInstance;
++ (BOOL)isVisibleShortcutSelector:(NSString *)selector;
++ (BOOL)isShellXScreenshotAvailable;
++ (BOOL)isKayokoInstalled;
++ (BOOL)isPullOverXInstalled;
+- (NSArray *)imageNameArrayForiOS:(NSInteger)version;
+@end
+@implementation DXShortcutsGenerator
++ (instancetype)sharedInstance { static DXShortcutsGenerator *generator; if (!generator) generator = [self new]; return generator; }
+- (NSArray *)selectorNames { return @[@"copyAction:", @"pasteAction:"]; }
+- (NSArray *)imageNameArrayForiOS:(NSInteger)version { (void)version; return @[@"doc.on.doc", @"doc.on.clipboard"]; }
++ (BOOL)isVisibleShortcutSelector:(NSString *)selector { (void)selector; return YES; }
++ (BOOL)isShellXScreenshotAvailable { return NO; }
++ (BOOL)isKayokoInstalled { return NO; }
++ (BOOL)isPullOverXInstalled { return NO; }
+@end
 
 typedef NS_ENUM(NSInteger, UIAlertActionStyle) { UIAlertActionStyleDefault, UIAlertActionStyleCancel };
 typedef NS_ENUM(NSInteger, UIAlertControllerStyle) { UIAlertControllerStyleAlert };
