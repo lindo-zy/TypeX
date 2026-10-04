@@ -455,7 +455,7 @@ void DXStartStatusBarGestures(void) {
                 DXTryStatusHooks();
                 if ([note.object isKindOfClass:UIWindow.class]) DXScanStatusViews(note.object);
             }];
-            for (NSString *name in @[UIApplicationDidFinishLaunchingNotification, UISceneDidConnectNotification, UISceneDidActivateNotification]) {
+            for (NSString *name in @[UIApplicationDidFinishLaunchingNotification, UISceneWillConnectNotification, UISceneDidActivateNotification]) {
                 [center addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) { DXTryStatusHooks(); }];
             }
             [center addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) {
