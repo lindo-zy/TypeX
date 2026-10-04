@@ -77,3 +77,5 @@ syslog 只记录模块、宿主、槽位、类名和状态，不写设备日志�
 | iOS 17 | `packages/ios17/com.lindo.typex_4.2.8_ios17_iphoneos-arm64e.deb` | 1163674 | `75833b1137d1fa93052640f2b96cf63685a222c58ed97cb1755d8de245a155c5` |
 
 核心功能、安装／卸载、冷／热启动：未验证。包和本地测试成功不等于用户 iOS 16 故障设备已修复。
+
+两套包已分别 `cp` 到 iCloud 的 `Downloads/TypeX/ios16` 与 `ios17`，归档后 `shasum -a 256` 两端均与上表一致；旧版本保留。`python3 webdav-sync.py TypeX` 退出 0，上传 2 个、大小一致跳过 137 个，最终全部对账一致。版本与构建记录提交为 `1b495e6`；`.zcodeignore` 与开始时 SHA-256 一致，未纳入提交。成功构建只有链接器 `-multiply_defined is obsolete` 告警，没有编译错误。
