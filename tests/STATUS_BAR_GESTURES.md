@@ -75,3 +75,12 @@
 - 本地回归：配置策略 174 项、生产处理器 183 项（新增容器切换、窗口手势复用、anchor 悬空可用、窗口身份会话 4 类场景）、转发／发送 22 项通过；全套 run-*.py 退出码 0。UIKit 替身测试没有运行设备触摸。
 - 实机验收（尚未执行）：iOS 16／17 冷／热启动，桌面与 App 内分别触发灵动岛中区单击应各执行一次所选动作；设置→桌面→设置来回切换后仍生效；长按展开、实时活动、拖动、锁屏不误发。若仍失效，抓 syslog `[TypeX][StatusBarGesture]` 的 `installed`／`rejected gate=…`／`touch … view=类名` 序列——`touch` 的 view 类名可直接暴露桌面形态下真实接收触摸的视图类，用于判断是否存在 `SBSystemApertureContainerView` 之外的入口类需要补充。
 - 入口类覆盖面核实（2026-10-04，公开 [iOS 17 SBSystemApertureViewController 转储](https://github.com/MTACS/iOS-17-Runtime-Headers/blob/main/PrivateFrameworks/SpringBoard.framework/SBSystemApertureViewController.h)）：岛控制器经 `_newContainerViewWithInterfaceElementIdentifier:` 动态创建多个 `SBSystemApertureContainerView` 实例（`_orderedContainerViews` 按 rank 管理、含 outgoing/incoming 切换），锁屏／桌面／前台 App 的岛元素全部由这一个类承载，不存在需要另行 Hook 的第二入口类；多实例并存切换即本次修复针对的形态。转储证实结构，不证明设备触摸行为。
+
+iOS 17 系统状态栏入口补齐（2026-10-04）：
+
+- 问题：用户反馈状态栏手势只在设置界面生效，桌面及其他界面不响应。本次覆盖普通状态栏入口；前轮灵动岛容器切换修复不足以覆盖此路径。
+- 根因（源码／替身确认）：视图识别和 Hook 注册只包含 `UIStatusBar`、`UIStatusBar_Modern`、`_UIStatusBar`。公开 iOS 17 [SBStatusBarWindow 转储](https://github.com/MTACS/iOS-17-Runtime-Headers/blob/main/PrivateFrameworks/SpringBoard.framework/SBStatusBarWindow.h) 的状态栏属性为 `STUIStatusBar_Wrapper`；[Wrapper 转储](https://github.com/MTACS/iOS-17-Runtime-Headers/blob/main/PrivateFrameworks/SystemStatusUI.framework/STUIStatusBar_Wrapper.h) 继承 `UIStatusBar_Base`，内部 [STUIStatusBar 转储](https://github.com/MTACS/iOS-17-Runtime-Headers/blob/main/PrivateFrameworks/SystemStatusUI.framework/STUIStatusBar.h) 直接继承 `UIView`，两者均不是原三类的子类。按这套继承关系运行修复前生产安装代码，识别器数量为 0。转储与替身证明入口遗漏，不能证明设置与其他 App 的实际触摸归属或此次设备失效的全部原因。
+- 方案／实现：补齐两个 SystemStatusUI 类的识别及独立 Hook，保留所有 UIKit 入口；注册前检查视图继承关系及 `didMoveToWindow` 方法 ABI。窗口显示时重试 Hook 注册并扫描已有／当前窗口，覆盖框架延迟加载；每个 Hook 只注册一次，嵌套 Wrapper／Core 使用原安装函数按外层锚点去重。安装、触摸及执行继续在主线程；配置、锁屏、Scene 和原生控件保护沿用。
+- 涉及文件／修改边界：`DXStatusBarGestureHooks.xm`、状态栏测试入口／处理器／UIKit 替身及本记录。配置格式、跨进程协议、动作执行器、灵动岛、Dock、键盘和设置资源未修改。
+- 本地验证：状态栏配置策略 174 项、生产处理器／扫描／Hook 注册决策 402 项、生产转发／发送 22 项通过。新增测试按真实继承关系延迟注册两个 SystemStatusUI 类，在 SpringBoard／Preferences／MobileSafari 替身宿主验证三分区五手势各执行一次、嵌套扫描去重、Hook 重试去重、窗口切换取消旧会话及解绑清理；同一测试对修复前 `63ecd7a` 的生产代码在 SystemStatusUI 视图识别断言失败。Logos 注册用记录替身，不代表真实注入已验证。
+- 实机验收（尚未执行）：iOS 16／17 注销后先在桌面触发，再切换设置→桌面→Safari／微信，并分别测试冷／热启动的三分区五手势；每次只执行一次，关闭开关／清空槽位后保持系统行为。锁屏、隐藏状态栏、旋转、窗口切换、双击与单击竞争、上下拖动不能误发。iOS 17 syslog 应出现 `[TypeX][StatusBarGesture] hook ... class=STUIStatusBar_Wrapper／STUIStatusBar`、`installed ... view=STUIStatusBar_Wrapper`，继而为 `touch`→`trigger`→`dispatch`／`result`；失败时按 `rejected ... gate=...` 继续定位。日志仅记录进程、类名及槽位，设备不写日志文件。

@@ -4,6 +4,7 @@ typedef NS_ENUM(NSInteger, UIInterfaceOrientation) { UIInterfaceOrientationUnkno
 static inline BOOL UIInterfaceOrientationIsLandscape(UIInterfaceOrientation value) { return value == UIInterfaceOrientationLandscapeLeft || value == UIInterfaceOrientationLandscapeRight; }
 @interface UIApplication : NSObject
 @property(nonatomic) UIApplicationState applicationState;
+@property(nonatomic, copy) NSArray<UIWindow *> *windows;
 + (instancetype)sharedApplication;
 @end
 @interface UIWindowScene (StatusBarTests)
@@ -29,6 +30,14 @@ typedef NS_ENUM(NSInteger, UIImpactFeedbackStyle) { UIImpactFeedbackStyleLight }
 - (instancetype)initWithStyle:(UIImpactFeedbackStyle)style;
 - (void)impactOccurred;
 @end
-@interface UIStatusBar : UIView @end
+@interface UIView (StatusBarLifecycleTests)
+- (void)didMoveToWindow;
+@end
+@interface UIStatusBar_Base : UIView @end
+@interface UIStatusBar : UIStatusBar_Base @end
+@interface UIStatusBar_Modern : UIStatusBar_Base @end
 @interface _UIStatusBar : UIView @end
+// Registered at test time to exercise classes appearing after initial setup.
+@interface STUIStatusBar_Wrapper : UIStatusBar_Base @end
+@interface STUIStatusBar : UIView @end
 @interface SBSystemApertureContainerView : UIView @end

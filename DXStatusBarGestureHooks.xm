@@ -15,9 +15,12 @@ static void DXTryStatusHooks(void);
 static void DXInstallStatusGestures(UIView *view);
 
 static BOOL DXIsStatusView(UIView *view) {
-    for (NSString *name in @[@"UIStatusBar", @"UIStatusBar_Modern", @"_UIStatusBar"]) {
+    // iOS 17's system status bar uses SystemStatusUI classes that are siblings
+    // of the UIKit implementations, rather than subclasses of them.
+    for (NSString *name in @[@"UIStatusBar", @"UIStatusBar_Modern", @"_UIStatusBar",
+                            @"STUIStatusBar_Wrapper", @"STUIStatusBar"]) {
         Class cls = NSClassFromString(name);
-        if (cls && [view isKindOfClass:cls]) return YES;
+        if (cls && [cls isSubclassOfClass:UIView.class] && [view isKindOfClass:cls]) return YES;
     }
     return NO;
 }
@@ -321,6 +324,16 @@ static void DXScanStatusViews(UIView *view) {
 - (void)didMoveToWindow { %orig; DXInstallStatusGestures((UIView *)self); }
 %end
 %end
+%group TypeXSystemStatusBarWrapper
+%hook STUIStatusBar_Wrapper
+- (void)didMoveToWindow { %orig; DXInstallStatusGestures((UIView *)self); }
+%end
+%end
+%group TypeXSystemStatusBarCore
+%hook STUIStatusBar
+- (void)didMoveToWindow { %orig; DXInstallStatusGestures((UIView *)self); }
+%end
+%end
 %group TypeXStatusBarAperture
 %hook SBSystemApertureContainerView
 - (void)didMoveToWindow { %orig; DXInstallStatusGestures((UIView *)self); }
@@ -330,12 +343,16 @@ static void DXScanStatusViews(UIView *view) {
 static void DXTryStatusHooks(void) {
     if (!NSThread.isMainThread) return;
     static BOOL wrapperInstalled = NO, coreInstalled = NO, modernInstalled = NO, apertureInstalled = NO, loggedUnavailable = NO;
+    static BOOL systemWrapperInstalled = NO, systemCoreInstalled = NO;
     Class wrapper = NSClassFromString(@"UIStatusBar") ?: NSClassFromString(@"UIStatusBar_Modern");
     Class core = NSClassFromString(@"_UIStatusBar");
     Class modern = NSClassFromString(@"UIStatusBar_Modern");
+    Class systemWrapper = NSClassFromString(@"STUIStatusBar_Wrapper");
+    Class systemCore = NSClassFromString(@"STUIStatusBar");
     Class aperture = [NSProcessInfo.processInfo.processName isEqual:@"SpringBoard"] ? NSClassFromString(@"SBSystemApertureContainerView") : Nil;
     SEL selector = @selector(didMoveToWindow);
-    for (Class cls in @[wrapper ?: NSObject.class, core ?: NSObject.class, modern ?: NSObject.class, aperture ?: NSObject.class]) {
+    for (Class cls in @[wrapper ?: NSObject.class, core ?: NSObject.class, modern ?: NSObject.class,
+                       systemWrapper ?: NSObject.class, systemCore ?: NSObject.class, aperture ?: NSObject.class]) {
         if (![cls isSubclassOfClass:UIView.class]) continue;
         Method method = class_getInstanceMethod(cls, selector);
         if (!method) continue;
@@ -344,13 +361,21 @@ static void DXTryStatusHooks(void) {
         if (cls == wrapper && !wrapperInstalled) { %init(TypeXStatusBarWrapper, UIStatusBar = wrapper); wrapperInstalled = YES; }
         if (cls == core && !coreInstalled) { %init(TypeXStatusBarCore, _UIStatusBar = core); coreInstalled = YES; }
         if (cls == modern && modern != wrapper && !modernInstalled) { %init(TypeXStatusBarModern, UIStatusBar_Modern = modern); modernInstalled = YES; }
+        if (cls == systemWrapper && !systemWrapperInstalled) {
+            %init(TypeXSystemStatusBarWrapper, STUIStatusBar_Wrapper = systemWrapper); systemWrapperInstalled = YES;
+            NSLog(@"[TypeX][StatusBarGesture] hook host=%@ class=%@", NSProcessInfo.processInfo.processName, NSStringFromClass(cls));
+        }
+        if (cls == systemCore && !systemCoreInstalled) {
+            %init(TypeXSystemStatusBarCore, STUIStatusBar = systemCore); systemCoreInstalled = YES;
+            NSLog(@"[TypeX][StatusBarGesture] hook host=%@ class=%@", NSProcessInfo.processInfo.processName, NSStringFromClass(cls));
+        }
         if (cls == aperture && !apertureInstalled) { %init(TypeXStatusBarAperture, SBSystemApertureContainerView = aperture); apertureInstalled = YES; }
     }
     #pragma clang diagnostic push
     #pragma clang diagnostic ignored "-Wdeprecated-declarations"
     for (UIWindow *window in UIApplication.sharedApplication.windows) DXScanStatusViews(window);
     #pragma clang diagnostic pop
-    if (!wrapperInstalled && !coreInstalled && !modernInstalled && !loggedUnavailable) {
+    if (!wrapperInstalled && !coreInstalled && !modernInstalled && !systemWrapperInstalled && !systemCoreInstalled && !loggedUnavailable) {
         loggedUnavailable = YES;
         NSLog(@"[TypeX][StatusBarGesture] unavailable: status-bar classes missing");
     }
@@ -364,6 +389,9 @@ void DXStartStatusBarGestures(void) {
             DXStatusHandlers = [NSHashTable weakObjectsHashTable];
             NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
             [center addObserverForName:UIWindowDidBecomeVisibleNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+                // A system window can become visible after SystemStatusUI loads.
+                // Retry class hooks as well as scanning this notification's window.
+                DXTryStatusHooks();
                 if ([note.object isKindOfClass:UIWindow.class]) DXScanStatusViews(note.object);
                 for (DXStatusGestureHandler *handler in DXStatusHandlers.allObjects) [handler refresh];
             }];

@@ -40,6 +40,9 @@ void DXRequestStatusBarGesture(NSString *slot, NSString *selector, BOOL landscap
 @implementation UIApplication
 + (instancetype)sharedApplication { static UIApplication *app; if (!app) app = [self new]; return app; }
 @end
+@implementation UIView (StatusBarLifecycleTests)
+- (void)didMoveToWindow {}
+@end
 @implementation UIWindowScene (StatusBarTests)
 - (UIInterfaceOrientation)interfaceOrientation { return [objc_getAssociatedObject(self, @selector(interfaceOrientation)) integerValue]; }
 - (void)setInterfaceOrientation:(UIInterfaceOrientation)value { objc_setAssociatedObject(self, @selector(interfaceOrientation), @(value), OBJC_ASSOCIATION_RETAIN_NONATOMIC); }
@@ -64,10 +67,19 @@ void DXRequestStatusBarGesture(NSString *slot, NSString *selector, BOOL landscap
 - (instancetype)initWithStyle:(UIImpactFeedbackStyle)style { (void)style; return [super init]; }
 - (void)impactOccurred {}
 @end
+@implementation UIStatusBar_Base @end
 @implementation UIStatusBar @end
+@implementation UIStatusBar_Modern @end
 @implementation _UIStatusBar @end
 @implementation SBSystemApertureContainerView @end
 #include "StatusHandler.inc"
+static NSMutableDictionary<NSString *, NSNumber *> *hookInstallCounts;
+static void DXTestInstallHook(NSString *group, Class cls) {
+    check([cls isSubclassOfClass:UIView.class], @"hook registration only receives a view class");
+    hookInstallCounts[NSStringFromClass(cls)] = @([hookInstallCounts[NSStringFromClass(cls)] unsignedIntegerValue] + 1);
+    (void)group;
+}
+#include "StatusHookInstaller.inc"
 @interface DXStatusGestureHandler (ArbitrationRegression)
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer *)other;
 @end
@@ -224,6 +236,64 @@ int main(void) {
         check(islandWindow.gestureRecognizers.count == 0, @"ordinary status-bar detach clears its remaining gestures");
         NSProcessInfo.processInfo.processName = originalProcess;
         check(!DXIsApertureView(island), @"island hooks do not activate in host apps");
+
+        // Runtime hierarchy from iOS 17: neither SystemStatusUI class inherits
+        // UIStatusBar, UIStatusBar_Modern, or _UIStatusBar. Load them only after
+        // the initial hook attempt, then exercise scanning and retries.
+        hookInstallCounts = [NSMutableDictionary dictionary];
+        check(!NSClassFromString(@"STUIStatusBar_Wrapper") && !NSClassFromString(@"STUIStatusBar"), @"SystemStatusUI initially unavailable");
+        UIApplication.sharedApplication.windows = @[];
+        DXTryStatusHooks();
+        check([hookInstallCounts[@"UIStatusBar"] unsignedIntegerValue] == 1 &&
+              [hookInstallCounts[@"UIStatusBar_Modern"] unsignedIntegerValue] == 1 &&
+              [hookInstallCounts[@"_UIStatusBar"] unsignedIntegerValue] == 1, @"UIKit hooks remain available before SystemStatusUI loads");
+        Class systemWrapperClass = objc_allocateClassPair(UIStatusBar_Base.class, "STUIStatusBar_Wrapper", 0);
+        Class systemCoreClass = objc_allocateClassPair(UIView.class, "STUIStatusBar", 0);
+        objc_registerClassPair(systemWrapperClass); objc_registerClassPair(systemCoreClass);
+        check(![systemWrapperClass isSubclassOfClass:UIStatusBar.class] && ![systemCoreClass isSubclassOfClass:_UIStatusBar.class], @"SystemStatusUI test hierarchy is independent of legacy implementations");
+        for (NSString *process in @[@"SpringBoard", @"Preferences", @"MobileSafari"]) {
+            NSProcessInfo.processInfo.processName = process;
+            UIApplication.sharedApplication.applicationState = UIApplicationStateActive;
+            UIWindow *hostWindow = [UIWindow new]; hostWindow.window = hostWindow; hostWindow.bounds = CGRectMake(0, 0, 390, 844);
+            UIView *systemWrapper = [systemWrapperClass new]; systemWrapper.bounds = CGRectMake(0, 0, 390, 54); [hostWindow addSubview:systemWrapper];
+            UIView *systemCore = [systemCoreClass new]; systemCore.bounds = systemWrapper.bounds; [systemWrapper addSubview:systemCore];
+            check(DXIsStatusView(systemWrapper) && DXIsStatusView(systemCore), @"SystemStatusUI wrapper and core accepted");
+            UIApplication.sharedApplication.windows = @[hostWindow]; DXTryStatusHooks(); DXTryStatusHooks();
+            DXStatusGestureHandler *systemHandler = objc_getAssociatedObject(systemWrapper, &DXStatusHandlerKey);
+            check(systemHandler && hostWindow.gestureRecognizers.count == 4 &&
+                  !objc_getAssociatedObject(systemCore, &DXStatusHandlerKey), @"scan installs one set for nested SystemStatusUI views across hosts");
+            check([hookInstallCounts[@"STUIStatusBar_Wrapper"] unsignedIntegerValue] == 1 &&
+                  [hookInstallCounts[@"STUIStatusBar"] unsignedIntegerValue] == 1, @"late SystemStatusUI hooks register exactly once");
+            for (NSString *region in DXStatusBarRegions()) for (NSString *kind in DXStatusBarGestures()) {
+                CGFloat x = [region isEqual:@"left"] ? 10 : ([region isEqual:@"middle"] ? 150 : 300);
+                UIGestureRecognizer *gesture = gestureFor(systemHandler, [kind hasSuffix:@"swipe"] ? @"horizontal" : kind);
+                check([systemHandler gestureRecognizer:gesture shouldReceiveTouch:touchFor(systemCore, x)], @"SystemStatusUI touch accepted in each host");
+                if ([gesture isKindOfClass:UIPanGestureRecognizer.class]) ((UIPanGestureRecognizer *)gesture).delta = CGPointMake([kind isEqual:@"leftswipe"] ? -40 : 40, 0);
+                check([systemHandler gestureRecognizerShouldBegin:gesture], @"SystemStatusUI gesture can begin");
+                NSUInteger sentBefore = sends;
+                gesture.state = [kind isEqual:@"longpress"] ? UIGestureRecognizerStateBegan : UIGestureRecognizerStateEnded;
+                [systemHandler recognized:gesture]; [systemHandler recognized:gesture];
+                check(sends == sentBefore + 1 && [sentSlot isEqual:DXStatusBarSlot(region, kind)], @"SystemStatusUI dispatches each slot exactly once");
+            }
+            UIView *unrelated = [UIView new]; unrelated.bounds = systemWrapper.bounds; [hostWindow addSubview:unrelated];
+            DXInstallStatusGestures(unrelated);
+            check(!objc_getAssociatedObject(unrelated, &DXStatusHandlerKey) && hostWindow.gestureRecognizers.count == 4, @"unrelated views do not install status gestures");
+            UIGestureRecognizer *systemTap = gestureFor(systemHandler, @"tap");
+            check([systemHandler gestureRecognizer:systemTap shouldReceiveTouch:touchFor(systemCore, 10)], @"start SystemStatusUI session before window switch");
+            NSUInteger sentBefore = sends;
+            UIWindow *replacementWindow = [UIWindow new]; replacementWindow.window = replacementWindow; replacementWindow.bounds = hostWindow.bounds;
+            systemWrapper.window = replacementWindow; systemCore.window = replacementWindow;
+            DXInstallStatusGestures(systemWrapper); [systemHandler recognized:systemTap];
+            check(sends == sentBefore && hostWindow.gestureRecognizers.count == 0 && replacementWindow.gestureRecognizers.count == 4, @"window switch removes old gestures and cancels old session");
+            DXStatusGestureHandler *replacementHandler = objc_getAssociatedObject(systemWrapper, &DXStatusHandlerKey);
+            systemTap = gestureFor(replacementHandler, @"tap");
+            check([replacementHandler gestureRecognizer:systemTap shouldReceiveTouch:touchFor(systemCore, 10)], @"replacement SystemStatusUI window receives touches");
+            systemTap.state = UIGestureRecognizerStateEnded; [replacementHandler recognized:systemTap];
+            check(sends == sentBefore + 1 && [sentSlot isEqual:@"left.tap"], @"replacement SystemStatusUI window dispatches");
+            systemWrapper.window = nil; DXInstallStatusGestures(systemWrapper);
+            check(replacementWindow.gestureRecognizers.count == 0, @"SystemStatusUI detach cleans recognizers");
+        }
+        NSProcessInfo.processInfo.processName = originalProcess; UIApplication.sharedApplication.windows = @[];
         printf("PASS: %lu production status-bar handler checks with UIKit doubles\n", (unsigned long)checks);
     }
     return 0;

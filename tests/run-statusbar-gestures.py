@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise production policy. UIKit recognition/private hooks require device checks."""
 import pathlib
+import re
 import subprocess
 import tempfile
 
@@ -16,9 +17,14 @@ with tempfile.TemporaryDirectory(prefix="typex-statusbar-tests-") as temporary:
     (tmp / "UIKit").mkdir()
     (tmp / "UIKit/UIKit.h").write_text('#import "UIKitStatusBarGestureStub.h"\n')
     hooks = (root / "DXStatusBarGestureHooks.xm").read_text()
-    handler = hooks[hooks.index("static char DXStatusHandlerKey"):hooks.index("static void DXScanStatusViews")]
+    handler = hooks[hooks.index("static char DXStatusHandlerKey"):hooks.index("%group TypeXStatusBarWrapper")]
     handler = handler.replace("static void DXTryStatusHooks(void);\n", "")
     (tmp / "StatusHandler.inc").write_text(handler)
+    installer = hooks[hooks.index("static void DXTryStatusHooks(void) {"):hooks.index("void DXStartStatusBarGestures(void)")]
+    # Execute the production runtime guards/retry decisions with a recording
+    # substitute for Logos registration; actual injection remains device-only.
+    installer = re.sub(r'%init\((\w+),\s*\w+\s*=\s*(\w+)\)', r'DXTestInstallHook(@"\1", \2)', installer)
+    (tmp / "StatusHookInstaller.inc").write_text(installer)
     doubles = (root / "tests/DXDockGestureHandlerTests.m").read_text()
     (tmp / "StatusDoubles.inc").write_text(doubles[doubles.index("@implementation UIView\n"):doubles.index("static char DXDockPanelHandlerKey")])
     broker = (root / "DXSystemOpenBroker.m").read_text()
