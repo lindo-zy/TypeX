@@ -191,6 +191,9 @@ DXSystemOpenResult DXPerformSystemAction(NSString *action) {
     if ([action isEqual:@"play-pause"]) return DXSystemCall(DXSystemShared(@"SBMediaController", @"sharedInstance"), @"togglePlayPauseForEventSource:", @[@0]);
     if ([action isEqual:@"home"]) return DXSystemCallFirstAvailable(UIApplication.sharedApplication, @[
         @[@"_simulateHomeButtonPress", @[]], @[@"_simulateHomeButtonPressWithCompletion:", @[NSNull.null]]]);
+    // Enter SpringBoard's native capture path so screenshot hooks still run.
+    // Its void return acknowledges dispatch, not photo-library persistence.
+    if ([action isEqual:@"screenshot"]) return DXSystemCall(UIApplication.sharedApplication, @"takeScreenshot", @[]);
     if ([action isEqual:@"switcher"]) {
         id coordinator = DXSystemShared(@"SBMainSwitcherControllerCoordinator", @"sharedInstance");
         NSArray *interfaces = @[@[@"toggleSwitcherNoninteractivelyWithSource:", @[@1]],

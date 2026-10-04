@@ -25,6 +25,7 @@
 | --- | --- | --- |
 | 媒体 | 上一首、下一首、播放/暂停 | SBMediaController |
 | 设备 | 返回桌面、打开后台 | SpringBoard Home 模拟、Switcher 控制器 |
+| 设备 | 系统截图 | SpringBoard 的 takeScreenshot，沿用系统截图与保存流程 |
 | 设备 | 注销 | SBSRelaunchAction + FBSSystemService |
 | 设备 | 注销（SB） | 仅退出本进程 SpringBoard |
 | 设备 | 安全模式 | 已加载 SafeMode/MobileSafety 处理器时触发 SB 信号；否则不可用 |
@@ -36,7 +37,7 @@
 | 控制中心 | 勿扰、深色模式 | DNDStateService + DNDToggleManager、UIUserInterfaceStyleArbiter |
 | 控制中心 | 亮度增减、音量增减 | UIScreen 每次 0.1（钳制 0–1）、SBVolumeControl 每次一档 |
 
-共 26 项。控制开关反转当前状态，Wi-Fi/蓝牙对应系统开关，不承诺与控制中心
+共 27 项。控制开关反转当前状态，Wi-Fi/蓝牙对应系统开关，不承诺与控制中心
 临时断连语义完全相同。勿扰只切换系统勿扰标识，不新增/管理其他专注模式。
 
 运行时检测类、selector、参数数量和 ABI；NSInvocation 按实际标量类型传参，
@@ -183,3 +184,23 @@ RPScreenRecorder 类方法在目标设备可用的证明。
 ./build.sh 成功构建 iOS 16/17 两套包，版本由 3.9.6 推进至 3.9.7。
 真机未安装或录屏：麦克风授权/音轨、照片保存、外部控制中心录屏同步、冷/热启动
 及左滑删除/排序真实 UIKit 交互均未验证。
+
+## 系统截图
+
+问题：系统动作选择页缺少系统截图。
+根因：共用动作目录和 SpringBoard 执行器没有截图项。
+涉及文件：DXSystemActionCatalog.h、DXSystemActionExecutor.m、中英文本地化、
+DXSystemActionTests.m 和本验证记录。
+修改边界：增加固定 ID `screenshot`，在「设备操作」分组显示「系统截图」。
+实现方案：沿用已保存动作校验、Darwin 通道、TTL 和回复处理；只在 SpringBoard
+主线程通过 DXSystemCall 调用 UIApplication.sharedApplication 的 takeScreenshot。
+本地 PullOver-X/PullOverX/PullOverX.mm 已使用同名 SpringBoard Hook；这是源码参考，
+不能证明目标设备实际存在该方法。调用前检查方法存在性和运行时 ABI，缺失或异常
+沿用不可用提示和 `[TypeX][SystemAction]` syslog，失败后不重试。
+不修改的部分：ShellX 截图、键盘显隐、面板生命周期、其他插件和跨进程协议。
+运行时风险：系统私有接口及第三方 Hook 仍需实机检查；void 返回仅表示调用完成，
+不证明截图已写入相册。不新增截图完成观察者或自动键盘恢复。
+验证步骤：运行现有系统动作和全局面板测试、检查中英文资源、经 ./build.sh 构建
+iOS 16/17 两套包并检查 DEB。设备上分别冷/热启动，创建并重进该动作，加入工具栏、
+键盘面板和手势入口；截图应使用系统捕获流程并在相册保存。连续触发、切 App、
+取消选择和接口不可用时检查无重复执行、旧回调或崩溃；观察 takeScreenshot 缺失日志。

@@ -71,7 +71,7 @@ static void check(BOOL value) { NSCAssert(value, @"check %lu failed", (unsigned 
 int main(void) {
     @autoreleasepool {
         NSArray *catalog = DXSystemActionCatalog();
-        check(catalog.count == 26);
+        check(catalog.count == 27);
         NSMutableSet *ids = [NSMutableSet set];
         NSUInteger destructive = 0;
         for (NSDictionary *action in catalog) {
@@ -90,7 +90,7 @@ int main(void) {
         check(!DXSystemActionIsConfigured(@[@42, NSNull.null], @"wifi", prefix));
         check(!DXSystemActionIsConfigured(@{}, @"wifi", prefix));
         check(DXSystemActionIsRecording(@"screen-recording") && DXSystemActionIsRecording(@"screen-recording-microphone") && !DXSystemActionIsRecording(@"wifi"));
-        for (NSString *action in @[@"screen-recording", @"screen-recording-microphone"]) {
+        for (NSString *action in @[@"screenshot", @"screen-recording", @"screen-recording-microphone"]) {
             NSDictionary *definition = @{@"selector": @"__custom_recording", @"type": @"system", @"systemaction": action};
             check(DXSystemActionIsConfigured(@[definition], action, prefix) && ![DXSystemActionDefinition(action)[@"destructive"] boolValue]);
         }
