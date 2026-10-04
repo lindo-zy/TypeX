@@ -349,8 +349,13 @@ static void DXInstallStatusGestures(UIView *view) {
         if (aperture ? DXIsApertureView(parent) : DXIsStatusView(parent)) anchor = parent;
     // Island and desktop receivers are owned by their windows. Displayed
     // status-bar/container instances can be replaced independently of them.
-    if ((aperture || homeScreen) && !anchor.window) return;
-    id owner = (aperture || homeScreen) ? (id)anchor.window : (id)anchor;
+    // UIKit's UIView.window reads an ivar that stays nil for a UIWindow
+    // itself, and the desktop receiver is that window, so its host must not
+    // be recovered through the property.
+    UIWindow *hostWindow = anchor.window;
+    if (homeScreen && !hostWindow) hostWindow = (UIWindow *)anchor;
+    if ((aperture || homeScreen) && !hostWindow) return;
+    id owner = (aperture || homeScreen) ? (id)hostWindow : (id)anchor;
     const void *key = homeScreen ? &DXStatusHomeHandlerKey : (aperture ? &DXStatusApertureHandlerKey : &DXStatusHandlerKey);
     DXStatusGestureHandler *handler = objc_getAssociatedObject(owner, key);
     // A core can enter the window before its wrapper. Retire its earlier set
@@ -362,11 +367,11 @@ static void DXInstallStatusGestures(UIView *view) {
             objc_setAssociatedObject(oldAnchor, &DXStatusHandlerKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
     }
-    if (handler && handler.window == anchor.window) return;
+    if (handler && handler.window == hostWindow) return;
     [handler invalidate];
     objc_setAssociatedObject(owner, key, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    if (!anchor.window) return;
-    handler = [DXStatusGestureHandler new]; handler.anchor = anchor; handler.window = anchor.window; handler.aperture = aperture;
+    if (!hostWindow) return;
+    handler = [DXStatusGestureHandler new]; handler.anchor = anchor; handler.window = hostWindow; handler.aperture = aperture;
     handler.homeScreen = homeScreen;
     NSMutableArray *recognizers = [NSMutableArray array];
     for (NSString *kind in aperture ? @[@"tap"] : @[@"tap", @"doubletap", @"longpress", @"horizontal"]) {
@@ -391,10 +396,10 @@ static void DXInstallStatusGestures(UIView *view) {
     handler.recognizers = recognizers;
     objc_setAssociatedObject(owner, key, handler, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [DXStatusHandlers addObject:handler];
-    for (UIGestureRecognizer *gesture in recognizers) [anchor.window addGestureRecognizer:gesture];
+    for (UIGestureRecognizer *gesture in recognizers) [hostWindow addGestureRecognizer:gesture];
     [handler refresh];
     NSLog(@"[TypeX][StatusBarGesture] installed host=%@ view=%@ window=%@", NSProcessInfo.processInfo.processName,
-        NSStringFromClass(anchor.class), NSStringFromClass(anchor.window.class));
+        NSStringFromClass(anchor.class), NSStringFromClass(hostWindow.class));
 }
 
 static void DXScanStatusViews(UIView *view) {

@@ -473,6 +473,18 @@ int main(void) {
         homeBefore = sends; inlineTap.state = UIGestureRecognizerStateEnded; [inlineHandler recognized:inlineTap];
         check(sends == homeBefore + 1, @"same-window desktop path dispatches once"); inlineBar.window = nil; DXInstallStatusGestures(inlineBar);
         check(homeWindow.gestureRecognizers.count == 4 && [homeHandler gestureRecognizer:homeTap shouldReceiveTouch:homeTouch], @"fallback recovers after inline status bar detaches");
+        // Real UIKit keeps a UIWindow's own window property nil; earlier
+        // fixtures assigned window.window manually and masked that semantics.
+        SBHomeScreenWindow *deviceLikeHome = [SBHomeScreenWindow new]; deviceLikeHome.bounds = window.bounds; deviceLikeHome.keyWindow = YES;
+        deviceLikeHome.screen = mainScreen;
+        DXScanStatusViews(deviceLikeHome);
+        DXStatusGestureHandler *deviceLikeHandler;
+        for (DXStatusGestureHandler *entry in DXStatusHandlers.allObjects) if (entry.window == deviceLikeHome) deviceLikeHandler = entry;
+        check(deviceLikeHandler && deviceLikeHome.gestureRecognizers.count == 4, @"desktop installs with UIWindow.window left nil as on device");
+        DXStatusBarHomeScreenDidAppear(deviceLikeHome);
+        check([deviceLikeHandler available], @"nil-window desktop model activates after appearance");
+        UITouch *deviceLikeTouch = touchFor(desktopBar, 10); deviceLikeTouch.view = deviceLikeHome; deviceLikeTouch.window = deviceLikeHome;
+        check([deviceLikeHandler gestureRecognizer:gestureFor(deviceLikeHandler, @"tap") shouldReceiveTouch:deviceLikeTouch], @"nil-window desktop model accepts configured touch");
         NSProcessInfo.processInfo.processName = @"MobileSafari";
         check(!DXIsHomeScreenWindow(homeWindow), @"desktop fallback never activates in an app process");
         SBHomeScreenWindow *appHomeLookalike = [SBHomeScreenWindow new]; appHomeLookalike.window = appHomeLookalike; DXInstallStatusGestures(appHomeLookalike);
