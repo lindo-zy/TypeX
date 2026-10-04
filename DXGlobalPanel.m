@@ -106,7 +106,7 @@ static NSString *DXGlobalLocalized(NSString *key) {
 }
 - (void)interrupted:(NSNotification *)notification { (void)notification; [self dismiss]; }
 - (NSDictionary *)definition:(NSString *)selector {
-    NSDictionary *panel = DXPanelDefinition(DXPrefsManager.sharedInstance.prefs, selector);
+    NSDictionary *panel = DXPanelDisplayDefinition(DXPrefsManager.sharedInstance.prefs, selector);
     if (panel && [panel[@"kind"] isEqual:DXPanelGestureKind]) return panel;
     id definitions = DXPrefsManager.sharedInstance.prefs[kLinkActionskey];
     if (![definitions isKindOfClass:NSArray.class]) return nil;
@@ -238,7 +238,7 @@ static NSString *DXGlobalLocalized(NSString *key) {
         button.icon.userInteractionEnabled = NO;
         button.icon.contentMode = UIViewContentModeScaleAspectFit;
         button.icon.tintColor = text;
-        NSString *icon = [entry[@"icon"] length] ? entry[@"icon"] : DXGlobalPanelString(definition[@"icon"]);
+        NSString *icon = DXGlobalPanelString(definition[@"icon"]);
         button.icon.image = [DXHelper imageForIconConfig:icon defaultSymbolName:@"square.grid.2x2"];
         [button addSubview:button.icon];
         button.name = [UILabel new];

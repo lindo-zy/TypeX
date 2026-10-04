@@ -406,9 +406,8 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "KEYBOARD_PANEL_SCALE" = "Content size (%)";
 "KEYBOARD_PANEL_ITEMS_FOOTER" = "Keyboard panels support all actions. Gesture panels support actions without a keyboard and other gesture panels. Swipe to remove an item, hold to reorder or tap to edit. Removing an item keeps its original action or panel.";
 "KEYBOARD_PANEL_PICKER_DELETE_FOOTER" = "Select an action or a panel of the same type. Swipe to delete a custom action and its references. Manage panels in Panel settings.";
-"KEYBOARD_PANEL_ITEM_APPEARANCE" = "Edit name and icon";
+"KEYBOARD_PANEL_ITEM_APPEARANCE" = "Edit name";
 "KEYBOARD_PANEL_NAME" = "Name (empty uses action name)";
-"KEYBOARD_PANEL_ICON" = "SF Symbol or App Bundle ID";
 "KEYBOARD_PANEL_SAVE" = "Save";
 "KEYBOARD_PANEL_REPLACE_ACTION" = "Choose another action";
 "KEYBOARD_PANEL_EDIT_ACTION" = "Edit custom action";

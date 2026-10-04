@@ -405,9 +405,8 @@
 "KEYBOARD_PANEL_SCALE" = "内容大小（%）";
 "KEYBOARD_PANEL_ITEMS_FOOTER" = "键盘面板支持全部操作，手势面板只支持无需键盘的动作及手势面板。左滑删除当前条目，长按拖动排序，点击编辑；条目删除不删除原动作或原面板。";
 "KEYBOARD_PANEL_PICKER_DELETE_FOOTER" = "点击选择动作或同类面板。左滑可删除自定义动作，并清除其引用；面板请在面板设置中管理。";
-"KEYBOARD_PANEL_ITEM_APPEARANCE" = "编辑名称与图标";
+"KEYBOARD_PANEL_ITEM_APPEARANCE" = "编辑名称";
 "KEYBOARD_PANEL_NAME" = "名称（留空使用动作名称）";
-"KEYBOARD_PANEL_ICON" = "系统图标名称或应用标识";
 "KEYBOARD_PANEL_SAVE" = "保存";
 "KEYBOARD_PANEL_REPLACE_ACTION" = "更换动作";
 "KEYBOARD_PANEL_EDIT_ACTION" = "编辑自定义动作";
