@@ -54,12 +54,6 @@ static inline NSString *DXStatusBarRegion(double x, double y, double width, doub
         width <= 0 || height <= 0 || x < 0 || x >= width || y < 0 || y >= height) return nil;
     return x < width / 3 ? @"left" : (x < width * 2 / 3 ? @"middle" : @"right");
 }
-static inline NSString *DXStatusBarPanelSide(NSString *selector) {
-    if (![selector isKindOfClass:NSString.class]) return nil;
-    for (NSString *side in @[@"left", @"right", @"common"])
-        if ([selector isEqual:[@"__typex_statusbar_panel_" stringByAppendingString:side]]) return side;
-    return nil;
-}
 static inline void DXStatusBarRemoveActionReferences(NSMutableDictionary *preferences, NSString *selector) {
     id stored = preferences[kDXStatusBarBindings];
     if (![stored isKindOfClass:NSDictionary.class] || !selector.length) return;

@@ -1,3 +1,4 @@
+#import "../DXPanelRegistry.h"
 #import "DXPDockGestureController.h"
 #import "DXPLinkActionEditorController.h"
 #import "DXPGestureActionCell.h"
@@ -62,8 +63,8 @@ static BOOL DXDockSaveSelector(NSString *direction, NSString *selector) {
 - (id)readActionName:(PSSpecifier *)specifier {
     NSDictionary *preferences = [[DXPrefsManager sharedInstance] readPrefs];
     NSString *selector = DXDockGestureConfiguredSelector(preferences, [specifier propertyForKey:@"dockDirection"]);
-    NSString *side = DXDockGesturePanelSide(selector);
-    if (side) return DXDockLocalized([@"STATUS_BAR_PANEL_" stringByAppendingString:side.uppercaseString]);
+    NSDictionary *panel = DXPanelDefinition(preferences, selector);
+    if ([panel[@"kind"] isEqual:DXPanelGestureKind]) return DXPanelString(panel[@"name"]);
     NSDictionary *entry = DXDockGestureDefinition(preferences, selector, kLinkActionskey);
     if (!DXIsLinkActionSelector(selector) || !DXGlobalCustomActionSupported(entry)) return DXDockLocalized(@"DOCK_ACTION_NONE");
     NSString *name = DXGlobalPanelString(entry[@"name"]);
@@ -97,10 +98,9 @@ static BOOL DXDockSaveSelector(NSString *direction, NSString *selector) {
     NSMutableArray *items = [NSMutableArray array];
     [items addObject:[PSSpecifier groupSpecifierWithName:nil]];
     [items addObject:[self action:DXDockLocalized(@"DOCK_ACTION_NONE") selector:@""]];
-    [items addObject:[PSSpecifier groupSpecifierWithName:DXDockLocalized(@"STATUS_BAR_PANELS")]];
-    for (NSString *side in @[@"left", @"right", @"common"])
-        [items addObject:[self action:DXDockLocalized([@"STATUS_BAR_PANEL_" stringByAppendingString:side.uppercaseString])
-            selector:[@"__typex_dock_panel_" stringByAppendingString:side]]];
+    [items addObject:[PSSpecifier groupSpecifierWithName:DXDockLocalized(@"PANEL_KIND_GESTURE")]];
+    for (NSDictionary *panel in DXPanelDefinitions([DXPrefsManager.sharedInstance readPrefs], DXPanelGestureKind))
+        [items addObject:[self action:DXPanelString(panel[@"name"]) selector:DXPanelSelector(panel[@"id"])]];
     PSSpecifier *group = [PSSpecifier groupSpecifierWithName:DXDockLocalized(@"CUSTOM_ACTIONS")];
     [group setProperty:DXDockLocalized(@"DOCK_ACTION_PICKER_FOOTER") forKey:@"footerText"];
     [items addObject:group];
@@ -120,7 +120,7 @@ static BOOL DXDockSaveSelector(NSString *direction, NSString *selector) {
     NSString *selector = [specifier propertyForKey:@"actionSelector"];
     if (![selector isKindOfClass:NSString.class]) return;
     NSDictionary *entry = DXDockGestureDefinition([[DXPrefsManager sharedInstance] readPrefs], selector, kLinkActionskey);
-    if (selector.length && !DXDockGesturePanelSide(selector) && (!DXIsLinkActionSelector(selector) || !DXGlobalCustomActionSupported(entry))) {
+    if (selector.length && !DXPanelAllowed([DXPrefsManager.sharedInstance readPrefs], selector, DXPanelGestureKind) && (!DXIsLinkActionSelector(selector) || !DXGlobalCustomActionSupported(entry))) {
         [self reloadSpecifiers]; return;
     }
     if (DXDockSaveSelector(self.direction, selector)) [self.navigationController popViewControllerAnimated:YES];

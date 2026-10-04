@@ -1,3 +1,4 @@
+#import "../DXPanelRegistry.h"
 #import "DXPGesturePickerController.h"
 #import "DXPSubActionsController.h"
 #import "DXPSFSymbolPickerController.h"
@@ -163,6 +164,12 @@ static NSBundle *tweakBundle;
         if ([item isKindOfClass:[NSDictionary class]] && [item[@"selector"] isEqualToString:selector]) {
             return item;
         }
+    }
+    if (DXIsPanelSelector(selector)) {
+        NSDictionary *panel = DXPanelDefinition([DXPrefsManager.sharedInstance readPrefs], selector);
+        if (![panel[@"kind"] isEqual:DXPanelKeyboardKind]) return nil;
+        NSString *icon = DXPanelString(panel[@"icon"]);
+        return @{@"selector": selector, @"label": DXPanelString(panel[@"name"]), @"images12": icon, @"images13": icon};
     }
     if (DXIsLinkActionSelector(selector)) {
         NSDictionary *prefs = [[DXPrefsManager sharedInstance] readPrefs];

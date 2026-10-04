@@ -1,3 +1,4 @@
+#import "DXPanelTestFixtures.h"
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <dispatch/dispatch.h>
@@ -73,8 +74,8 @@ int main(void) {
         _UIStatusBar *nested = [_UIStatusBar new]; [anchor addSubview:nested];
         NSMutableDictionary *bindings = [NSMutableDictionary dictionary];
         for (NSString *region in DXStatusBarRegions()) for (NSString *kind in DXStatusBarGestures())
-            bindings[DXStatusBarSlot(region, kind)] = @{@"enabled": @YES, @"selector": @"__typex_statusbar_panel_common"};
-        NSDictionary *baseline = @{kDXStatusBarEnabled: @YES, kDXStatusBarBindings: bindings};
+            bindings[DXStatusBarSlot(region, kind)] = @{@"enabled": @YES, @"selector": @"__typex_panel_test-common"};
+        NSDictionary *baseline = @{kDXPanels: DXTestGesturePanels(), kDXStatusBarEnabled: @YES, kDXStatusBarBindings: bindings};
         DXPrefsManager *manager = DXPrefsManager.sharedInstance; manager.prefs = baseline; manager.preferencesAvailable = YES;
         DXStatusHandlers = [NSHashTable weakObjectsHashTable]; DXInstallStatusGestures(anchor); DXInstallStatusGestures(nested); DXInstallStatusGestures(anchor);
         DXStatusGestureHandler *handler = objc_getAssociatedObject(anchor, &DXStatusHandlerKey);
@@ -91,7 +92,7 @@ int main(void) {
             NSUInteger before = sends;
             gesture.state = [kind isEqual:@"longpress"] ? UIGestureRecognizerStateBegan : UIGestureRecognizerStateEnded;
             [handler recognized:gesture]; [handler recognized:gesture];
-            check(sends == before + 1 && [sentSlot isEqual:DXStatusBarSlot(region, kind)] && [sentSelector isEqual:@"__typex_statusbar_panel_common"] && !sentLandscape, @"one relay for each of fifteen slots");
+            check(sends == before + 1 && [sentSlot isEqual:DXStatusBarSlot(region, kind)] && [sentSelector isEqual:@"__typex_panel_test-common"] && !sentLandscape, @"one relay for each of fifteen slots");
         }
         UIGestureRecognizer *tap = gestureFor(handler, @"tap"); NSUInteger before = sends;
         check([handler gestureRecognizer:tap shouldReceiveTouch:touchFor(anchor, 10)], @"start pending touch");

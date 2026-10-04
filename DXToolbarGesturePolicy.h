@@ -1,6 +1,6 @@
 #include <math.h>
 
-// Signed result: +/-1 is a confined button swipe, +/-2 is a panel long swipe.
+// Signed result: +/-1 is a confined button swipe, +/-2 is a configured toolbar long swipe.
 // Travel outside the original button never falls back to that button's action.
 static inline int DXToolbarHorizontalResult(double dx, double dy, double toolbarWidth,
                                             double buttonWidth, int hasButton, int stayedInButton) {

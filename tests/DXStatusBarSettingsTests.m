@@ -1,3 +1,4 @@
+#import "DXPanelTestFixtures.h"
 #import "StatusBarSettingsProduction.h"
 
 static NSUInteger checks;
@@ -49,12 +50,12 @@ int main(void) {
     @autoreleasepool {
         DXPrefsManager *manager = DXPrefsManager.sharedInstance;
         NSString *custom = [kLinkActionSelectorPrefix stringByAppendingString:@"open"];
-        NSString *panel = @"__typex_statusbar_panel_left";
+        NSString *panel = @"__typex_panel_test-left";
         NSDictionary *definition = @{@"selector": custom, @"name": @"Safari", @"type": @"openapp", @"link": @"com.apple.mobilesafari"};
         NSMutableDictionary *bindings = [NSMutableDictionary dictionary];
         for (NSString *region in DXStatusBarRegions()) for (NSString *gesture in DXStatusBarGestures())
             bindings[DXStatusBarSlot(region, gesture)] = @{@"enabled": @NO, @"selector": @"original"};
-        NSDictionary *baseline = @{kDXStatusBarBindings: bindings, kLinkActionskey: @[definition,
+        NSDictionary *baseline = @{kDXPanels: DXTestMixedPanels(), kDXStatusBarBindings: bindings, kLinkActionskey: @[definition,
             @{@"selector": [kLinkActionSelectorPrefix stringByAppendingString:@"text"], @"type": @"text", @"link": @"private"}], @"unrelated": @42};
 
         DXPStatusBarGestureController *root = [DXPStatusBarGestureController new];
@@ -95,6 +96,12 @@ int main(void) {
         }
 
         manager.preferences = baseline;
+        DXPStatusBarActionPicker *guardedPicker = pickerForSlot(@"left.tap");
+        check(!rowForAction(guardedPicker, @selector(selectAction:), @"__typex_panel_keyboard-only"));
+        PSSpecifier *forged = [PSSpecifier new]; [forged setProperty:@"__typex_panel_keyboard-only" forKey:@"actionSelector"];
+        NSUInteger guardedWrites = manager.writes;
+        [guardedPicker selectAction:forged];
+        check(manager.writes == guardedWrites && guardedPicker.navigationController.pops == 0);
         for (NSString *slot in @[@"", @"left.invalid", @"outside.tap"]) {
             DXPStatusBarActionPicker *picker = pickerForSlot(slot);
             NSUInteger writes = manager.writes;
@@ -144,8 +151,8 @@ int main(void) {
             check(manager.writes == writes && !picker.selectAfterSave && [manager.preferences isEqual:baseline]);
             if (changedSlot) break;
         }
-        for (NSString *direction in DXDockGestureDirections()) for (NSString *selector in @[@"", @"__typex_dock_panel_right", custom]) {
-            manager.preferences = @{kLinkActionskey: @[definition], kDXDockGestureBindings: @{direction: selector}, @"unrelated": @42};
+        for (NSString *direction in DXDockGestureDirections()) for (NSString *selector in @[@"", @"__typex_panel_test-right", custom]) {
+            manager.preferences = @{kDXPanels: DXTestMixedPanels(), kLinkActionskey: @[definition], kDXDockGestureBindings: @{direction: selector}, @"unrelated": @42};
             DXPDockActionPicker *dock = [DXPDockActionPicker new]; dock.specifier = [PSSpecifier new];
             [dock.specifier setProperty:direction forKey:@"dockDirection"];
             dock.navigationController = [UINavigationController new]; dock.navigationController.viewControllers = @[[PSViewController new], dock];
@@ -159,8 +166,8 @@ int main(void) {
             DXPDockGestureController *settings = [DXPDockGestureController new];
             for (PSSpecifier *record in settings.specifiers) if (record.cellType == PSLinkCell && [[record propertyForKey:@"dockDirection"] isEqual:direction])
                 check([render(settings, record).detailTextLabel.text isEqual:[settings readActionName:record]]);
-            click(rowForAction(dock, @selector(selectAction:), @"__typex_dock_panel_left"));
-            check(dock.navigationController.pops == 1 && [DXDockGestureConfiguredSelector(manager.preferences, direction) isEqual:@"__typex_dock_panel_left"]);
+            click(rowForAction(dock, @selector(selectAction:), @"__typex_panel_test-left"));
+            check(dock.navigationController.pops == 1 && [DXDockGestureConfiguredSelector(manager.preferences, direction) isEqual:@"__typex_panel_test-left"]);
             check([manager.preferences[@"unrelated"] isEqual:@42]);
         }
         ToolbarGestureRecord *record = [ToolbarGestureRecord new]; record.identifier = @"button";
@@ -179,6 +186,14 @@ int main(void) {
             record.configuration = [configuration isEqual:@"top"] ? @"bottom" : @"top";
             check([[record readGestureActionSummary:item] isEqual:LOCALIZED(@"STATUS_BAR_UNASSIGNED")]);
         }
+        // The production keyboard/sub-action name paths use panel identity.
+        manager.preferences = @{kDXPanels: DXTestMixedPanels()};
+        record.configuration = @"top"; record.pendingNewEntry = NO;
+        check([[record canonicalEntryForSelector:@"__typex_panel_keyboard-only"][@"label"] isEqual:@"Keyboard only"]);
+        check(![record canonicalEntryForSelector:panel]);
+        SubActionRecord *subaction = [SubActionRecord new];
+        check([[subaction displayNameForSelector:@"__typex_panel_keyboard-only"] isEqual:@"Keyboard only"]);
+        check(![subaction linkActionForSelector:panel]);
         UITableView *reuseTable = [UITableView new];
         reuseTable.reusableCell = DXPGestureActionCell(reuseTable, @"choice", @"Selected", @"Record", [UIImage new], UITableViewCellAccessoryCheckmark);
         UITableViewCell *reused = DXPGestureActionCell(reuseTable, @"choice", @"Other", nil, nil, UITableViewCellAccessoryNone);

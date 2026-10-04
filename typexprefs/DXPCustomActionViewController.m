@@ -1,5 +1,6 @@
 #import "DXPCustomActionViewController.h"
 #import "../DXKeyboardPanelPreferences.h"
+#import "../DXPanelRegistry.h"
 #import "../DXStatusBarGesturePolicy.h"
 #import "../DXDockGesturePolicy.h"
 #import "DXPSubActionPickerController.h"
@@ -25,13 +26,13 @@ static NSBundle *tweakBundle;
 - (void)reloadPreferences {
     self.prefs = [[[DXPrefsManager sharedInstance] readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
     self.linkActions = [NSMutableArray array];
-    for (NSDictionary *entry in self.prefs[kLinkActionskey]) {
+    id stored = self.prefs[kLinkActionskey];
+    for (NSDictionary *entry in [stored isKindOfClass:NSArray.class] ? stored : @[]) {
         if (![entry isKindOfClass:[NSDictionary class]]) continue;
         NSString *selector = entry[@"selector"];
         if (!DXIsLinkActionSelector(selector)) continue;
-        // 网页链接已退役；系统动作不再单列分区，经管理页或「添加」创建的
-        // 系统动作条目按普通自定义动作展示。
-        if (!self.customActionsOnly && [entry[kCustomActionTypeKey] isEqual:kCustomActionTypeURL]) continue;
+        // Preserve the full definition store; context filters only the picker.
+        if (!self.customActionsOnly && !DXPanelCustomActionSelectable(entry, self.actionContextKind ?: DXPanelKeyboardKind)) continue;
         [self.linkActions addObject:[entry mutableCopy]];
     }
 
@@ -52,11 +53,22 @@ static NSBundle *tweakBundle;
 }
 
 - (void)persistLinkActions {
-    self.prefs[kLinkActionskey] = self.linkActions;
+    NSMutableArray *definitions = [NSMutableArray array];
+    id stored = self.prefs[kLinkActionskey];
+    for (id entry in [stored isKindOfClass:NSArray.class] ? stored : @[]) {
+        if (![entry isKindOfClass:NSDictionary.class]) continue;
+        BOOL replaced = NO;
+        for (NSDictionary *updated in self.linkActions) if ([entry[@"selector"] isEqual:updated[@"selector"]]) { replaced = YES; break; }
+        if (!replaced) [definitions addObject:entry];
+    }
+    [definitions addObjectsFromArray:self.linkActions];
+    self.prefs[kLinkActionskey] = definitions;
     [self writePreferences];
 }
 
 - (void)persistSelectedSelector:(NSString *)selector {
+    self.prefs = [[DXPrefsManager.sharedInstance readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
+    if (selector.length && !DXPanelItemAllowed(self.prefs, selector, self.actionContextKind ?: DXPanelKeyboardKind)) return;
     NSMutableArray *entries = [self.prefs[self.keyID] isKindOfClass:[NSArray class]]
         ? [self.prefs[self.keyID] mutableCopy] : [NSMutableArray array];
     NSUInteger found = NSNotFound;
@@ -86,6 +98,7 @@ static NSBundle *tweakBundle;
 
 // A deleted definition must not remain selected by another button or gesture.
 - (void)removeReferencesToSelector:(NSString *)selector fromPreferences:(NSMutableDictionary *)preferences {
+    DXPanelRemoveReferences(preferences, selector);
     DXStatusBarRemoveActionReferences(preferences, selector);
     DXDockGestureRemoveActionReferences(preferences, selector);
     NSMutableSet<NSString *> *keys = [NSMutableSet set];
@@ -189,6 +202,14 @@ static NSBundle *tweakBundle;
 // of the editor never leaves a half-configured row behind.
 - (void)presentAddActionTypeChooser {
     __weak typeof(self) weakSelf = self;
+    if ([self.actionContextKind isEqual:DXPanelGestureKind]) {
+        UIAlertController *menu = [UIAlertController alertControllerWithTitle:LOCALIZED(@"ADD") message:nil preferredStyle:UIAlertControllerStyleAlert];
+        for (NSString *type in @[kCustomActionTypeURLScheme, kCustomActionTypeOpenApp, kCustomActionTypeShortcut, kCustomActionTypeSystem])
+            [menu addAction:[UIAlertAction actionWithTitle:[DXPLinkActionEditorController displayNameForType:type] style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) { [weakSelf startAddFlowForType:type]; }]];
+        [menu addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"CANCEL") style:UIAlertActionStyleCancel handler:nil]];
+        [self presentViewController:menu animated:YES completion:nil];
+        return;
+    }
     [DXPLinkActionEditorController presentTypeChooserFromController:self
                                                         currentType:kCustomActionTypeURLScheme
                                                          completion:^(NSString *type) {
@@ -231,19 +252,31 @@ static NSBundle *tweakBundle;
 
 #pragma mark - Table view
 
-// 分区布局：管理页只有自定义动作；选择页为 自定义 / 基础，面板选择页关闭
-// 基础分区。隐藏分区以 -1 表示。
-- (BOOL)showsBuiltInActionsSection { return YES; }
+// Selection pages show custom actions, optional keyboard operations and
+// panels of the allowed type. Management keeps its existing custom-only layout.
+- (BOOL)showsBuiltInActionsSection { return ![self.actionContextKind isEqual:DXPanelGestureKind]; }
+- (NSInteger)panelsSection { return self.customActionsOnly ? -1 : (self.showsBuiltInActionsSection ? 2 : 1); }
+- (NSArray *)panelCandidates { return DXPanelDefinitions(self.prefs, self.actionContextKind ?: DXPanelKeyboardKind); }
+- (NSDictionary *)panelAtRow:(NSInteger)row {
+    NSArray *panels = [self panelCandidates];
+    return row >= 0 && row < (NSInteger)panels.count ? panels[row] : nil;
+}
+- (NSString *)selectionAtIndexPath:(NSIndexPath *)path {
+    if (path.section == [self panelsSection]) return DXPanelSelector([self panelAtRow:path.row][@"id"]);
+    if (path.section == self.customActionsSection) return path.row < (NSInteger)self.linkActions.count ? self.linkActions[path.row][@"selector"] : nil;
+    return [self selectorForBuiltInRow:path.row indexOut:NULL];
+}
 - (NSInteger)builtInSection {
     return (self.customActionsOnly || !self.showsBuiltInActionsSection) ? -1 : 1;
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
     if (self.customActionsOnly) return 1;
-    return 1 + (self.showsBuiltInActionsSection ? 1 : 0);
+    return 2 + (self.showsBuiltInActionsSection ? 1 : 0);
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    if (section == [self panelsSection]) return LOCALIZED([self.actionContextKind isEqual:DXPanelGestureKind] ? @"PANEL_KIND_GESTURE" : @"PANEL_KIND_KEYBOARD");
     if (section == self.builtInSection) return LOCALIZED(@"BASIC_ACTIONS");
     if (section == self.customActionsSection) {
         // Picker modes hide the whole group when there is nothing to select; the
@@ -255,6 +288,7 @@ static NSBundle *tweakBundle;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    if (section == [self panelsSection]) return [self panelCandidates].count;
     if (section == self.builtInSection) return self.builtInDisplayRows.count;
     // The trailing "添加" row belongs to the management page and the sub-action
     // picker (in-place creation); plain selection pickers stay read-only.
@@ -347,6 +381,17 @@ static NSBundle *tweakBundle;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (indexPath.section == [self panelsSection]) {
+        NSDictionary *panel = [self panelAtRow:indexPath.row];
+        NSString *selector = DXPanelSelector(panel[@"id"]);
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"TypeXCustomLinkActionCell" forIndexPath:indexPath];
+        cell.textLabel.text = DXPanelString(panel[@"name"]);
+        cell.imageView.image = [DXHelper imageForIconConfig:panel[@"icon"] defaultSymbolName:@"square.grid.2x2"];
+        BOOL selected = self.allowsMultipleSelection ? [self.pickedSelectors containsObject:selector] : [self.selectedSelector isEqual:selector];
+        cell.accessoryType = selected ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+        cell.textLabel.textColor = UIColor.labelColor;
+        return cell;
+    }
     if (indexPath.section == self.builtInSection) return [self builtInCellForIndexPath:indexPath];
     if (indexPath.row >= (NSInteger)self.linkActions.count) {
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPActionAddCell" forIndexPath:indexPath];
@@ -376,9 +421,7 @@ static NSBundle *tweakBundle;
     }
 
     if (self.allowsMultipleSelection) {
-        NSString *selector = indexPath.section == self.customActionsSection
-            ? self.linkActions[indexPath.row][@"selector"]
-            : [self selectorForBuiltInRow:indexPath.row indexOut:NULL];
+        NSString *selector = [self selectionAtIndexPath:indexPath];
         if (!selector.length) return; // 分组标题行不参与选择
         if ([self.pickedSelectors containsObject:selector]) {
             [self.pickedSelectors removeObject:selector];
@@ -389,12 +432,12 @@ static NSBundle *tweakBundle;
         return;
     }
 
-    NSString *selector = indexPath.section == self.customActionsSection
-        ? self.linkActions[indexPath.row][@"selector"]
-        : [self selectorForBuiltInRow:indexPath.row indexOut:NULL];
+    NSString *selector = [self selectionAtIndexPath:indexPath];
     if (!selector.length) return; // 分组标题行不参与选择
     NSString *oldSelector = self.selectedSelector;
 
+    NSDictionary *live = [DXPrefsManager.sharedInstance readPrefs];
+    if (!DXPanelItemAllowed(live, selector, self.actionContextKind ?: DXPanelKeyboardKind)) { [self reloadPreferences]; [tableView reloadData]; return; }
     if (self.selectionManagedExternally) {
         self.selectedSelector = selector;
         NSMutableArray *paths = [NSMutableArray arrayWithObject:indexPath];
@@ -416,6 +459,11 @@ static NSBundle *tweakBundle;
 
 - (NSIndexPath *)indexPathForSelector:(NSString *)selector {
     if (selector.length == 0) return nil;
+    NSUInteger panelRow = 0;
+    for (NSDictionary *panel in [self panelCandidates]) {
+        if ([DXPanelSelector(panel[@"id"]) isEqual:selector] && [self panelsSection] >= 0) return [NSIndexPath indexPathForRow:panelRow inSection:[self panelsSection]];
+        panelRow++;
+    }
     if (self.builtInSection >= 0) {
         for (NSUInteger row = 0; row < self.builtInDisplayRows.count; row++) {
             NSDictionary *model = self.builtInDisplayRows[row];
@@ -452,11 +500,19 @@ static NSBundle *tweakBundle;
         NSString *selector = [DXHelper actionNameFromArray:self.fullOrder atIndex:row];
         if ([self.pickedSelectors containsObject:selector]) [ordered addObject:selector];
     }
+    for (NSDictionary *panel in [self panelCandidates]) {
+        NSString *selector = DXPanelSelector(panel[@"id"]);
+        if ([self.pickedSelectors containsObject:selector]) [ordered addObject:selector];
+    }
     return ordered;
 }
 
 - (void)confirmMultiSelection {
-    if (self.multiSelectionCompletion) self.multiSelectionCompletion([self orderedPickedSelectors]);
+    NSDictionary *live = [DXPrefsManager.sharedInstance readPrefs];
+    NSMutableArray *selectors = [NSMutableArray array];
+    for (NSString *selector in [self orderedPickedSelectors])
+        if (DXPanelItemAllowed(live, selector, self.actionContextKind ?: DXPanelKeyboardKind)) [selectors addObject:selector];
+    if (self.multiSelectionCompletion) self.multiSelectionCompletion(selectors);
     [self.navigationController popViewControllerAnimated:YES];
 }
 
@@ -476,7 +532,10 @@ static NSBundle *tweakBundle;
     if (editingStyle != UITableViewCellEditingStyleDelete || ![self tableView:tableView canEditRowAtIndexPath:indexPath]) return;
     NSString *selector = self.linkActions[indexPath.row][@"selector"];
     [self.linkActions removeObjectAtIndex:indexPath.row];
-    self.prefs[kLinkActionskey] = self.linkActions;
+    NSMutableArray *definitions = [NSMutableArray array];
+    for (id entry in self.prefs[kLinkActionskey])
+        if (![entry isKindOfClass:NSDictionary.class] || ![entry[@"selector"] isEqual:selector]) [definitions addObject:entry];
+    self.prefs[kLinkActionskey] = definitions;
     [self removeReferencesToSelector:selector fromPreferences:self.prefs];
     if ([self.selectedSelector isEqualToString:selector]) self.selectedSelector = nil;
     [self.pickedSelectors removeObject:selector];

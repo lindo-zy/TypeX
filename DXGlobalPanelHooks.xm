@@ -4,6 +4,7 @@
 #import "DXDockGesturePolicy.h"
 #import "DXGlobalActionExecutor.h"
 #import "DXKeyboardPanelPreferences.h"
+#import "DXPanelRegistry.h"
 #import "common.h"
 #import <objc/runtime.h>
 
@@ -75,7 +76,7 @@ static void DXTryInstallGlobalPanelHooks(void);
 }
 - (BOOL)hasAction:(NSString *)direction preferences:(NSDictionary *)preferences {
     NSString *selector = DXDockGestureSelector(preferences, direction);
-    if (DXDockGesturePanelSide(selector)) return DXKeyboardPanelBool(preferences, kDXPanelGlobalEnabled, YES);
+    if (DXPanelAllowed(preferences, selector, DXPanelGestureKind)) return DXKeyboardPanelBool(preferences, kDXPanelGlobalEnabled, YES);
     return DXIsLinkActionSelector(selector) && DXGlobalCustomActionSupported(DXDockGestureDefinition(preferences, selector, kLinkActionskey));
 }
 - (BOOL)validSession {
@@ -150,18 +151,17 @@ static void DXTryInstallGlobalPanelHooks(void);
         !self.opened && [self validSession] && [self hasAction:self.direction preferences:self.snapshot]) {
         CGPoint delta = [gesture translationInView:self.sourceWindow];
         NSString *selector = DXDockGestureSelector(self.snapshot, self.direction);
-        NSString *side = DXDockGesturePanelSide(selector);
+        BOOL isPanel = DXPanelAllowed(self.snapshot, selector, DXPanelGestureKind);
         // Keep the old up-to-panel timing. New horizontal and custom actions
         // execute on release so cancellation never commits a pending action.
-        BOOL ready = gesture.state == UIGestureRecognizerStateEnded || (side && [self.direction isEqual:@"up"]);
+        BOOL ready = gesture.state == UIGestureRecognizerStateEnded || (isPanel && [self.direction isEqual:@"up"]);
         if (ready && DXDockGestureCompletes(self.direction, delta.x, delta.y)) {
             self.opened = YES;
             NSString *direction = self.direction;
             NSUInteger request = self.generation;
-            NSLog(@"[TypeX][DockGesture] trigger request=%lu direction=%@ panel=%d", (unsigned long)request, direction, side != nil);
-            if (side) {
-                // The legacy 'dock' origin always forces the common profile.
-                [DXGlobalPanel.sharedInstance presentSide:side fromWindow:self.sourceWindow origin:@"dockgesture"];
+            NSLog(@"[TypeX][DockGesture] trigger request=%lu direction=%@ panel=%d", (unsigned long)request, direction, isPanel);
+            if (isPanel) {
+                [DXGlobalPanel.sharedInstance presentPanelSelector:selector fromWindow:self.sourceWindow origin:@"dockgesture"];
             } else {
                 NSDictionary *snapshot = self.snapshot;
                 __weak typeof(self) weakSelf = self;

@@ -1,4 +1,5 @@
 #import "DXShared.h"
+#import "DXPanelRegistry.h"
 
 BOOL preferencesBool(NSString* key, BOOL fallback) {
     NSNumber* value;
@@ -31,7 +32,7 @@ NSDictionary *preferencesLinkActionForSelector(NSString *selector) {
 }
 
 BOOL preferencesIsConfiguredActionSelector(NSString *selector) {
-    return [DXShortcutsGenerator isVisibleShortcutSelector:selector] ||
+    return DXPanelAllowed(prefs, selector, DXPanelKeyboardKind) || [DXShortcutsGenerator isVisibleShortcutSelector:selector] ||
            preferencesLinkActionForSelector(selector) != nil;
 }
 
@@ -54,7 +55,7 @@ NSString *preferencesSelectorForIdentifierScoped(NSString* identifier, int selec
     }
     // Reject unknown selectors while still allowing supported legacy actions
     // that are intentionally hidden from the current picker.
-    return ([DXShortcutsGenerator isAvailableShortcutSelector:selector] ||
+    return (DXPanelAllowed(prefs, selector, DXPanelKeyboardKind) || [DXShortcutsGenerator isAvailableShortcutSelector:selector] ||
             preferencesLinkActionForSelector(selector) != nil) ? selector : fallback;
 }
 

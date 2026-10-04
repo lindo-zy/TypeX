@@ -1,3 +1,4 @@
+#import "DXPanelTestFixtures.h"
 #import <Foundation/Foundation.h>
 #import "../DXSystemOpenBroker.h"
 #import "../DXStatusBarGesturePolicy.h"
@@ -25,14 +26,14 @@ static BOOL DXIsLinkActionSelector(NSString *value) { return [value hasPrefix:@"
 + (instancetype)sharedInstance;
 + (BOOL)deviceUnlocked;
 - (BOOL)isVisible;
-- (void)presentSide:(NSString *)side fromWindow:(id)window origin:(NSString *)origin;
+- (void)presentPanelSelector:(NSString *)selector fromWindow:(id)window origin:(NSString *)origin;
 @end
 @implementation DXGlobalPanel
 + (instancetype)sharedInstance { static DXGlobalPanel *panel; if (!panel) panel = [self new]; return panel; }
 + (BOOL)deviceUnlocked { return unlocked; }
 - (BOOL)isVisible { return visible; }
-- (void)presentSide:(NSString *)side fromWindow:(id)window origin:(NSString *)origin {
-    check(window == nil && [origin isEqual:@"statusbar"]); shownSide = side; visible = panelCanShow;
+- (void)presentPanelSelector:(NSString *)selector fromWindow:(id)window origin:(NSString *)origin {
+    check(window == nil && [origin isEqual:@"statusbar"]); shownSide = selector; visible = panelCanShow;
 }
 @end
 void DXExecuteGlobalCustomAction(NSDictionary *entry, DXSystemOpenReply reply) { executions++; executed = entry; reply(DXSystemOpenSucceeded); }
@@ -56,10 +57,10 @@ int main(void) {
         NSDictionary *fields = [NSJSONSerialization JSONObjectWithData:[sentPayload dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
         check(DXStatusBarRequestValid(fields) && fields.count == 3);
         for (NSString *side in @[@"left", @"right", @"common"]) {
-            NSString *selector = [@"__typex_statusbar_panel_" stringByAppendingString:side];
-            manager.prefs = @{kDXStatusBarEnabled: @YES, kDXStatusBarBindings: @{@"left.tap": @{@"enabled": @YES, @"selector": selector}}};
+            NSString *selector = [@"__typex_panel_test-" stringByAppendingString:side];
+            manager.prefs = @{kDXPanels: DXTestGesturePanels(), kDXStatusBarEnabled: @YES, kDXStatusBarBindings: @{@"left.tap": @{@"enabled": @YES, @"selector": selector}}};
             DXRequestStatusBarGesture(@"left.tap", selector, NO, completion());
-            check(replies == 1 && result == DXSystemOpenSucceeded && [shownSide isEqual:side]); visible = NO;
+            check(replies == 1 && result == DXSystemOpenSucceeded && [shownSide isEqual:selector]); visible = NO;
         }
         manager.prefs = baseline;
         for (NSNumber *age in @[@2, @(-1)]) {

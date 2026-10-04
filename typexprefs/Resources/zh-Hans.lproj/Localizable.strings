@@ -376,7 +376,7 @@
 // Keyboard-covering swipe panels
 "GESTURE_SETTINGS" = "手势设置";
 "DOCK_GESTURE_SETTINGS" = "Dock 手势设置";
-"DOCK_GESTURE_FOOTER" = "从主屏幕 Dock 空白处（包括图标之间或下方）上滑、左滑或右滑，执行各自选择的动作。选择面板时需启用独立面板；其他动作不依赖面板开关。图标点击、长按和拖动保留。";
+"DOCK_GESTURE_FOOTER" = "分别配置 Dock 上划、左滑和右滑的动作。手势只能选择手势面板或无需键盘的自定义动作。";
 "DOCK_ENABLE_UP" = "启用上滑";
 "DOCK_ACTION_UP" = "上滑动作";
 "DOCK_ENABLE_LEFT" = "启用左滑";
@@ -384,31 +384,27 @@
 "DOCK_ENABLE_RIGHT" = "启用右滑";
 "DOCK_ACTION_RIGHT" = "右滑动作";
 "DOCK_ACTION_NONE" = "不执行动作";
-"DOCK_ACTION_PICKER_FOOTER" = "每个方向仅执行一个动作。支持无需输入框的系统动作、应用、快捷操作和链接；不支持文本、脚本或含输入占位符的链接。";
+"DOCK_ACTION_PICKER_FOOTER" = "可选择任意手势面板或无需输入框的自定义动作。";
 "KEYBOARD_GESTURE_SETTINGS" = "键盘工具栏手势";
-"KEYBOARD_PANEL_SETTINGS" = "滑动面板";
+"KEYBOARD_PANEL_SETTINGS" = "面板设置";
 "KEYBOARD_PANEL_ENTRANCE" = "面板入口";
-"KEYBOARD_PANEL_GESTURE_FOOTER" = "在顶部或底部工具栏向左长滑打开左面板，向右长滑打开右面板。单个按钮内滑动保留按钮动作；工具栏不再翻页。";
 "KEYBOARD_PANEL_TOP" = "顶部工具栏长滑";
 "KEYBOARD_PANEL_BOTTOM" = "底部工具栏长滑";
 "KEYBOARD_PANEL_CONTENT" = "面板内容";
 "KEYBOARD_PANEL_CONTENT_FOOTER" = "系统开关、亮度与媒体音量显示、每行图标数和外观只影响当前面板。下方仅显示本面板添加的自定义动作。";
 "KEYBOARD_PANEL_SYSTEM_TOGGLES" = "显示第一排系统开关";
 "KEYBOARD_PANEL_SYSTEM_SLIDERS" = "显示第二排亮度与音量";
-"KEYBOARD_PANEL_LEFT" = "左面板";
-"KEYBOARD_PANEL_RIGHT" = "右面板";
-"KEYBOARD_PANEL_COMMON" = "通用面板";
 "GLOBAL_PANEL_SETTINGS" = "独立面板";
-"GLOBAL_PANEL_ENABLED" = "启用独立面板";
+"GLOBAL_PANEL_ENABLED" = "启用手势面板";
 "GLOBAL_PANEL_DOCK_SWIPE" = "主屏幕 Dock 底部上划";
 "GLOBAL_PANEL_FOOTER" = "独立面板无需弹出键盘，支持系统控制、链接、应用和快捷操作；需要输入框的文字和脚本动作请在键盘面板中执行。";
-"GLOBAL_PANEL_INPUT_REQUIRED" = "该动作需要输入框，请在键盘面板中执行。";
+"GLOBAL_PANEL_INPUT_REQUIRED" = "执行失败：手势面板无法读取或替换输入内容，请从键盘面板执行。";
 "KEYBOARD_PANEL_APPEARANCE" = "面板外观";
 "KEYBOARD_PANEL_DARK" = "深色背景";
 "KEYBOARD_PANEL_COLUMNS" = "每行图标数";
 "KEYBOARD_PANEL_SCALE" = "内容大小（%）";
-"KEYBOARD_PANEL_ITEMS_FOOTER" = "只允许添加自定义动作，不支持基础动作。可先在自定义动作中创建系统动作、链接、应用、文本或脚本，再添加到面板。左滑删除，点击项目编辑；点右上角“编辑”后可拖动排序。删除仅移除本面板项目，自定义动作仍保留。";
-"KEYBOARD_PANEL_PICKER_DELETE_FOOTER" = "点击项目选择动作，左滑可删除自定义动作。删除会同时移除它在工具栏、子动作和所有面板中的引用。";
+"KEYBOARD_PANEL_ITEMS_FOOTER" = "键盘面板支持全部操作，手势面板只支持无需键盘的动作及手势面板。左滑删除当前条目，长按拖动排序，点击编辑；条目删除不删除原动作或原面板。";
+"KEYBOARD_PANEL_PICKER_DELETE_FOOTER" = "点击选择动作或同类面板。左滑可删除自定义动作，并清除其引用；面板请在面板设置中管理。";
 "KEYBOARD_PANEL_ITEM_APPEARANCE" = "编辑名称与图标";
 "KEYBOARD_PANEL_NAME" = "名称（留空使用动作名称）";
 "KEYBOARD_PANEL_ICON" = "系统图标名称或应用标识";
@@ -515,7 +511,6 @@
 "SF_SYMBOL_CATEGORY_draw" = "绘图";
 
 "ICON_LIBRARY_ROW" = "从图标库选择";
-"KEYBOARD_PANEL_PROFILES_FOOTER" = "左面板、右面板和通用面板分别配置内容与外观。工具栏左滑打开左面板，右滑打开右面板；主屏幕 Dock 上划只打开通用面板。";
 "KEYBOARD_PANEL_ACTIONS" = "配置面板动作";
 "SF_SYMBOL_COLUMNS_ONE" = "单列";
 "SF_SYMBOL_COLUMNS_TWO" = "双列";
@@ -538,7 +533,14 @@
 "STATUS_BAR_UNASSIGNED" = "未选择";
 "STATUS_BAR_CLEAR" = "清除动作";
 "STATUS_BAR_PANELS" = "打开面板";
-"STATUS_BAR_PANEL_LEFT" = "左侧面板";
-"STATUS_BAR_PANEL_RIGHT" = "右侧面板";
-"STATUS_BAR_PANEL_COMMON" = "通用面板";
-"STATUS_BAR_PICKER_FOOTER" = "选择或添加系统动作、打开应用、App 快捷项或链接。文字、JavaScript 和需要当前输入内容的动作不适用于状态栏。";
+"STATUS_BAR_PICKER_FOOTER" = "可选择任意手势面板或无需输入框的自定义动作。";
+
+"PANEL_KIND_KEYBOARD" = "键盘面板";
+"PANEL_KIND_GESTURE" = "手势面板";
+"PANEL_ADD" = "添加面板";
+"PANEL_NAME" = "面板名称";
+"PANEL_TYPES_FOOTER" = "面板可任意添加、改名和删除，并作为动作被选择。键盘入口只可选择键盘面板；Dock 和状态栏手势只可选择手势面板。左滑面板可删除，删除会清除它的动作引用。";
+"PANEL_KEYBOARD_FOOTER" = "可配置基础键盘操作、自定义动作和其他键盘面板；可从键盘按钮、按钮手势或工具栏手势打开。";
+"PANEL_GESTURE_FOOTER" = "只可从 Dock、状态栏手势或其他手势面板打开。不能添加基础键盘操作、文本或脚本。链接等动作允许配置，执行时若需要输入内容或替换则报错。";
+"PANEL_TOOLBAR_FOOTER" = "左右长滑分别执行所选动作，未选择时不触发。只能选择键盘面板；单个按钮内滑动仍使用按钮自身手势。";
+"PANEL_KEYBOARD_TEST" = "输入文字，测试键盘面板";

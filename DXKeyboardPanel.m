@@ -1,5 +1,6 @@
 #import "DXKeyboardPanel.h"
 #import "DXKeyboardPanelPreferences.h"
+#import "DXPanelRegistry.h"
 #import "DXKeyboardPanelGeometry.h"
 #import "DXKeyboardPanelLayout.h"
 #import "DXPanelSystemControlsView.h"
@@ -55,6 +56,7 @@
 @property(nonatomic, assign) BOOL dark;
 @property(nonatomic, assign) CGFloat scale;
 @property(nonatomic, assign) NSInteger columns;
+@property(nonatomic, copy) NSDictionary *snapshot;
 @end
 
 @implementation DXKeyboardPanel
@@ -107,7 +109,7 @@
     if (self.source == toolbar) [self dismiss];
 }
 - (BOOL)validSession {
-    return [self visibleToolbar:self.source] && self.source.window == self.sourceWindow &&
+    return [DXPrefsManager.sharedInstance.prefs isEqual:self.snapshot] && [self visibleToolbar:self.source] && self.source.window == self.sourceWindow &&
         self.input && self.input == [self currentInput] &&
         self.window && !self.window.hidden && self.overlay.superview == self.window &&
         self.sessionScene.activationState == UISceneActivationStateForegroundActive;
@@ -220,14 +222,13 @@
     self.overlay.layer.zPosition = z;
     [self.window bringSubviewToFront:self.overlay];
 }
-- (void)presentFromToolbar:(DXCollectionView *)toolbar side:(NSString *)side {
+- (void)presentFromToolbar:(DXCollectionView *)toolbar panelSelector:(NSString *)selector {
     if (![NSThread isMainThread]) return;
-    if (![@[@"left", @"right", @"common"] containsObject:side]) return;
     DXPrefsManager *manager = DXPrefsManager.sharedInstance;
     if (!manager.preferencesAvailable || ![self visibleToolbar:toolbar]) return;
     NSDictionary *preferences = manager.prefs;
-    NSString *enabledKey = [toolbar.configuration isEqualToString:@"top"] ? kDXPanelTopEnabled : kDXPanelBottomEnabled;
-    if (!DXKeyboardPanelBool(preferences, enabledKey, YES)) return;
+    if (!DXPanelAllowed(preferences, selector, DXPanelKeyboardKind)) return;
+    NSDictionary *definition = DXPanelDefinition(preferences, selector);
     UIResponder *input = [self currentInput];
     UIWindow *inputWindow = [input isKindOfClass:UIView.class] ? ((UIView *)input).window : nil;
     UIWindowScene *scene = inputWindow.windowScene ?: toolbar.window.windowScene;
@@ -237,15 +238,15 @@
     }
     [self dismiss];
     [toolbar dismissKeyboardActionChooser];
+    self.snapshot = [preferences copy];
     self.source = toolbar;
     self.sourceWindow = toolbar.window;
     self.input = input;
     self.sessionScene = scene;
     [self.toolbars addObject:toolbar];
-    NSString *profile = side;
-    NSArray *items = DXKeyboardPanelFilterCustomItems(DXKeyboardPanelItems(preferences, profile),
-        preferences[kLinkActionskey], kLinkActionSelectorPrefix);
-    preferences = DXKeyboardPanelProfilePreferences(preferences, profile);
+    NSString *profile = selector;
+    NSArray *items = DXPanelItems(preferences, selector);
+    preferences = DXPanelPreferences(preferences, selector);
     self.scale = DXKeyboardPanelNumber(preferences, kDXPanelScale, 100, 70, 120) / 100;
     self.columns = (NSInteger)DXKeyboardPanelNumber(preferences, kDXPanelColumns, 4, 3, 5);
     self.dark = DXKeyboardPanelBool(preferences, kDXPanelDark, YES);
@@ -293,9 +294,7 @@
     [header addSubview:handle];
     self.titleLabel = [[UILabel alloc] init];
     NSBundle *bundle = [NSBundle bundleWithPath:bundlePath];
-    NSString *titleKey = [profile isEqualToString:@"common"] ? @"KEYBOARD_PANEL_COMMON" :
-        ([profile isEqualToString:@"left"] ? @"KEYBOARD_PANEL_LEFT" : @"KEYBOARD_PANEL_RIGHT");
-    self.titleLabel.text = [bundle localizedStringForKey:titleKey value:titleKey table:nil];
+    self.titleLabel.text = DXPanelString(definition[@"name"]);
     self.titleLabel.textColor = text;
     self.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
     [panel addSubview:self.titleLabel];
@@ -340,7 +339,7 @@
     NSMutableArray *buttons = [NSMutableArray array];
     for (NSDictionary *entry in items) {
         NSString *selector = entry[@"selector"];
-        if (!DXIsLinkActionSelector(selector) || ![toolbar canExecuteKeyboardPanelSelector:selector]) continue;
+        if (![toolbar canExecuteKeyboardPanelSelector:selector]) continue;
         DXKeyboardPanelButton *button = [DXKeyboardPanelButton buttonWithType:UIButtonTypeCustom];
         button.actionSelector = selector;
         button.actionImage = [[UIImageView alloc] init];
@@ -428,7 +427,7 @@
     if (![self validSession] || ![self.buttons containsObject:button]) { [self dismiss]; return; }
     DXCollectionView *source = self.source;
     NSString *selector = [button.actionSelector copy];
-    if (!DXIsLinkActionSelector(selector) || ![source canExecuteKeyboardPanelSelector:selector]) { [self dismiss]; return; }
+    if (![source canExecuteKeyboardPanelSelector:selector]) { [self dismiss]; return; }
     // Synchronous dismissal leaves no animation callback that could target a new input session.
     [self dismiss];
     [source dispatchKeyboardPanelSelector:selector sender:button];
@@ -454,5 +453,6 @@
     self.source = nil;
     self.sourceWindow = nil;
     self.input = nil;
+    self.snapshot = nil;
 }
 @end

@@ -108,7 +108,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "BORDER_WIDTH" = "Border Thickness";
 "BUTTON_WIDTH" = "Button Size";
 "TOOLBAR_HEIGHT" = "Toolbar Height";
-"PANEL_SETTINGS" = "Panel Settings";
+"PANEL_SETTINGS" = "Panel settings";
 "PANEL_SIZE" = "Panel Size";
 "FOOTER_PANEL_SETTINGS" = "Adjust the size of the sub-action panel opened from this toolbar. Top and bottom settings are independent.";
 "MULTILINE_SETTINGS" = "Multi-Row Layout";
@@ -377,7 +377,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 // Keyboard-covering swipe panels
 "GESTURE_SETTINGS" = "Gesture Settings";
 "DOCK_GESTURE_SETTINGS" = "Dock Gesture Settings";
-"DOCK_GESTURE_FOOTER" = "Swipe up, left or right from blank space in or below the Home Screen Dock, including between icons, to run each direction's action. Panel actions require independent panels; other actions do not. Icon taps, long presses and dragging keep their behavior.";
+"DOCK_GESTURE_FOOTER" = "Configure upward, left and right Dock swipes separately. Choose gesture panels or custom actions that do not need a keyboard.";
 "DOCK_ENABLE_UP" = "Enable swipe up";
 "DOCK_ACTION_UP" = "Swipe up action";
 "DOCK_ENABLE_LEFT" = "Enable swipe left";
@@ -385,31 +385,27 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "DOCK_ENABLE_RIGHT" = "Enable swipe right";
 "DOCK_ACTION_RIGHT" = "Swipe right action";
 "DOCK_ACTION_NONE" = "No action";
-"DOCK_ACTION_PICKER_FOOTER" = "Each direction runs one action. Supports system actions, apps, Quick Actions and links that need no input field. Text, scripts and links with input placeholders are unavailable.";
+"DOCK_ACTION_PICKER_FOOTER" = "Choose any gesture panel or custom action that does not need input.";
 "KEYBOARD_GESTURE_SETTINGS" = "Keyboard Toolbar Gestures";
-"KEYBOARD_PANEL_SETTINGS" = "Swipe panels";
+"KEYBOARD_PANEL_SETTINGS" = "Panel settings";
 "KEYBOARD_PANEL_ENTRANCE" = "Panel entrances";
-"KEYBOARD_PANEL_GESTURE_FOOTER" = "Long swipe left or right across either toolbar to open its panel. Swipes confined to one button keep that button’s action. Toolbars no longer page.";
 "KEYBOARD_PANEL_TOP" = "Top toolbar long swipe";
 "KEYBOARD_PANEL_BOTTOM" = "Bottom toolbar long swipe";
 "KEYBOARD_PANEL_CONTENT" = "Panel content";
 "KEYBOARD_PANEL_CONTENT_FOOTER" = "System toggles, brightness/media-volume visibility, columns and appearance affect only this panel. Only this panel’s custom actions appear below.";
 "KEYBOARD_PANEL_SYSTEM_TOGGLES" = "Show first row: system toggles";
 "KEYBOARD_PANEL_SYSTEM_SLIDERS" = "Show second row: brightness and volume";
-"KEYBOARD_PANEL_LEFT" = "Left panel";
-"KEYBOARD_PANEL_RIGHT" = "Right panel";
-"KEYBOARD_PANEL_COMMON" = "Common panel";
 "GLOBAL_PANEL_SETTINGS" = "Independent panels";
-"GLOBAL_PANEL_ENABLED" = "Enable independent panels";
+"GLOBAL_PANEL_ENABLED" = "Enable gesture panels";
 "GLOBAL_PANEL_DOCK_SWIPE" = "Swipe up from the Home Screen Dock";
 "GLOBAL_PANEL_FOOTER" = "Independent panels work without showing the keyboard and support system controls, links, apps, and quick actions. Use keyboard panels for text or scripts that require an input field.";
-"GLOBAL_PANEL_INPUT_REQUIRED" = "This action needs an input field. Run it from a keyboard panel.";
+"GLOBAL_PANEL_INPUT_REQUIRED" = "Action failed: gesture panels cannot read or replace input. Run this action from a keyboard panel.";
 "KEYBOARD_PANEL_APPEARANCE" = "Panel appearance";
 "KEYBOARD_PANEL_DARK" = "Dark background";
 "KEYBOARD_PANEL_COLUMNS" = "Icons per row";
 "KEYBOARD_PANEL_SCALE" = "Content size (%)";
-"KEYBOARD_PANEL_ITEMS_FOOTER" = "Only custom actions can be added. Create system actions, links, apps, text or scripts in Custom Actions first, then add them to the panel. Swipe left to delete; tap to edit. Tap Edit at the top to drag and reorder. Deleting removes only this panel item and keeps the custom action.";
-"KEYBOARD_PANEL_PICKER_DELETE_FOOTER" = "Tap a row to select it; swipe left to delete the custom action. Deleting also removes its references from toolbars, sub-actions and all panels.";
+"KEYBOARD_PANEL_ITEMS_FOOTER" = "Keyboard panels support all actions. Gesture panels support actions without a keyboard and other gesture panels. Swipe to remove an item, hold to reorder or tap to edit. Removing an item keeps its original action or panel.";
+"KEYBOARD_PANEL_PICKER_DELETE_FOOTER" = "Select an action or a panel of the same type. Swipe to delete a custom action and its references. Manage panels in Panel settings.";
 "KEYBOARD_PANEL_ITEM_APPEARANCE" = "Edit name and icon";
 "KEYBOARD_PANEL_NAME" = "Name (empty uses action name)";
 "KEYBOARD_PANEL_ICON" = "SF Symbol or App Bundle ID";
@@ -516,7 +512,6 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SF_SYMBOL_CATEGORY_draw" = "Draw";
 
 "ICON_LIBRARY_ROW" = "Pick from Icon Library";
-"KEYBOARD_PANEL_PROFILES_FOOTER" = "Left, right and common panels have separate content and appearance settings. Swipe left or right on a toolbar for its matching panel. Swipe up from the Home Screen Dock for the common panel only.";
 "KEYBOARD_PANEL_ACTIONS" = "Configure panel actions";
 "SF_SYMBOL_COLUMNS_ONE" = "One";
 "SF_SYMBOL_COLUMNS_TWO" = "Two";
@@ -539,7 +534,14 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "STATUS_BAR_UNASSIGNED" = "Unassigned";
 "STATUS_BAR_CLEAR" = "Clear Action";
 "STATUS_BAR_PANELS" = "Open Panel";
-"STATUS_BAR_PANEL_LEFT" = "Left Panel";
-"STATUS_BAR_PANEL_RIGHT" = "Right Panel";
-"STATUS_BAR_PANEL_COMMON" = "Common Panel";
-"STATUS_BAR_PICKER_FOOTER" = "Choose or add a system action, app, App Quick Action, or link. Text, JavaScript, and actions requiring the current input are unavailable here.";
+"STATUS_BAR_PICKER_FOOTER" = "Choose any gesture panel or custom action that does not need input.";
+
+"PANEL_KIND_KEYBOARD" = "Keyboard panels";
+"PANEL_KIND_GESTURE" = "Gesture panels";
+"PANEL_ADD" = "Add panel";
+"PANEL_NAME" = "Panel name";
+"PANEL_TYPES_FOOTER" = "Add, rename or delete any number of panels and select them as actions. Keyboard entrances offer keyboard panels; Dock and status-bar gestures offer gesture panels. Swipe to delete a panel and clear its references.";
+"PANEL_KEYBOARD_FOOTER" = "Supports built-in keyboard operations, custom actions and other keyboard panels. Open from keyboard buttons, button gestures or toolbar gestures.";
+"PANEL_GESTURE_FOOTER" = "Open from Dock/status-bar gestures or other gesture panels. Built-in keyboard actions, text and scripts are unavailable. Links are selectable, but actions requiring input or replacement fail with an error.";
+"PANEL_TOOLBAR_FOOTER" = "Configure left and right long swipes separately. Unassigned swipes do nothing. Only keyboard panels are available; swipes confined to a button keep its own gesture action.";
+"PANEL_KEYBOARD_TEST" = "Type to test keyboard panels";

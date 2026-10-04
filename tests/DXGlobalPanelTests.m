@@ -7,11 +7,6 @@ static void check(BOOL condition) { NSCAssert(condition, @"Global panel check %l
 
 int main(void) {
     @autoreleasepool {
-        check([DXGlobalPanelSideForNotification(DXGlobalPanelLeftNotification) isEqual:@"left"]);
-        check([DXGlobalPanelSideForNotification(DXGlobalPanelRightNotification) isEqual:@"right"]);
-        check([DXGlobalPanelSideForNotification(DXGlobalPanelCommonNotification) isEqual:@"common"]);
-        check(!DXGlobalPanelSideForNotification(@"com.lindo.typex/aichat"));
-        check(!DXGlobalPanelSideForNotification(nil));
         check(DXDockPanelOriginAllowed(150, 82, 300, 96, 34));
         check(DXDockPanelOriginAllowed(150, 66, 300, 96, 34));
         check(DXDockPanelOriginAllowed(150, 48, 300, 96, 34)); // Between icons, at icon height.

@@ -34,5 +34,5 @@ def check_labels(value):
 for path in resources.glob("*.plist"):
     check_labels(read_plist(path))
 assert not missing, f"untranslated settings labels: {sorted(missing)}"
-assert localized["KEYBOARD_PANEL_SETTINGS"] == "滑动面板"
+assert localized["KEYBOARD_PANEL_SETTINGS"] == "面板设置"
 print("PASS: symbolic Settings labels have Chinese translations, including the Root panel entry")

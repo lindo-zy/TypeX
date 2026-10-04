@@ -5,6 +5,7 @@
 #import "DXPIconInputView.h"
 #import "DXPSFSymbolPickerController.h"
 #import "DXPLinkActionEditorController.h"
+#import "DXPPanelActionCatalog.h"
 #import "../DXKeyboardPanelPreferences.h"
 #import "../DXHelper.h"
 #import "../common.h"
@@ -14,8 +15,8 @@ static NSString *DXPanelLocalized(NSString *key) {
     return [[NSBundle bundleWithPath:bundlePath] localizedStringForKey:key value:key table:nil];
 }
 
-// List saved custom actions and the 添加 row only; system actions are created
-// through 添加, then selected here. customActionsOnly would edit rows on tap.
+// Keyboard context shows every action; gesture context excludes keyboard
+// operations. Both offer same-type panels and custom-action creation.
 @interface DXPKeyboardPanelActionPicker : DXPSubActionPickerController
 @end
 @implementation DXPKeyboardPanelActionPicker
@@ -23,7 +24,7 @@ static NSString *DXPanelLocalized(NSString *key) {
     self.allowsDeletingCustomActions = YES;
     [super viewDidLoad];
 }
-- (BOOL)showsBuiltInActionsSection { return NO; }
+- (BOOL)showsBuiltInActionsSection { return ![self.actionContextKind isEqual:DXPanelGestureKind]; }
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     (void)tableView; (void)section;
     return DXPanelLocalized(@"KEYBOARD_PANEL_PICKER_DELETE_FOOTER");
@@ -33,108 +34,164 @@ static NSString *DXPanelLocalized(NSString *key) {
 @interface DXPKeyboardPanelController ()
 @property(nonatomic, strong) DXPKeyboardPanelPreviewHeader *previewHeader;
 @property(nonatomic, strong) UISearchController *keyboardTestSearch;
-- (NSString *)profileSide;
+- (NSString *)panelSelector;
 @end
 @implementation DXPKeyboardPanelController
-- (NSString *)profileSide {
-    NSString *side = [self.specifier propertyForKey:@"panelSide"];
-    return [@[@"left", @"right", @"common"] containsObject:side] ? side : nil;
-}
+- (NSString *)panelSelector { return [self.specifier propertyForKey:@"panelSelector"]; }
 - (void)viewDidLoad {
     [super viewDidLoad];
-    NSString *side = [self profileSide];
-    self.title = side ? self.specifier.name : DXPanelLocalized(@"KEYBOARD_PANEL_SETTINGS");
-    self.previewHeader = [[DXPKeyboardPanelPreviewHeader alloc] initWithSide:side ?: @"left" allowsSelection:!side];
-    self.previewHeader.frame = CGRectMake(0, 0, self.table.bounds.size.width, self.previewHeader.bounds.size.height);
-    self.table.tableHeaderView = self.previewHeader;
-    self.keyboardTestSearch = [[UISearchController alloc] initWithSearchResultsController:nil];
-    self.keyboardTestSearch.obscuresBackgroundDuringPresentation = NO;
-    self.keyboardTestSearch.hidesNavigationBarDuringPresentation = NO;
-    self.keyboardTestSearch.searchBar.placeholder = @"输入文字，测试键盘与滑动面板";
-    self.navigationItem.searchController = self.keyboardTestSearch;
-    self.navigationItem.hidesSearchBarWhenScrolling = YES;
-    self.definesPresentationContext = YES;
+    NSString *selector = [self panelSelector];
+    self.title = selector ? DXPanelString(DXPanelDefinition([DXPrefsManager.sharedInstance readPrefs], selector)[@"name"]) : DXPanelLocalized(@"KEYBOARD_PANEL_SETTINGS");
+    if (selector) {
+        self.previewHeader = [[DXPKeyboardPanelPreviewHeader alloc] initWithPanelSelector:selector];
+        self.previewHeader.frame = CGRectMake(0, 0, self.table.bounds.size.width, self.previewHeader.bounds.size.height);
+        self.table.tableHeaderView = self.previewHeader;
+        if (DXPanelAllowed([DXPrefsManager.sharedInstance readPrefs], selector, DXPanelKeyboardKind)) {
+            self.keyboardTestSearch = [[UISearchController alloc] initWithSearchResultsController:nil];
+            self.keyboardTestSearch.obscuresBackgroundDuringPresentation = NO;
+            self.keyboardTestSearch.hidesNavigationBarDuringPresentation = NO;
+            self.keyboardTestSearch.searchBar.placeholder = DXPanelLocalized(@"PANEL_KEYBOARD_TEST");
+            self.navigationItem.searchController = self.keyboardTestSearch;
+            self.definesPresentationContext = YES;
+        }
+    } else {
+        self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addPanel)];
+    }
 }
-- (void)viewWillAppear:(BOOL)animated {
-    [super viewWillAppear:animated];
-    [self.previewHeader refresh];
-}
+- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self reloadSpecifiers]; [self.previewHeader refresh]; }
 - (void)viewWillDisappear:(BOOL)animated {
-    self.keyboardTestSearch.active = NO;
-    [self.view endEditing:YES];
-    [super viewWillDisappear:animated];
+    self.keyboardTestSearch.active = NO; [self.view endEditing:YES]; [super viewWillDisappear:animated];
 }
 - (CGFloat)tableView:(UITableView *)table heightForRowAtIndexPath:(NSIndexPath *)path {
-    PSSpecifier *specifier = [self specifierAtIndexPath:path];
-    if ([specifier propertyForKey:@"cellClass"] == DXPPanelSliderCell.class) return 80;
+    if ([[self specifierAtIndexPath:path] propertyForKey:@"cellClass"] == DXPPanelSliderCell.class) return 80;
     return [super tableView:table heightForRowAtIndexPath:path];
 }
 - (PSSpecifier *)setting:(NSString *)label key:(NSString *)key defaultValue:(id)value cell:(PSCellType)cell {
-    PSSpecifier *specifier = [PSSpecifier preferenceSpecifierNamed:DXPanelLocalized(label) target:self
-        set:@selector(setPreferenceValue:specifier:) get:@selector(readPreferenceValue:)
-        detail:nil cell:cell edit:nil];
-    NSString *side = [self profileSide];
-    [specifier setProperty:side ? DXKeyboardPanelProfileKey(key, side) : key forKey:@"key"];
-    if (side) [specifier setProperty:key forKey:@"legacyKey"];
-    [specifier setProperty:value forKey:@"default"];
-    return specifier;
+    PSSpecifier *item = [PSSpecifier preferenceSpecifierNamed:DXPanelLocalized(label) target:self set:@selector(setPreferenceValue:specifier:) get:@selector(readPreferenceValue:) detail:nil cell:cell edit:nil];
+    [item setProperty:key forKey:@"key"]; [item setProperty:value forKey:@"default"];
+    return item;
 }
 - (NSArray *)specifiers {
     if (_specifiers) return _specifiers;
     NSMutableArray *items = [NSMutableArray array];
-    NSString *side = [self profileSide];
-    if (!side) {
-        PSSpecifier *group = [PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"GLOBAL_PANEL_SETTINGS")];
-        [group setProperty:DXPanelLocalized(@"GLOBAL_PANEL_FOOTER") forKey:@"footerText"];
-        [items addObject:group];
+    NSString *selector = [self panelSelector];
+    NSDictionary *preferences = [DXPrefsManager.sharedInstance readPrefs];
+    if (!selector) {
+        PSSpecifier *group = [PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"PANEL_SETTINGS")];
+        [group setProperty:DXPanelLocalized(@"PANEL_TYPES_FOOTER") forKey:@"footerText"]; [items addObject:group];
         [items addObject:[self setting:@"GLOBAL_PANEL_ENABLED" key:kDXPanelGlobalEnabled defaultValue:@YES cell:PSSwitchCell]];
-        group = [PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"KEYBOARD_PANEL_CONTENT")];
-        [group setProperty:DXPanelLocalized(@"KEYBOARD_PANEL_PROFILES_FOOTER") forKey:@"footerText"];
-        [items addObject:group];
-        for (NSArray *profile in @[@[@"left", @"KEYBOARD_PANEL_LEFT"], @[@"right", @"KEYBOARD_PANEL_RIGHT"], @[@"common", @"KEYBOARD_PANEL_COMMON"]]) {
-            PSSpecifier *link = [PSSpecifier preferenceSpecifierNamed:DXPanelLocalized(profile[1]) target:self set:nil get:nil
-                detail:DXPKeyboardPanelController.class cell:PSLinkCell edit:nil];
-            [link setProperty:profile[0] forKey:@"panelSide"];
-            [items addObject:link];
+        for (NSString *kind in @[DXPanelKeyboardKind, DXPanelGestureKind]) {
+            [items addObject:[PSSpecifier groupSpecifierWithName:DXPanelLocalized([kind isEqual:DXPanelKeyboardKind] ? @"PANEL_KIND_KEYBOARD" : @"PANEL_KIND_GESTURE")]];
+            for (NSDictionary *panel in DXPanelDefinitions(preferences, kind)) {
+                PSSpecifier *link = [PSSpecifier preferenceSpecifierNamed:DXPanelString(panel[@"name"]) target:self set:nil get:nil detail:DXPKeyboardPanelController.class cell:PSLinkCell edit:nil];
+                [link setProperty:DXPanelSelector(panel[@"id"]) forKey:@"panelSelector"];
+                [link setProperty:[DXHelper imageForIconConfig:panel[@"icon"] defaultSymbolName:@"square.grid.2x2"] forKey:@"iconImage"];
+                [items addObject:link];
+            }
         }
-        _specifiers = items;
-        return _specifiers;
+        _specifiers = items; return items;
     }
-    PSSpecifier *group = [PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"KEYBOARD_PANEL_CONTENT")];
-    [group setProperty:DXPanelLocalized(@"KEYBOARD_PANEL_CONTENT_FOOTER") forKey:@"footerText"];
+    NSDictionary *panel = DXPanelDefinition(preferences, selector);
+    if (!panel) { _specifiers = items; return items; }
+    PSSpecifier *group = [PSSpecifier groupSpecifierWithName:DXPanelLocalized([panel[@"kind"] isEqual:DXPanelKeyboardKind] ? @"PANEL_KIND_KEYBOARD" : @"PANEL_KIND_GESTURE")];
+    [group setProperty:DXPanelLocalized([panel[@"kind"] isEqual:DXPanelKeyboardKind] ? @"PANEL_KEYBOARD_FOOTER" : @"PANEL_GESTURE_FOOTER") forKey:@"footerText"];
     [items addObject:group];
+    [items addObject:[self setting:@"PANEL_NAME" key:@"name" defaultValue:@"" cell:PSEditTextCell]];
+    [items addObject:[self setting:@"KEYBOARD_PANEL_ICON" key:@"icon" defaultValue:@"square.grid.2x2" cell:PSEditTextCell]];
     [items addObject:[self setting:@"KEYBOARD_PANEL_SYSTEM_TOGGLES" key:kDXPanelSystemTogglesVisible defaultValue:@YES cell:PSSwitchCell]];
     [items addObject:[self setting:@"KEYBOARD_PANEL_SYSTEM_SLIDERS" key:kDXPanelSystemSlidersVisible defaultValue:@YES cell:PSSwitchCell]];
-    PSSpecifier *actions = [PSSpecifier preferenceSpecifierNamed:DXPanelLocalized(@"KEYBOARD_PANEL_ACTIONS") target:self set:nil get:nil
-        detail:DXPKeyboardPanelItemsController.class cell:PSLinkCell edit:nil];
-    [actions setProperty:side forKey:@"panelSide"];
-    [items addObject:actions];
+    PSSpecifier *actions = [PSSpecifier preferenceSpecifierNamed:DXPanelLocalized(@"KEYBOARD_PANEL_ACTIONS") target:self set:nil get:nil detail:DXPKeyboardPanelItemsController.class cell:PSLinkCell edit:nil];
+    [actions setProperty:selector forKey:@"panelSelector"]; [items addObject:actions];
     [items addObject:[PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"KEYBOARD_PANEL_APPEARANCE")]];
     [items addObject:[self setting:@"KEYBOARD_PANEL_DARK" key:kDXPanelDark defaultValue:@YES cell:PSSwitchCell]];
-    for (NSArray *row in @[@[@"KEYBOARD_PANEL_COLUMNS", kDXPanelColumns, @4, @3, @5],
-                          @[@"KEYBOARD_PANEL_SCALE", kDXPanelScale, @100, @70, @120]]) {
+    for (NSArray *row in @[@[@"KEYBOARD_PANEL_COLUMNS", kDXPanelColumns, @4, @3, @5], @[@"KEYBOARD_PANEL_SCALE", kDXPanelScale, @100, @70, @120]]) {
         PSSpecifier *slider = [self setting:row[0] key:row[1] defaultValue:row[2] cell:PSStaticTextCell];
-        [slider setProperty:DXPPanelSliderCell.class forKey:@"cellClass"];
-        [slider setProperty:row[3] forKey:@"min"];
-        [slider setProperty:row[4] forKey:@"max"];
-        [slider setProperty:@YES forKey:@"showValue"];
-        [items addObject:slider];
+        [slider setProperty:DXPPanelSliderCell.class forKey:@"cellClass"]; [slider setProperty:row[3] forKey:@"min"]; [slider setProperty:row[4] forKey:@"max"];
+        [slider setProperty:@YES forKey:@"showValue"]; [items addObject:slider];
     }
-    _specifiers = items;
-    return _specifiers;
+    _specifiers = items; return items;
 }
 - (id)readPreferenceValue:(PSSpecifier *)specifier {
-    NSDictionary *preferences = [[DXPrefsManager sharedInstance] readPrefs];
-    NSString *legacyKey = [specifier propertyForKey:@"legacyKey"];
-    return preferences[[specifier propertyForKey:@"key"]] ?: (legacyKey ? preferences[legacyKey] : nil) ?: [specifier propertyForKey:@"default"];
+    NSDictionary *preferences = [DXPrefsManager.sharedInstance readPrefs];
+    NSString *key = [specifier propertyForKey:@"key"], *selector = [self panelSelector];
+    if (!selector) return preferences[key] ?: [specifier propertyForKey:@"default"];
+    NSDictionary *panel = DXPanelDefinition(preferences, selector);
+    return ([key isEqual:@"name"] || [key isEqual:@"icon"] ? panel[key] : DXPanelPreferences(preferences, selector)[key]) ?: [specifier propertyForKey:@"default"];
 }
 - (void)setPreferenceValue:(id)value specifier:(PSSpecifier *)specifier {
-    NSString *key = [specifier propertyForKey:@"key"];
-    NSString *baseKey = [specifier propertyForKey:@"legacyKey"] ?: key;
-    if ([baseKey isEqualToString:kDXPanelColumns]) value = @(MIN(5, MAX(3, lround([value doubleValue]))));
-    if ([baseKey isEqualToString:kDXPanelScale]) value = @(MIN(120, MAX(70, lround([value doubleValue] / 5) * 5)));
-    if (key.length && value) [[DXPrefsManager sharedInstance] setValue:value forKey:key];
-    [self.previewHeader refresh];
+    NSString *key = [specifier propertyForKey:@"key"], *selector = [self panelSelector];
+    if (!key.length || !value) return;
+    if (!selector) { [DXPrefsManager.sharedInstance setValue:value forKey:key]; return; }
+    NSMutableDictionary *preferences = [[DXPrefsManager.sharedInstance readPrefs] mutableCopy];
+    if (!DXPanelDefinition(preferences, selector)) return;
+    if ([key isEqual:@"name"] || [key isEqual:@"icon"]) {
+        value = [DXPanelString(value) stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if ([key isEqual:@"name"] && ![value length]) return;
+        DXPanelUpdate(preferences, selector, @{key: value});
+    } else {
+        if ([key isEqual:kDXPanelColumns]) value = @(MIN(5, MAX(3, lround([value doubleValue]))));
+        if ([key isEqual:kDXPanelScale]) value = @(MIN(120, MAX(70, lround([value doubleValue] / 5) * 5)));
+        id stored = DXPanelDefinition(preferences, selector)[@"preferences"];
+        NSMutableDictionary *options = [stored isKindOfClass:NSDictionary.class] ? [stored mutableCopy] : [NSMutableDictionary dictionary];
+        options[key] = value; DXPanelUpdate(preferences, selector, @{@"preferences": options});
+    }
+    [DXPrefsManager.sharedInstance writePrefs:preferences];
+    self.title = DXPanelString(DXPanelDefinition(preferences, selector)[@"name"]); [self.previewHeader refresh];
+}
+- (void)addPanel {
+    UIAlertController *menu = [UIAlertController alertControllerWithTitle:DXPanelLocalized(@"PANEL_ADD") message:nil preferredStyle:UIAlertControllerStyleAlert];
+    __weak typeof(self) weakSelf = self;
+    for (NSString *kind in @[DXPanelKeyboardKind, DXPanelGestureKind])
+        [menu addAction:[UIAlertAction actionWithTitle:DXPanelLocalized([kind isEqual:DXPanelKeyboardKind] ? @"PANEL_KIND_KEYBOARD" : @"PANEL_KIND_GESTURE") style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) { [weakSelf addPanelOfKind:kind]; }]];
+    [menu addAction:[UIAlertAction actionWithTitle:DXPanelLocalized(@"CANCEL") style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:menu animated:YES completion:nil];
+}
+- (void)addPanelOfKind:(NSString *)kind {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:DXPanelLocalized(@"PANEL_ADD") message:nil preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) { field.placeholder = DXPanelLocalized(@"PANEL_NAME"); }];
+    __weak typeof(self) weakSelf = self;
+    __weak UIAlertController *weakAlert = alert;
+    [alert addAction:[UIAlertAction actionWithTitle:DXPanelLocalized(@"KEYBOARD_PANEL_SAVE") style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self || !DXPanelKindValid(kind) || self.navigationController.topViewController != self) return;
+        NSMutableDictionary *preferences = [[DXPrefsManager.sharedInstance readPrefs] mutableCopy];
+        NSMutableArray *panels = [DXPanelDefinitions(preferences, nil) mutableCopy];
+        NSString *name = [weakAlert.textFields.firstObject.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (!name.length) name = DXPanelLocalized([kind isEqual:DXPanelKeyboardKind] ? @"PANEL_KIND_KEYBOARD" : @"PANEL_KIND_GESTURE");
+        NSDictionary *panel = @{@"id": NSUUID.UUID.UUIDString, @"kind": kind, @"name": name, @"icon": [kind isEqual:DXPanelKeyboardKind] ? @"keyboard" : @"hand.draw", @"items": @[], @"preferences": @{}};
+        [panels addObject:panel]; preferences[kDXPanels] = panels;
+        [DXPrefsManager.sharedInstance writePrefs:preferences]; [self reloadSpecifiers];
+        DXPKeyboardPanelController *editor = [DXPKeyboardPanelController new];
+        PSSpecifier *specifier = [PSSpecifier preferenceSpecifierNamed:name target:nil set:nil get:nil detail:nil cell:PSLinkCell edit:nil];
+        [specifier setProperty:DXPanelSelector(panel[@"id"]) forKey:@"panelSelector"]; editor.specifier = specifier;
+        [editor setRootController:self.rootController]; [editor setParentController:self]; [self pushController:editor];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:DXPanelLocalized(@"CANCEL") style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)path {
+    (void)tableView; return ![self panelSelector] && [[self specifierAtIndexPath:path] propertyForKey:@"panelSelector"] != nil;
+}
+- (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)style forRowAtIndexPath:(NSIndexPath *)path {
+    (void)tableView;
+    if (style == UITableViewCellEditingStyleDelete) [self deletePanelSelector:[[self specifierAtIndexPath:path] propertyForKey:@"panelSelector"]];
+}
+- (BOOL)deletePanelSelector:(NSString *)selector {
+    if (!selector || [self panelSelector]) return NO;
+    NSMutableDictionary *preferences = [[DXPrefsManager.sharedInstance readPrefs] mutableCopy];
+    NSDictionary *panel = DXPanelDefinition(preferences, selector);
+    if (!panel) return NO;
+    NSMutableArray *panels = [DXPanelDefinitions(preferences, nil) mutableCopy]; [panels removeObject:panel]; preferences[kDXPanels] = panels;
+    [[DXPCustomActionViewController new] removeReferencesToSelector:selector fromPreferences:preferences];
+    [DXPrefsManager.sharedInstance writePrefs:preferences]; [self reloadSpecifiers]; return YES;
+}
+- (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)path {
+    if (![self tableView:tableView canEditRowAtIndexPath:path]) return nil;
+    NSString *selector = [[self specifierAtIndexPath:path] propertyForKey:@"panelSelector"];
+    __weak typeof(self) weakSelf = self;
+    UIContextualAction *remove = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:DXPanelLocalized(@"DELETE") handler:^(__unused UIContextualAction *action, __unused UIView *view, void (^completion)(BOOL)) { completion([weakSelf deletePanelSelector:selector]); }];
+    UISwipeActionsConfiguration *configuration = [UISwipeActionsConfiguration configurationWithActions:@[remove]];
+    configuration.performsFirstActionWithFullSwipe = NO; return configuration;
 }
 @end
 // 面板条目外观编辑页：两行表单（名称、图标），图标行走 DXPIconInputView
@@ -218,26 +275,25 @@ static NSString *DXPanelLocalized(NSString *key) {
 @interface DXPKeyboardPanelItemsController () <UITableViewDragDelegate, UITableViewDropDelegate>
 @property(nonatomic, strong) UITableView *table;
 @property(nonatomic, strong) DXPKeyboardPanelPreviewHeader *previewHeader;
-@property(nonatomic, copy) NSString *side;
+@property(nonatomic, copy) NSString *panelSelector;
 @property(nonatomic, strong) NSMutableArray<NSDictionary *> *entries;
 @end
 
 @implementation DXPKeyboardPanelItemsController
 - (NSMutableArray *)configuredEntries {
     NSDictionary *preferences = [[DXPrefsManager sharedInstance] readPrefs];
-    return [DXKeyboardPanelFilterCustomItems(DXKeyboardPanelItems(preferences, self.side),
-        preferences[kLinkActionskey], kLinkActionSelectorPrefix) mutableCopy];
+    return [DXPanelItems(preferences, self.panelSelector) mutableCopy];
 }
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.side = [self.specifier propertyForKey:@"panelSide"] ?: @"left";
+    self.panelSelector = [self.specifier propertyForKey:@"panelSelector"];
     self.title = self.specifier.name;
     self.table = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
     self.table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.table.delegate = self;
     self.table.dataSource = self;
     [self.view addSubview:self.table];
-    self.previewHeader = [[DXPKeyboardPanelPreviewHeader alloc] initWithSide:self.side allowsSelection:NO];
+    self.previewHeader = [[DXPKeyboardPanelPreviewHeader alloc] initWithPanelSelector:self.panelSelector];
     self.previewHeader.frame = CGRectMake(0, 0, self.table.bounds.size.width, self.previewHeader.bounds.size.height);
     self.table.tableHeaderView = self.previewHeader;
     UIBarButtonItem *addButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addActions)];
@@ -255,10 +311,17 @@ static NSString *DXPanelLocalized(NSString *key) {
     [self.table reloadData];
 }
 - (void)save {
-    [[DXPrefsManager sharedInstance] setValue:[self.entries copy] forKey:DXKeyboardPanelItemsKey(self.side)];
+    NSMutableDictionary *preferences = [[DXPrefsManager.sharedInstance readPrefs] mutableCopy];
+    if (!DXPanelDefinition(preferences, self.panelSelector)) return;
+    DXPanelUpdate(preferences, self.panelSelector, @{@"items": [self.entries copy]});
+    [DXPrefsManager.sharedInstance writePrefs:preferences];
     [self.previewHeader refresh];
 }
 - (NSDictionary *)definitionForSelector:(NSString *)selector {
+    NSDictionary *preferences = [DXPrefsManager.sharedInstance readPrefs];
+    return DXPPanelDisplayDefinition(preferences, selector);
+}
+- (NSDictionary *)customDefinitionForSelector:(NSString *)selector {
     id stored = [[DXPrefsManager sharedInstance] readPrefs][kLinkActionskey];
     if (![stored isKindOfClass:NSArray.class]) return nil;
     for (id entry in stored) if ([entry isKindOfClass:NSDictionary.class] && [entry[@"selector"] isEqual:selector]) return entry;
@@ -378,7 +441,10 @@ static NSString *DXPanelLocalized(NSString *key) {
     [self save];
 }
 - (void)pushPicker:(DXPSubActionPickerController *)picker {
-    picker.fullOrder = @[];
+    NSDictionary *panel = DXPanelDefinition([DXPrefsManager.sharedInstance readPrefs], self.panelSelector);
+    if (!panel) return;
+    picker.actionContextKind = panel[@"kind"];
+    picker.fullOrder = [panel[@"kind"] isEqual:DXPanelKeyboardKind] ? DXPPanelBuiltInActions() : @[];
     picker.title = DXPanelLocalized(@"CHOOSE_ACTION");
     [picker setRootController:[self rootController]];
     [picker setParentController:[self parentController]];
@@ -388,14 +454,15 @@ static NSString *DXPanelLocalized(NSString *key) {
     DXPSubActionPickerController *picker = [[DXPKeyboardPanelActionPicker alloc] init];
     picker.allowsMultipleSelection = YES;
     __weak typeof(self) weakSelf = self;
+    __weak DXPSubActionPickerController *weakPicker = picker;
     picker.multiSelectionCompletion = ^(NSArray<NSString *> *selectors) {
         __strong typeof(weakSelf) self = weakSelf;
-        if (!self) return;
+        if (!self || self.navigationController.topViewController != weakPicker || ![self.navigationController.viewControllers containsObject:self]) return;
         // The picker can delete definitions and saved panel references. Start
         // from that latest configuration instead of restoring the parent's copy.
         self.entries = [self configuredEntries];
         for (NSString *selector in selectors) {
-            if (DXIsLinkActionSelector(selector) && [self definitionForSelector:selector])
+            if (DXPanelItemAllowed([DXPrefsManager.sharedInstance readPrefs], selector, DXPanelDefinition([DXPrefsManager.sharedInstance readPrefs], self.panelSelector)[@"kind"]) && [self definitionForSelector:selector])
                 [self.entries addObject:@{@"id": NSUUID.UUID.UUIDString, @"selector": selector}];
         }
         [self save];
@@ -404,14 +471,15 @@ static NSString *DXPanelLocalized(NSString *key) {
     [self pushPicker:picker];
 }
 - (void)replaceActionAtRow:(NSInteger)row {
-    if (row >= (NSInteger)self.entries.count) return;
+    if (row < 0 || row >= (NSInteger)self.entries.count) return;
     NSDictionary *original = self.entries[row];
     DXPSubActionPickerController *picker = [[DXPKeyboardPanelActionPicker alloc] init];
     picker.selectedSelector = original[@"selector"];
     __weak typeof(self) weakSelf = self;
+    __weak DXPSubActionPickerController *weakPicker = picker;
     picker.completion = ^(NSString *selector) {
         __strong typeof(weakSelf) self = weakSelf;
-        if (!self || !DXIsLinkActionSelector(selector) || ![self definitionForSelector:selector]) return;
+        if (!self || self.navigationController.topViewController != weakPicker || ![self.navigationController.viewControllers containsObject:self] || ![self definitionForSelector:selector] || !DXPanelItemAllowed([DXPrefsManager.sharedInstance readPrefs], selector, DXPanelDefinition([DXPrefsManager.sharedInstance readPrefs], self.panelSelector)[@"kind"])) return;
         self.entries = [self configuredEntries];
         NSUInteger currentRow = [self.entries indexOfObject:original];
         if (currentRow == NSNotFound) return;
@@ -434,8 +502,9 @@ static NSString *DXPanelLocalized(NSString *key) {
     editor.completion = ^(NSDictionary *updated) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf || ![updated isKindOfClass:NSDictionary.class]) return;
-        // 返回时按原条目对象定位行；行已删除或重排则放弃写入。
-        NSUInteger currentRow = [strongSelf.entries indexOfObjectIdenticalTo:original];
+        // Resolve against the latest saved items; a deleted reference stays deleted.
+        strongSelf.entries = [strongSelf configuredEntries];
+        NSUInteger currentRow = [strongSelf.entries indexOfObject:original];
         if (currentRow == NSNotFound) return;
         strongSelf.entries[currentRow] = updated;
         [strongSelf save];
@@ -472,12 +541,13 @@ static NSString *DXPanelLocalized(NSString *key) {
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     NSInteger row = indexPath.row;
+    if (row < 0 || row >= (NSInteger)self.entries.count) return;
     NSDictionary *entry = self.entries[row];
     UIAlertController *menu = [UIAlertController alertControllerWithTitle:[self nameForEntry:entry] message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     __weak typeof(self) weakSelf = self;
     [menu addAction:[UIAlertAction actionWithTitle:DXPanelLocalized(@"KEYBOARD_PANEL_ITEM_APPEARANCE") style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) { [weakSelf pushAppearanceEditorAtRow:row]; }]];
     [menu addAction:[UIAlertAction actionWithTitle:DXPanelLocalized(@"KEYBOARD_PANEL_REPLACE_ACTION") style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) { [weakSelf replaceActionAtRow:row]; }]];
-    NSDictionary *definition = [self definitionForSelector:entry[@"selector"]];
+    NSDictionary *definition = [self customDefinitionForSelector:entry[@"selector"]];
     if (definition) [menu addAction:[UIAlertAction actionWithTitle:DXPanelLocalized(@"KEYBOARD_PANEL_EDIT_ACTION") style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) { [weakSelf editDefinition:definition]; }]];
     [menu addAction:[UIAlertAction actionWithTitle:DXPanelLocalized(@"CANCEL") style:UIAlertActionStyleCancel handler:nil]];
     menu.popoverPresentationController.sourceView = [tableView cellForRowAtIndexPath:indexPath];

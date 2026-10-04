@@ -4,6 +4,7 @@
 #import "../DXPanelSystemControlsView.h"
 #import "../DXHelper.h"
 #import "../common.h"
+#import "DXPPanelActionCatalog.h"
 
 @interface DXPKeyboardPanelPreviewView ()
 @property(nonatomic, strong) UILabel *titleLabel;
@@ -29,12 +30,11 @@
     }
     return self;
 }
-- (void)configureWithPreferences:(NSDictionary *)preferences side:(NSString *)side {
+- (void)configureWithPreferences:(NSDictionary *)preferences panelSelector:(NSString *)selector {
     if (!NSThread.isMainThread) return;
-    preferences = DXKeyboardPanelProfilePreferences(preferences, side);
-    NSBundle *bundle = [NSBundle bundleWithPath:bundlePath];
-    NSString *titleKey = [side isEqual:@"right"] ? @"KEYBOARD_PANEL_RIGHT" : ([side isEqual:@"common"] ? @"KEYBOARD_PANEL_COMMON" : @"KEYBOARD_PANEL_LEFT");
-    self.titleLabel.text = [bundle localizedStringForKey:titleKey value:titleKey table:nil];
+    NSDictionary *panel = DXPanelDefinition(preferences, selector);
+    preferences = DXPanelPreferences(preferences, selector);
+    self.titleLabel.text = DXPanelString(panel[@"name"]);
     BOOL dark = DXKeyboardPanelBool(preferences, kDXPanelDark, YES);
     UIColor *textColor = dark ? UIColor.whiteColor : UIColor.labelColor;
     self.backgroundColor = dark ? [UIColor colorWithWhite:0.10 alpha:1] : UIColor.systemBackgroundColor;
@@ -43,15 +43,10 @@
     self.columns = (NSInteger)DXKeyboardPanelNumber(preferences, kDXPanelColumns, 4, 3, 5);
     self.scale = DXKeyboardPanelNumber(preferences, kDXPanelScale, 100, 70, 120) / 100;
     for (UIView *item in self.items) [item removeFromSuperview];
-    NSArray *entries = DXKeyboardPanelFilterCustomItems(DXKeyboardPanelItems(preferences, side), preferences[kLinkActionskey], kLinkActionSelectorPrefix);
-    NSMutableDictionary *definitions = [NSMutableDictionary dictionary];
-    id stored = preferences[kLinkActionskey];
-    if ([stored isKindOfClass:NSArray.class]) for (id entry in stored) {
-        if ([entry isKindOfClass:NSDictionary.class] && [entry[@"selector"] isKindOfClass:NSString.class]) definitions[entry[@"selector"]] = entry;
-    }
+    NSArray *entries = DXPanelItems(preferences, selector);
     NSMutableArray *items = [NSMutableArray array];
     for (NSDictionary *entry in entries) {
-        NSDictionary *definition = definitions[entry[@"selector"]];
+        NSDictionary *definition = DXPPanelDisplayDefinition(preferences, entry[@"selector"]);
         UIView *item = [UIView new];
         UIView *circle = [UIView new];
         circle.tag = 1;

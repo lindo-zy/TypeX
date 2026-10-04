@@ -2,24 +2,12 @@
 #include <math.h>
 #import "DXSystemActionCatalog.h"
 
-// New independent entrypoints. Existing keyboard/script protocols are untouched.
-#define DXGlobalPanelLeftNotification @"com.lindo.typex/panel-left"
-#define DXGlobalPanelRightNotification @"com.lindo.typex/panel-right"
-#define DXGlobalPanelCommonNotification @"com.lindo.typex/panel-common"
-
 static inline NSString *DXGlobalPanelString(id value) {
     return [value isKindOfClass:NSString.class] ? value : @"";
 }
 static inline NSString *DXGlobalPanelNormalizedPayload(id value) {
     NSString *payload = [DXGlobalPanelString(value) stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     return [payload.lowercaseString hasPrefix:@"www."] ? [@"https://" stringByAppendingString:payload] : payload;
-}
-
-static inline NSString *DXGlobalPanelSideForNotification(NSString *name) {
-    if ([name isEqual:DXGlobalPanelLeftNotification]) return @"left";
-    if ([name isEqual:DXGlobalPanelRightNotification]) return @"right";
-    if ([name isEqual:DXGlobalPanelCommonNotification]) return @"common";
-    return nil;
 }
 
 // Accept the full Dock background, including gaps at icon height, plus the

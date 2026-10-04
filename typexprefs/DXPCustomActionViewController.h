@@ -6,6 +6,8 @@
 @property (nonatomic,readwrite) NSString *identifier;
 @property (nonatomic,readwrite) NSString *keyID;
 @property (nonatomic, strong) NSArray *fullOrder;
+// Defaults to keyboard; gesture context filters input-only action types.
+@property (nonatomic, copy) NSString *actionContextKind;
 @property (nonatomic, strong) NSIndexPath *selectedIndexPath;
 // Sub-action rows reuse this exact picker UI. In external mode selection is
 // returned through completion instead of being stored as a gesture override.

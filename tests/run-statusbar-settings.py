@@ -34,14 +34,23 @@ static NSBundle *tweakBundle;
 @implementation ToolbarGestureRecord
 + (void)initialize { if (self == ToolbarGestureRecord.class) tweakBundle = [NSBundle bundleWithPath:bundlePath]; }
 """ + summary + canonical + "@end\n"
+subactions = (root / "typexprefs/DXPSubActionsController.m").read_text()
+subaction_lookup = subactions[subactions.index("- (NSDictionary *)linkActionForSelector:"):subactions.index("- (UIImage *)displayImageForSelector:")]
+subaction_fixture = """
+@interface SubActionRecord : NSObject
+- (NSDictionary *)linkActionForSelector:(NSString *)selector;
+- (NSString *)displayNameForSelector:(NSString *)selector;
+@end
+@implementation SubActionRecord
+""" + subaction_lookup + "@end\n"
 with tempfile.TemporaryDirectory(prefix="typex-statusbar-settings-") as temporary:
     tmp = pathlib.Path(temporary)
     (tmp / "UIKit").mkdir()
     (tmp / "UIKit/UIKit.h").write_text('#import "PreferencesStatusBarStub.h"\n')
     (tmp / "StatusBarSettingsProduction.h").write_text(
-        '#import "PreferencesStatusBarStub.h"\n#import "DXStatusBarGesturePolicy.h"\n#import "DXGlobalPanelPolicy.h"\n#import "DXDockGesturePolicy.h"\n#import "DXPGestureActionCell.h"\n'
+        '#import "PreferencesStatusBarStub.h"\n#import "DXPanelRegistry.h"\n#import "DXStatusBarGesturePolicy.h"\n#import "DXGlobalPanelPolicy.h"\n#import "DXDockGesturePolicy.h"\n#import "DXPGestureActionCell.h"\n'
         + defines + '\n#define bundlePath @' + json.dumps(str(root / "typexprefs/Resources")) + '\n'
-        + scoped + gestures + '\n' + source + '\n' + dock_source + '\n' + toolbar_fixture)
+        + scoped + gestures + '\n' + source + '\n' + dock_source + '\n' + toolbar_fixture + subaction_fixture)
     binary = tmp / "statusbar-settings-tests"
     subprocess.run(["xcrun", "clang", "-fobjc-arc", "-fblocks", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",
                     "-framework", "Foundation", "-I", str(tmp), "-I", str(root), "-I", str(root / "tests"), "-I", str(root / "typexprefs"),

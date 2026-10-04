@@ -1,3 +1,4 @@
+#import "../DXPanelRegistry.h"
 #import "DXPStatusBarGestureController.h"
 #import "DXPLinkActionEditorController.h"
 #import "DXPGestureActionCell.h"
@@ -22,8 +23,8 @@ static NSDictionary *DXStatusDefinition(NSDictionary *preferences, NSString *sel
 }
 static NSString *DXStatusActionName(NSDictionary *preferences, NSString *slot) {
     NSString *selector = DXGlobalPanelString(DXStatusBarBinding(preferences, slot)[@"selector"]);
-    NSString *side = DXStatusBarPanelSide(selector);
-    if (side) return DXStatusLocalized([@"STATUS_BAR_PANEL_" stringByAppendingString:side.uppercaseString]);
+    NSDictionary *panel = DXPanelDefinition(preferences, selector);
+    if ([panel[@"kind"] isEqual:DXPanelGestureKind]) return DXPanelString(panel[@"name"]);
     NSDictionary *entry = DXStatusDefinition(preferences, selector);
     if (!DXIsLinkActionSelector(selector) || !DXGlobalCustomActionSupported(entry)) return DXStatusLocalized(@"STATUS_BAR_UNASSIGNED");
     NSString *name = DXGlobalPanelString(entry[@"name"]);
@@ -174,11 +175,11 @@ static BOOL DXStatusSaveBinding(NSString *slot, NSString *field, id value) {
 - (NSArray *)specifiers {
     if (_specifiers) return _specifiers;
     NSMutableArray *items = [NSMutableArray array];
-    [items addObject:[PSSpecifier groupSpecifierWithName:DXStatusLocalized(@"STATUS_BAR_PANELS")]];
-    for (NSString *side in @[@"left", @"right", @"common"]) {
-        PSSpecifier *item = [PSSpecifier preferenceSpecifierNamed:DXStatusLocalized([@"STATUS_BAR_PANEL_" stringByAppendingString:side.uppercaseString])
+    [items addObject:[PSSpecifier groupSpecifierWithName:DXStatusLocalized(@"PANEL_KIND_GESTURE")]];
+    for (NSDictionary *panel in DXPanelDefinitions([DXPrefsManager.sharedInstance readPrefs], DXPanelGestureKind)) {
+        PSSpecifier *item = [PSSpecifier preferenceSpecifierNamed:DXPanelString(panel[@"name"])
             target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
-        [item setProperty:[@"__typex_statusbar_panel_" stringByAppendingString:side] forKey:@"actionSelector"];
+        [item setProperty:DXPanelSelector(panel[@"id"]) forKey:@"actionSelector"];
         item->action = @selector(selectAction:); [items addObject:item];
     }
     PSSpecifier *group = [PSSpecifier groupSpecifierWithName:DXStatusLocalized(@"CUSTOM_ACTIONS")];
@@ -202,7 +203,7 @@ static BOOL DXStatusSaveBinding(NSString *slot, NSString *field, id value) {
     NSString *selector = [specifier propertyForKey:@"actionSelector"];
     if (![selector isKindOfClass:NSString.class] || !selector.length) return;
     NSDictionary *entry = DXStatusDefinition([[DXPrefsManager sharedInstance] readPrefs], selector);
-    if (!DXStatusBarPanelSide(selector) && (!DXIsLinkActionSelector(selector) || !DXGlobalCustomActionSupported(entry))) { [self reloadSpecifiers]; return; }
+    if (!DXPanelAllowed([DXPrefsManager.sharedInstance readPrefs], selector, DXPanelGestureKind) && (!DXIsLinkActionSelector(selector) || !DXGlobalCustomActionSupported(entry))) { [self reloadSpecifiers]; return; }
     if (DXStatusSaveBinding(self.slot, @"selector", selector)) [self.navigationController popViewControllerAnimated:YES];
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {

@@ -14,8 +14,8 @@
 #define kDXPanelRightItems @"keyboardpanelrightitems"
 #define kDXPanelCommonItems @"keyboardpanelcommonitems"
 
-// Legacy shared values seed each profile until that profile is configured.
-// Every new write targets a profile key, so edits never affect another panel.
+// Legacy profile helpers are read-only inputs for registry migration.
+// New panels persist independent options inside their definitions.
 static inline NSString *DXKeyboardPanelProfileKey(NSString *key, NSString *side) {
     if (![@[@"left", @"right", @"common"] containsObject:side] || ![key hasPrefix:@"keyboardpanel"]) return nil;
     return [@"keyboardpanel" stringByAppendingFormat:@"%@%@", side, [key substringFromIndex:13]];
@@ -53,25 +53,6 @@ static inline NSArray<NSDictionary *> *DXKeyboardPanelItems(NSDictionary *prefer
         [items addObject:item];
     }
     return items;
-}
-
-// Panel entries reference user-created definitions only. Never execute a
-// built-in selector or a dangling definition imported from an older profile.
-static inline NSArray<NSDictionary *> *DXKeyboardPanelFilterCustomItems(NSArray<NSDictionary *> *items,
-                                                                        id definitions, NSString *prefix) {
-    if (![definitions isKindOfClass:NSArray.class] || !prefix.length) return @[];
-    NSMutableSet<NSString *> *allowed = [NSMutableSet set];
-    for (id definition in definitions) {
-        if (![definition isKindOfClass:NSDictionary.class]) continue;
-        id selector = definition[@"selector"];
-        if ([selector isKindOfClass:NSString.class] && [selector hasPrefix:prefix] && [selector length] > prefix.length)
-            [allowed addObject:selector];
-    }
-    NSMutableArray *filtered = [NSMutableArray array];
-    if (![items isKindOfClass:NSArray.class]) return @[];
-    for (id item in items) if ([item isKindOfClass:NSDictionary.class] &&
-        [item[@"selector"] isKindOfClass:NSString.class] && [allowed containsObject:item[@"selector"]]) [filtered addObject:item];
-    return filtered;
 }
 
 static inline double DXKeyboardPanelNumber(NSDictionary *preferences, NSString *key,

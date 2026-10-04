@@ -5,6 +5,7 @@
 #import "DXSystemActionExecutor.h"
 #import "DXPanelControlState.h"
 #import "DXKeyboardPanelPreferences.h"
+#import "DXPanelRegistry.h"
 #import "DXStatusBarGesturePolicy.h"
 #import "DXGlobalPanelPolicy.h"
 #import "DXGlobalPanel.h"
@@ -81,9 +82,9 @@ static void DXPerformSystemOpen(NSDictionary *request, DXSystemOpenReply reply) 
             reply(DXSystemOpenUnavailable); return;
         }
         NSLog(@"[TypeX][StatusBarGesture] dispatch slot=%@", binding[@"slot"]);
-        NSString *side = DXStatusBarPanelSide(selector);
-        if (side) {
-            [DXGlobalPanel.sharedInstance presentSide:side fromWindow:nil origin:@"statusbar"];
+        BOOL isPanel = DXPanelAllowed(manager.prefs, selector, DXPanelGestureKind);
+        if (isPanel) {
+            [DXGlobalPanel.sharedInstance presentPanelSelector:selector fromWindow:nil origin:@"statusbar"];
             reply([DXGlobalPanel.sharedInstance isVisible] ? DXSystemOpenSucceeded : DXSystemOpenUnavailable);
             return;
         }
@@ -106,8 +107,8 @@ static void DXPerformSystemOpen(NSDictionary *request, DXSystemOpenReply reply) 
         if (!(age >= 0 && age <= 1.5)) { reply(DXSystemOpenExpired); return; }
         DXPrefsManager *manager = DXPrefsManager.sharedInstance;
         if (!manager.preferencesAvailable) [manager reload];
-        NSString *enabledKey = [control[@"source"] isEqual:@"global"] ? kDXPanelGlobalEnabled :
-            ([control[@"source"] isEqual:@"top"] ? kDXPanelTopEnabled : kDXPanelBottomEnabled);
+        // Toolbar gesture switches no longer control panels opened by buttons.
+        NSString *enabledKey = [control[@"source"] isEqual:@"global"] ? kDXPanelGlobalEnabled : kEnabledkey;
         if (!manager.preferencesAvailable || !DXKeyboardPanelBool(manager.prefs, enabledKey, YES)) { reply(DXSystemOpenUnavailable); return; }
         int token = NOTIFY_TOKEN_INVALID;
         NSString *slot = DXPanelControlStateSlot(control[@"token"]);

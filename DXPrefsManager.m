@@ -1,5 +1,6 @@
 #import "common.h"
 #import "DXPrefsManager.h"
+#import "DXPanelRegistry.h"
 
 static NSString *const DXSharedPrefsFormatKey = @"_typexSnapshotFormat";
 static NSString *const DXSharedPrefsPayloadKey = @"preferences";
@@ -118,13 +119,13 @@ static NSString *DXSharedPrefsPath(void) {
     if ([format isKindOfClass:[NSNumber class]] &&
         format.integerValue == DXSharedPrefsFormatVersion &&
         [payload isKindOfClass:[NSDictionary class]]) {
-        return payload;
+        return DXPanelMigratePreferences(payload);
     }
 
     // Migrate snapshots written by TypeX 2.7.44-2.7.65.  A non-empty legacy
     // dictionary is complete; an empty legacy file is ambiguous and is healed
     // by Settings/SpringBoard instead of being treated as a valid default set.
-    return snapshot.count > 0 ? snapshot : nil;
+    return snapshot.count > 0 ? DXPanelMigratePreferences(snapshot) : nil;
 }
 
 // Seed the shared snapshot from the authoritative domain when it is missing or
@@ -214,9 +215,9 @@ static void DXWritePrefsPlist(NSDictionary *dictionary) {
     // plist fallback for old installs and for the short window before the
     // preferences daemon has materialized the domain.
     if ([preferences isKindOfClass:[NSDictionary class]] && preferences.count > 0) {
-        return preferences;
+        return DXPanelMigratePreferences(preferences);
     }
-    return [NSDictionary dictionaryWithContentsOfFile:kPrefsPath] ?: @{};
+    return DXPanelMigratePreferences([NSDictionary dictionaryWithContentsOfFile:kPrefsPath] ?: @{});
 }
 
 #pragma mark - Write

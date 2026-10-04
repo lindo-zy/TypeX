@@ -4,6 +4,7 @@
 #import "DXGlobalPanel.h"
 #import "DXGlobalPanelPolicy.h"
 #import "DXKeyboardPanelPreferences.h"
+#import "DXPanelRegistry.h"
 #import "common.h"
 #import <objc/runtime.h>
 #import <notify.h>
@@ -81,7 +82,7 @@ static BOOL DXIsStatusView(UIView *view) {
 - (BOOL)hasAction:(NSString *)kind region:(NSString *)region preferences:(NSDictionary *)preferences {
     NSString *selector = DXStatusBarSelector(preferences, DXStatusBarSlot(region, kind));
     if (!selector) return NO;
-    if (DXStatusBarPanelSide(selector)) return DXKeyboardPanelBool(preferences, kDXPanelGlobalEnabled, YES);
+    if (DXPanelAllowed(preferences, selector, DXPanelGestureKind)) return DXKeyboardPanelBool(preferences, kDXPanelGlobalEnabled, YES);
     id definitions = preferences[kLinkActionskey];
     if (![definitions isKindOfClass:NSArray.class]) return NO;
     for (id entry in definitions)

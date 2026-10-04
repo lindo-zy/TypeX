@@ -129,11 +129,6 @@ int main(void) {
         check(DXSystemToggleDND(DXDNDServiceSpy.class, DXDNDManagerSpy.class) == DXSystemOpenFailed && dndOnCalls == 3 && dndOffCalls == 2);
         check(DXSystemToggleDND(Nil, DXDNDManagerSpy.class) == DXSystemOpenUnavailable && dndOnCalls == 3);
         check(DXSystemToggleDND(DXDNDServiceSpy.class, Nil) == DXSystemOpenUnavailable && dndOnCalls == 3);
-        NSArray *items = @[@{@"selector": @"builtin:"}, @{@"selector": @"__custom_1", @"name": @"override"},
-                          @{@"selector": @"__custom_missing"}, @42, @{@"selector": @1}];
-        check([DXKeyboardPanelFilterCustomItems(items, @[saved], prefix) isEqual:@[items[1]]]);
-        check(!DXKeyboardPanelFilterCustomItems(items, @{}, prefix).count);
-        check(!DXKeyboardPanelFilterCustomItems(items, @[saved], @"").count);
         check(DXKeyboardPanelHostRank(@"UIRemoteKeyboardWindow", NO) > DXKeyboardPanelHostRank(@"UITextEffectsWindow", NO));
         check(DXKeyboardPanelHostRank(@"UIWindow", NO) == 0);
         check(DXKeyboardPanelHostRank(@"UIWindow", YES) > DXKeyboardPanelHostRank(@"UITextEffectsWindow", NO));

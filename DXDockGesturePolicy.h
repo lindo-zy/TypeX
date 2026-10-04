@@ -18,24 +18,17 @@ static inline BOOL DXDockGestureEnabled(NSDictionary *preferences, NSString *dir
     return key && [preferences isKindOfClass:NSDictionary.class] &&
         DXKeyboardPanelBool(preferences, key, [direction isEqual:@"up"]);
 }
-// An absent up binding preserves the old common-panel action. An explicitly
-// cleared or malformed binding never silently restores it.
+// Every direction requires an explicit binding. Legacy defaults are resolved
+// once by panel migration; cleared or malformed bindings never restore them.
 static inline NSString *DXDockGestureConfiguredSelector(NSDictionary *preferences, NSString *direction) {
     if (!DXDockGestureEnabledKey(direction) || ![preferences isKindOfClass:NSDictionary.class]) return nil;
     id bindings = preferences[kDXDockGestureBindings];
     if (bindings && ![bindings isKindOfClass:NSDictionary.class]) return nil;
     id selector = bindings[direction];
-    if (!selector && [direction isEqual:@"up"]) return @"__typex_dock_panel_common";
     return [selector isKindOfClass:NSString.class] && [selector length] ? selector : nil;
 }
 static inline NSString *DXDockGestureSelector(NSDictionary *preferences, NSString *direction) {
     return DXDockGestureEnabled(preferences, direction) ? DXDockGestureConfiguredSelector(preferences, direction) : nil;
-}
-static inline NSString *DXDockGesturePanelSide(NSString *selector) {
-    if (![selector isKindOfClass:NSString.class]) return nil;
-    for (NSString *side in @[@"left", @"right", @"common"])
-        if ([selector isEqual:[@"__typex_dock_panel_" stringByAppendingString:side]]) return side;
-    return nil;
 }
 static inline NSDictionary *DXDockGestureDefinition(NSDictionary *preferences, NSString *selector, NSString *definitionsKey) {
     if (![preferences isKindOfClass:NSDictionary.class] || ![selector isKindOfClass:NSString.class] ||

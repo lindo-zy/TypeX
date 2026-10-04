@@ -1,4 +1,5 @@
 #import "../DXDockGesturePolicy.h"
+#import "DXPanelTestFixtures.h"
 
 static NSUInteger checks;
 static void check(BOOL condition, NSString *name) { checks++; NSCAssert(condition, @"%@", name); }
@@ -11,21 +12,18 @@ int main(void) {
         check(!DXDockGestureEnabled(nil, @"up"), @"missing snapshot fails closed");
         check(!DXDockGestureSelector(@{kDXPanelDockSwipeEnabled: @NO}, @"up"), @"legacy disabled stays off");
         check(!DXDockGestureSelector(@{kDXPanelDockSwipeEnabled: @"YES"}, @"up"), @"invalid switch fails closed");
-        check([DXDockGesturePanelSide(DXDockGestureSelector(@{}, @"up")) isEqual:@"common"], @"legacy default common panel");
+        check(!DXDockGestureSelector(@{}, @"up"), @"unassigned direction has no panel default");
         check(!DXDockGestureConfiguredSelector(@{kDXDockGestureBindings: @[]}, @"up"), @"malformed bindings do not restore common");
         check(!DXDockGestureConfiguredSelector(@{kDXDockGestureBindings: @{@"up": @42}}, @"up"), @"malformed selector");
         check(!DXDockGestureConfiguredSelector(@{kDXDockGestureBindings: @{@"up": @""}}, @"up"), @"explicit clear stays empty");
         check(!DXDockGestureConfiguredSelector(@{}, @"down"), @"down cannot use fallback");
-        check(!DXDockGesturePanelSide(@"__typex_dock_panel_unknown"), @"invalid panel token");
-        for (NSString *side in @[@"left", @"right", @"common"])
-            check([DXDockGesturePanelSide([@"__typex_dock_panel_" stringByAppendingString:side]) isEqual:side], @"independent panel target");
         NSDictionary *action = @{@"selector": @"__typex_link_action_app", @"type": @"openapp", @"link": @"com.apple.mobilenotes"};
-        NSMutableDictionary *preferences = [@{kDXDockLeftSwipeEnabled: @YES, kDXDockRightSwipeEnabled: @YES,
-            kDXDockGestureBindings: @{@"left": action[@"selector"], @"right": @"__typex_dock_panel_right"},
+        NSMutableDictionary *preferences = [@{kDXPanels: DXTestGesturePanels(), kDXDockLeftSwipeEnabled: @YES, kDXDockRightSwipeEnabled: @YES,
+            kDXDockGestureBindings: @{@"left": action[@"selector"], @"right": @"__typex_panel_test-right"},
             @"linkactions": @[NSNull.null, action], @"unrelated": @42} mutableCopy];
         check([DXDockGestureSelector(preferences, @"left") isEqual:action[@"selector"]], @"left binding");
-        check([DXDockGesturePanelSide(DXDockGestureSelector(preferences, @"right")) isEqual:@"right"], @"right binding");
-        check([DXDockGesturePanelSide(DXDockGestureSelector(preferences, @"up")) isEqual:@"common"], @"left/right save preserves up fallback");
+        check(DXPanelAllowed(preferences, DXDockGestureSelector(preferences, @"right"), DXPanelGestureKind), @"right binding");
+        check(!DXDockGestureSelector(preferences, @"up"), @"left/right save never assigns up implicitly");
         check([DXDockGestureDefinition(preferences, action[@"selector"], @"linkactions") isEqual:action], @"resolve live definition");
         check(!DXDockGestureDefinition(@{@"linkactions": @{}}, action[@"selector"], @"linkactions"), @"invalid action storage");
         check(!DXDockGestureDefinition(preferences, @"deleted", @"linkactions"), @"deleted definition cannot execute");

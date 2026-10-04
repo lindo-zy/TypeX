@@ -1,3 +1,4 @@
+#import "DXPanelTestFixtures.h"
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <dispatch/dispatch.h>
@@ -27,15 +28,15 @@ void DXExecuteGlobalCustomAction(NSDictionary *entry, DXSystemOpenReply reply) {
 + (instancetype)sharedInstance;
 + (BOOL)deviceUnlocked;
 - (BOOL)isVisible;
-- (void)presentSide:(NSString *)side fromWindow:(UIWindow *)window origin:(NSString *)origin;
+- (void)presentPanelSelector:(NSString *)selector fromWindow:(UIWindow *)window origin:(NSString *)origin;
 @end
 @implementation DXGlobalPanel
 + (instancetype)sharedInstance { static DXGlobalPanel *panel; if (!panel) panel = [self new]; return panel; }
 + (BOOL)deviceUnlocked { return unlocked; }
 - (BOOL)isVisible { return panelVisible; }
-- (void)presentSide:(NSString *)side fromWindow:(UIWindow *)window origin:(NSString *)origin {
+- (void)presentPanelSelector:(NSString *)selector fromWindow:(UIWindow *)window origin:(NSString *)origin {
     check(window != nil && [origin isEqual:@"dockgesture"], @"new origin honors chosen panel");
-    lastPanel = side; panelCount++; panelVisible = YES;
+    lastPanel = selector; panelCount++; panelVisible = YES;
 }
 @end
 @interface DXPrefsManager ()
@@ -114,21 +115,21 @@ int main(void) {
     @autoreleasepool {
         UIWindow *window = [UIWindow new]; window.window = window; window.bounds = CGRectMake(0, 0, 300, 650);
         UIView *dock = [UIView new]; dock.bounds = CGRectMake(0, 0, 300, 96); dock.originInWindow = CGPointMake(0, 500); [window addSubview:dock];
-        DXPrefsManager *manager = DXPrefsManager.sharedInstance; manager.preferencesAvailable = YES; manager.prefs = @{};
+        DXPrefsManager *manager = DXPrefsManager.sharedInstance; manager.preferencesAvailable = YES; manager.prefs = @{kDXPanels: DXTestGesturePanels(), kDXDockGestureBindings: @{@"up": @"__typex_panel_test-common"}};
         DXInstallDockPanelGesture(dock);
         DXDockPanelGestureHandler *handler = objc_getAssociatedObject(dock, &DXDockPanelHandlerKey);
         DXInstallDockPanelGesture(dock);
         check(window.gestureRecognizers.count == 1 && handler.pan.maximumNumberOfTouches == 1, @"idempotent single-finger installation");
         start(handler, CGPointMake(0, -10)); send(handler, UIGestureRecognizerStateChanged, CGPointMake(0, -60));
-        check(panelCount == 1 && [lastPanel isEqual:@"common"], @"legacy up opens common before release");
+        check(panelCount == 1 && [lastPanel isEqual:@"__typex_panel_test-common"], @"legacy up opens common before release");
         send(handler, UIGestureRecognizerStateEnded, CGPointMake(0, -80)); check(panelCount == 1, @"up does not repeat on release");
         panelVisible = NO;
-        manager.prefs = @{kDXPanelDockSwipeEnabled: @NO, kDXDockRightSwipeEnabled: @YES,
-            kDXDockGestureBindings: @{@"right": @"__typex_dock_panel_right"}};
+        manager.prefs = @{kDXPanels: DXTestGesturePanels(), kDXPanelDockSwipeEnabled: @NO, kDXDockRightSwipeEnabled: @YES,
+            kDXDockGestureBindings: @{@"right": @"__typex_panel_test-right"}};
         start(handler, CGPointMake(10, 0)); send(handler, UIGestureRecognizerStateChanged, CGPointMake(60, 0));
         check(panelCount == 1, @"right panel waits for release");
         send(handler, UIGestureRecognizerStateEnded, CGPointMake(60, 0));
-        check(panelCount == 2 && [lastPanel isEqual:@"right"], @"right swipe opens right profile");
+        check(panelCount == 2 && [lastPanel isEqual:@"__typex_panel_test-right"], @"right swipe opens right profile");
         panelVisible = NO;
         NSDictionary *action = @{@"selector": @"__typex_link_action_app", @"type": @"openapp", @"link": @"com.apple.mobilenotes"};
         manager.prefs = @{kDXDockGestureBindings: @{@"up": action[@"selector"]}, kLinkActionskey: @[action]};

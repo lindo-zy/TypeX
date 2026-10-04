@@ -20,8 +20,6 @@ int main(void) {
         check(!DXStatusBarRegion(1, 1, NAN, 54));
         check(!DXStatusBarRegion(1, INFINITY, 390, 54));
         check(!DXStatusBarRegion(1, 1, 390, 0));
-        check([DXStatusBarPanelSide(@"__typex_statusbar_panel_common") isEqual:@"common"]);
-        check(!DXStatusBarPanelSide(@"__typex_statusbar_panel_middle"));
         NSMutableDictionary *bindings = [NSMutableDictionary dictionary];
         NSMutableSet *slots = [NSMutableSet set];
         for (NSString *region in DXStatusBarRegions()) for (NSString *gesture in DXStatusBarGestures()) {

@@ -1,6 +1,6 @@
 #import <UIKit/UIKit.h>
 
 @interface DXPKeyboardPanelPreviewHeader : UIView
-- (instancetype)initWithSide:(NSString *)side allowsSelection:(BOOL)allowsSelection;
+- (instancetype)initWithPanelSelector:(NSString *)selector;
 - (void)refresh;
 @end

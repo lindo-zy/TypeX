@@ -3,6 +3,7 @@
 #import "DXGlobalActionExecutor.h"
 #import "DXGlobalPanelGeometry.h"
 #import "DXKeyboardPanelPreferences.h"
+#import "DXPanelRegistry.h"
 #import "DXKeyboardPanelLayout.h"
 #import "DXPanelSystemControlsView.h"
 #import "DXPanelControlSession.h"
@@ -104,32 +105,34 @@ static NSString *DXGlobalLocalized(NSString *key) {
 }
 - (void)interrupted:(NSNotification *)notification { (void)notification; [self dismiss]; }
 - (NSDictionary *)definition:(NSString *)selector {
+    NSDictionary *panel = DXPanelDefinition(DXPrefsManager.sharedInstance.prefs, selector);
+    if (panel && [panel[@"kind"] isEqual:DXPanelGestureKind]) return panel;
     id definitions = DXPrefsManager.sharedInstance.prefs[kLinkActionskey];
     if (![definitions isKindOfClass:NSArray.class]) return nil;
     for (id entry in definitions)
         if ([entry isKindOfClass:NSDictionary.class] && [entry[@"selector"] isEqual:selector]) return entry;
     return nil;
 }
-- (void)presentSide:(NSString *)side fromWindow:(UIWindow *)sourceWindow origin:(NSString *)origin {
+- (void)presentPanelSelector:(NSString *)selector fromWindow:(UIWindow *)sourceWindow origin:(NSString *)origin {
     if (!NSThread.isMainThread || ![NSProcessInfo.processInfo.processName isEqual:@"SpringBoard"]) return;
-    if (![@[@"left", @"right", @"common"] containsObject:side]) return;
     DXPrefsManager *manager = DXPrefsManager.sharedInstance;
     [manager reload];
+    if (!DXPanelAllowed(manager.prefs, selector, DXPanelGestureKind)) return;
+    NSDictionary *panelDefinition = DXPanelDefinition(manager.prefs, selector);
     if (!manager.preferencesAvailable || !DXKeyboardPanelBool(manager.prefs, kEnabledkey, YES) ||
         !DXKeyboardPanelBool(manager.prefs, kDXPanelGlobalEnabled, YES) || ![DXGlobalPanel deviceUnlocked]) {
         NSLog(@"[TypeX][GlobalPanel] open cancelled: preferences/lock gate"); return;
     }
     NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
-    if (now - self.lastOpen < 0.35) return;
+    if (now - self.lastOpen < 0.35 && ![origin isEqual:@"panel-action"]) return;
     self.lastOpen = now;
     [self dismiss];
     [[DXKeyboardPanel sharedInstance] dismiss];
     NSDictionary *preferences = manager.prefs;
     self.snapshot = [preferences copy];
-    NSString *profile = [origin isEqual:@"dock"] ? @"common" : side;
-    NSArray *entries = DXKeyboardPanelFilterCustomItems(DXKeyboardPanelItems(preferences, profile),
-        preferences[kLinkActionskey], kLinkActionSelectorPrefix);
-    preferences = DXKeyboardPanelProfilePreferences(preferences, profile);
+    NSString *profile = selector;
+    NSArray *entries = DXPanelItems(preferences, selector);
+    preferences = DXPanelPreferences(preferences, selector);
     self.scale = DXKeyboardPanelNumber(preferences, kDXPanelScale, 100, 70, 120) / 100;
     self.columns = (NSInteger)DXKeyboardPanelNumber(preferences, kDXPanelColumns, 4, 3, 5);
     BOOL dark = DXKeyboardPanelBool(preferences, kDXPanelDark, YES);
@@ -172,8 +175,7 @@ static NSString *DXGlobalLocalized(NSString *key) {
     [self.header addGestureRecognizer:closeSwipe];
     [self.panel addSubview:self.header];
     self.title = [UILabel new];
-    self.title.text = DXGlobalLocalized([profile isEqual:@"common"] ? @"KEYBOARD_PANEL_COMMON" :
-        ([profile isEqual:@"left"] ? @"KEYBOARD_PANEL_LEFT" : @"KEYBOARD_PANEL_RIGHT"));
+    self.title.text = DXPanelString(panelDefinition[@"name"]);
     self.title.textColor = text;
     self.title.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
     [self.panel addSubview:self.title];
@@ -296,7 +298,14 @@ static NSString *DXGlobalLocalized(NSString *key) {
     if (![self validSession] || ![self.items containsObject:button]) { [self dismiss]; return; }
     NSDictionary *entry = [self definition:button.actionSelector];
     if (!entry) { [self dismiss]; return; }
+    if (DXIsPanelSelector(button.actionSelector)) {
+        NSString *selector = [button.actionSelector copy];
+        UIWindow *window = self.window;
+        [self presentPanelSelector:selector fromWindow:window origin:@"panel-action"];
+        return;
+    }
     if (DXGlobalPanelActionNeedsInput(entry)) {
+        NSLog(@"[TypeX][GesturePanel] action rejected: input-required");
         [self showMessage:DXGlobalLocalized(@"GLOBAL_PANEL_INPUT_REQUIRED")]; return;
     }
     if (!DXGlobalCustomActionSupported(entry)) {
@@ -330,15 +339,6 @@ void DXStartGlobalPanel(void) {
     if (![NSProcessInfo.processInfo.processName isEqual:@"SpringBoard"]) return;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        // Registrations live for this SpringBoard process, not panel sessions.
-        for (NSString *name in @[DXGlobalPanelLeftNotification, DXGlobalPanelRightNotification, DXGlobalPanelCommonNotification]) {
-            int token = NOTIFY_TOKEN_INVALID;
-            uint32_t result = notify_register_dispatch(name.UTF8String, &token, dispatch_get_main_queue(), ^(int deliveredToken) {
-                (void)deliveredToken;
-                [[DXGlobalPanel sharedInstance] presentSide:DXGlobalPanelSideForNotification(name) fromWindow:nil origin:@"notification"];
-            });
-            if (result != NOTIFY_STATUS_OK) NSLog(@"[TypeX][GlobalPanel] registration failed name=%@ result=%u", name, result);
-        }
         for (NSString *name in @[@"com.apple.springboard.lockstate", @"com.apple.springboard.frontmostapplicationchanged"]) {
             int token = NOTIFY_TOKEN_INVALID;
             notify_register_dispatch(name.UTF8String, &token, dispatch_get_main_queue(), ^(int deliveredToken) {

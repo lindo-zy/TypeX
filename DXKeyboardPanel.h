@@ -5,6 +5,6 @@
 + (instancetype)sharedInstance;
 - (void)registerToolbar:(DXCollectionView *)toolbar;
 - (void)toolbarDetached:(DXCollectionView *)toolbar;
-- (void)presentFromToolbar:(DXCollectionView *)toolbar side:(NSString *)side;
+- (void)presentFromToolbar:(DXCollectionView *)toolbar panelSelector:(NSString *)selector;
 - (void)dismiss;
 @end

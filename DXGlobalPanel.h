@@ -4,7 +4,7 @@
 + (instancetype)sharedInstance;
 + (BOOL)deviceUnlocked;
 - (BOOL)isVisible;
-- (void)presentSide:(NSString *)side fromWindow:(UIWindow *)window origin:(NSString *)origin;
+- (void)presentPanelSelector:(NSString *)selector fromWindow:(UIWindow *)window origin:(NSString *)origin;
 - (void)dismiss;
 @end
 

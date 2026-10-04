@@ -1,3 +1,4 @@
+#import "../DXPanelRegistry.h"
 #import "DXPSubActionsController.h"
 #import "DXPSubActionPickerController.h"
 #import "DXPLinkActionEditorController.h"
@@ -174,7 +175,7 @@ static CGFloat const DXSubActionContentLeading = 40.0;
 - (void)pushEditorForRow:(NSInteger)row {
     if (row < 0 || row >= (NSInteger)self.entries.count) return;
     NSString *selector = self.entries[row][@"selector"];
-    if (![selector isKindOfClass:[NSString class]]) return;
+    if (![selector isKindOfClass:[NSString class]] || !DXIsLinkActionSelector(selector)) return;
     NSDictionary *linkAction = [self linkActionForSelector:selector];
     if (!linkAction) return;
 
@@ -212,8 +213,10 @@ static CGFloat const DXSubActionContentLeading = 40.0;
 }
 
 - (NSDictionary *)linkActionForSelector:(NSString *)selector {
-    if (!DXIsLinkActionSelector(selector)) return nil;
+    if (!DXIsLinkActionSelector(selector) && !DXIsPanelSelector(selector)) return nil;
     NSDictionary *prefs = [[DXPrefsManager sharedInstance] readPrefs];
+    NSDictionary *panel = DXPanelDefinition(prefs, selector);
+    if ([panel[@"kind"] isEqual:DXPanelKeyboardKind]) return panel;
     for (NSDictionary *entry in prefs[kLinkActionskey]) {
         if ([entry isKindOfClass:[NSDictionary class]] && [entry[@"selector"] isEqual:selector]) return entry;
     }
@@ -225,7 +228,7 @@ static CGFloat const DXSubActionContentLeading = 40.0;
 // the localization helper, otherwise it renders as LONG___TYPEX_... .
 - (NSString *)displayNameForSelector:(NSString *)selector {
     NSDictionary *linkAction = [self linkActionForSelector:selector];
-    if (DXIsLinkActionSelector(selector)) {
+    if (DXIsLinkActionSelector(selector) || DXIsPanelSelector(selector)) {
         NSString *name = [linkAction[@"name"] isKindOfClass:[NSString class]] ? linkAction[@"name"] : @"";
         return name.length ? name : LOCALIZED(@"DEFAULT_BUTTON_NAME");
     }
@@ -234,7 +237,7 @@ static CGFloat const DXSubActionContentLeading = 40.0;
 
 - (UIImage *)displayImageForSelector:(NSString *)selector {
     NSDictionary *linkAction = [self linkActionForSelector:selector];
-    if (DXIsLinkActionSelector(selector)) {
+    if (DXIsLinkActionSelector(selector) || DXIsPanelSelector(selector)) {
         NSString *icon = [linkAction[@"icon"] isKindOfClass:[NSString class]] ? linkAction[@"icon"] : @"";
         return [DXHelper imageForIconConfig:icon defaultSymbolName:@"link"]
             ?: [UIImage systemImageNamed:@"link"];
@@ -306,7 +309,7 @@ static CGFloat const DXSubActionContentLeading = 40.0;
     }
 
     NSString *selector = self.entries[indexPath.row][@"selector"];
-    if ([selector isKindOfClass:[NSString class]] && [self linkActionForSelector:selector]) {
+    if (DXIsLinkActionSelector(selector) && [self linkActionForSelector:selector]) {
         [self pushEditorForRow:indexPath.row];
     } else {
         [self pushPickerForRow:indexPath.row];

@@ -5,6 +5,7 @@
 #import "DXAIPanel.h"
 #import "DXKeyboardPanel.h"
 #import "DXKeyboardPanelPreferences.h"
+#import "DXPanelRegistry.h"
 #import "DXToolbarHorizontalGesture.h"
 #import "DXSystemOpenBroker.h"
 #import "DXJavaScriptHost.h"
@@ -2184,6 +2185,11 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 // Dispatches either one built-in selector or one user-defined custom action.
 -(void)dispatchConfiguredActionSelector:(NSString *)selectorName sender:(UIButton *)sender {
     [DXJavaScriptHost cancelActive];
+    if (DXIsPanelSelector(selectorName)) {
+        if (DXPanelAllowed(prefs, selectorName, DXPanelKeyboardKind))
+            [[DXKeyboardPanel sharedInstance] presentFromToolbar:self panelSelector:selectorName];
+        return;
+    }
     if ([self dispatchLinkActionSelector:selectorName sender:sender]) return;
     if (![DXShortcutsGenerator isVisibleShortcutSelector:selectorName]) {
         return;
@@ -2202,7 +2208,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 -(NSString *)subActionPanelTitleForSelector:(NSString *)selectorName {
-    NSDictionary *linkAction = preferencesLinkActionForSelector(selectorName);
+    NSDictionary *linkAction = DXPanelDefinition(prefs, selectorName) ?: preferencesLinkActionForSelector(selectorName);
     NSString *title = [linkAction[@"name"] isKindOfClass:[NSString class]] ? linkAction[@"name"] : @"";
     if (title.length == 0) {
         title = [DXHelper localizedStringForActionNamed:selectorName shortName:NO bundle:tweakBundle];
@@ -2211,7 +2217,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 -(UIImage *)subActionPanelImageForSelector:(NSString *)selectorName {
-    NSDictionary *linkAction = preferencesLinkActionForSelector(selectorName);
+    NSDictionary *linkAction = DXPanelDefinition(prefs, selectorName) ?: preferencesLinkActionForSelector(selectorName);
     if (linkAction) {
         NSString *iconName = [linkAction[@"icon"] isKindOfClass:[NSString class]] ? linkAction[@"icon"] : @"";
         return [DXHelper imageForIconConfig:iconName defaultSymbolName:@"link"]
@@ -2526,7 +2532,10 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
     if (gesture.sourceButton && ![gesture.sourceIdentifier isEqual:gesture.sourceButton.accessibilityIdentifier]) return;
     NSInteger result = gesture.result;
     if (labs(result) == 2) {
-        [[DXKeyboardPanel sharedInstance] presentFromToolbar:self side:result < 0 ? @"left" : @"right"];
+        NSString *enabledKey = [self.configuration isEqual:@"top"] ? kDXPanelTopEnabled : kDXPanelBottomEnabled;
+        NSString *selector = DXToolbarAction(prefs, self.configuration, result < 0 ? @"left" : @"right");
+        if (selector.length && DXKeyboardPanelBool(prefs, enabledKey, YES))
+            [self dispatchKeyboardPanelSelector:selector sender:gesture.sourceButton];
     } else if (labs(result) == 1 && gesture.sourceButton.window == self.window) {
         [self runSubActionsForButton:gesture.sourceButton gesture:result < 0 ? DXShortcutGestureSwipeLeft : DXShortcutGestureSwipeRight];
     }
@@ -2534,6 +2543,7 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
 - (void)dismissKeyboardActionChooser { [self dismissSubActionPanelAnimated:NO completion:nil]; }
 - (BOOL)canExecuteKeyboardPanelSelector:(NSString *)selector {
     if (![selector isKindOfClass:NSString.class] || !selector.length) return NO;
+    if (DXIsPanelSelector(selector)) return DXPanelAllowed(prefs, selector, DXPanelKeyboardKind);
     if (DXIsLinkActionSelector(selector)) return preferencesLinkActionForSelector(selector) != nil;
     if (![DXShortcutsGenerator isVisibleShortcutSelector:selector] || ![self respondsToSelector:NSSelectorFromString(selector)]) return NO;
     if ([selector isEqualToString:@"shellxScreenshotAction:"]) return [DXShortcutsGenerator isShellXScreenshotAvailable];
