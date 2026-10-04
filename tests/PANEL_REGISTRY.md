@@ -45,3 +45,21 @@
 7. 检查 syslog：`[TypeX][KeyboardPanel] open`、`[TypeX][GlobalPanel] open`、`[TypeX][ToolbarSettings] save`、`[TypeX][GesturePanel] action rejected: input-required`；不应发生崩溃或过期操作。
 
 最终交付的源码、编译、包结构、归档与设备功能证据另行记录；没有安装测试前，设备核心功能、冷／热启动和 UI 回归均为未验证。
+
+## 4.2.1 交付记录
+
+- 集成目标：`dev`，开始时 HEAD `19df6571826e66245e827587f39c2f0ebc0368f6`。原工作区只有 `control` 版本 4.2.0 的未提交变化，保留作为脚本递增基线。
+- 在独立 `codex/panel-registry-refactor-20261004` 分支实现；源码提交 `4827645b164d99fbd1b6244c2d241949f3b1cdb2`，本地快进合入 `dev` 后执行唯一构建入口 `./build.sh`。双目标成功，脚本将版本推进到 4.2.1；版本记录提交 `06f075d`。未推送代码。
+- 源码分析／审查：已确认类型筛选与执行校验、迁移、清除引用、输入替换拒绝、主线程与过期会话保护；`git diff --check` 通过。
+- 本地验证：手势动作、全局面板、Dock 手势、状态栏手势、状态栏设置、设置 UI、面板控制、面板注册表、系统动作九套 runner 均通过。测试使用生产逻辑和平台替身；不能证明设备私有 API 或触摸行为。
+- 编译：iOS 16 与 iOS 17 均已确认。
+- 包结构：两套包均已确认包名／版本／架构／依赖、Tweak 和 Preferences 的 arm64＋arm64e、注入过滤器、PreferenceLoader 和新面板本地化资源；`postinst`／`postrm` 可执行且 shell 语法检查通过。实际安装与卸载未执行。
+
+| 目标 | 文件 | 字节数 | SHA-256 |
+| --- | --- | ---: | --- |
+| ios16 | `packages/ios16/com.lindo.typex_4.2.1_ios16_iphoneos-arm64e.deb` | 1147136 | `d925df1ae2e4ed07481cb90da8ae59a97e0029aa9ec6a64ef7accc04e120c80e` |
+| ios17 | `packages/ios17/com.lindo.typex_4.2.1_ios17_iphoneos-arm64e.deb` | 1156334 | `864af33afb07c98f121cf05973ae6e1a498e46b2bb97417206db25be3b11398e` |
+
+- 两套包分别以 `cp` 归档到 `~/Library/Mobile Documents/com~apple~CloudDocs/Downloads/TypeX/ios16` 和 `ios17`，旧版本保留，归档与本地 SHA-256 一致。
+- `python3 webdav-sync.py TypeX` 成功：上传 2 个、大小一致跳过 123 个；最终所有本地归档文件与坚果云文件大小对账一致。未声称远端内容哈希已验证。
+- 核心功能：设备未验证；冷／热启动、输入焦点、触摸竞争、窗口层级、安装／卸载与 UI 回归均待上述设备验收。已知变更：升级后工具栏左右长滑需重新选择动作。
