@@ -528,7 +528,7 @@
 "STATUS_BAR_LONGPRESS" = "长按";
 "STATUS_BAR_LEFTSWIPE" = "左滑";
 "STATUS_BAR_RIGHTSWIPE" = "右滑";
-"STATUS_BAR_FOOTER" = "每个区域的五种手势分别配置，默认关闭，设备未解锁时禁用。区域按当前状态栏宽度划分，刘海切口无法触摸，灵动岛和原生控件保留系统操作。";
+"STATUS_BAR_FOOTER" = "每个区域的五种手势分别配置，默认关闭，设备未解锁时禁用。区域按当前状态栏宽度划分，刘海切口无法触摸。灵动岛单击使用中间区域的单击动作，未配置时保留系统操作。";
 "STATUS_BAR_ENTRY_FOOTER" = "每个手势绑定一个动作。未选择动作时不接管触摸；同一区域同时启用单击和双击时，单击会稍作等待。上下拖动保留系统操作。";
 "STATUS_BAR_UNASSIGNED" = "未选择";
 "STATUS_BAR_CLEAR" = "清除动作";

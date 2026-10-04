@@ -529,7 +529,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "STATUS_BAR_LONGPRESS" = "Long Press";
 "STATUS_BAR_LEFTSWIPE" = "Swipe Left";
 "STATUS_BAR_RIGHTSWIPE" = "Swipe Right";
-"STATUS_BAR_FOOTER" = "Configure five gestures independently in each area. Off by default and disabled while locked. Areas follow the current status bar width. The notch is not touchable; Dynamic Island and native controls keep their system interactions.";
+"STATUS_BAR_FOOTER" = "Configure five gestures independently in each area. Off by default and disabled while locked. Areas follow the current status bar width. The notch is not touchable. Dynamic Island taps use the middle area's single-tap action; unassigned taps keep their system behavior.";
 "STATUS_BAR_ENTRY_FOOTER" = "Bind one action to this gesture. Unassigned gestures leave touches alone. A single tap waits briefly when double tap is enabled in the same area. Vertical drags keep their system behavior.";
 "STATUS_BAR_UNASSIGNED" = "Unassigned";
 "STATUS_BAR_CLEAR" = "Clear Action";

@@ -13,6 +13,7 @@
 static NSUInteger checks, sends;
 static NSString *sentSlot, *sentSelector;
 static BOOL sentLandscape;
+static BOOL testUnlocked, testPanelVisible = YES;
 static void check(BOOL condition, NSString *name) { checks++; NSCAssert(condition, @"%@", name); }
 void DXRequestStatusBarGesture(NSString *slot, NSString *selector, BOOL landscape, DXSystemOpenReply reply) {
     check(NSThread.isMainThread && DXStatusBarSlotValid(slot), @"relay from main thread with valid slot");
@@ -25,8 +26,8 @@ void DXRequestStatusBarGesture(NSString *slot, NSString *selector, BOOL landscap
 @end
 @implementation DXGlobalPanel
 + (instancetype)sharedInstance { static DXGlobalPanel *panel; if (!panel) panel = [self new]; return panel; }
-+ (BOOL)deviceUnlocked { return NO; } // These SpringBoard gates must not block a UIKit host app.
-- (BOOL)isVisible { return YES; }
++ (BOOL)deviceUnlocked { return testUnlocked; } // These SpringBoard gates must not block a UIKit host app.
+- (BOOL)isVisible { return testPanelVisible; }
 @end
 @interface DXPrefsManager ()
 @property(nonatomic, readwrite) BOOL preferencesAvailable;
@@ -48,9 +49,16 @@ void DXRequestStatusBarGesture(NSString *slot, NSString *selector, BOOL landscap
 - (void)setTapCount:(NSUInteger)value { objc_setAssociatedObject(self, @selector(tapCount), @(value), OBJC_ASSOCIATION_RETAIN_NONATOMIC); }
 @end
 @implementation UIGestureRecognizer (StatusBarTests)
+- (BOOL)delaysTouchesEnded { return [objc_getAssociatedObject(self, @selector(delaysTouchesEnded)) boolValue]; }
+- (void)setDelaysTouchesEnded:(BOOL)value { objc_setAssociatedObject(self, @selector(delaysTouchesEnded), @(value), OBJC_ASSOCIATION_RETAIN_NONATOMIC); }
 - (void)requireGestureRecognizerToFail:(UIGestureRecognizer *)gesture { (void)gesture; }
 @end
-@implementation UITapGestureRecognizer @end
+@implementation UITapGestureRecognizer
+- (instancetype)init { if ((self = [super init])) { self.enabled = YES; _numberOfTapsRequired = 1; _numberOfTouchesRequired = 1; } return self; }
+- (instancetype)initWithTarget:(id)target action:(SEL)action {
+    if ((self = [super initWithTarget:target action:action])) { _numberOfTapsRequired = 1; _numberOfTouchesRequired = 1; } return self;
+}
+@end
 @implementation UILongPressGestureRecognizer @end
 @implementation UIImpactFeedbackGenerator
 - (instancetype)initWithStyle:(UIImpactFeedbackStyle)style { (void)style; return [super init]; }
@@ -58,7 +66,15 @@ void DXRequestStatusBarGesture(NSString *slot, NSString *selector, BOOL landscap
 @end
 @implementation UIStatusBar @end
 @implementation _UIStatusBar @end
+@implementation SBSystemApertureContainerView @end
 #include "StatusHandler.inc"
+@interface DXStatusGestureHandler (ArbitrationRegression)
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer *)other;
+@end
+static BOOL nativeTapWaits(DXStatusGestureHandler *handler, UIGestureRecognizer *gesture, UIGestureRecognizer *native) {
+    return [handler respondsToSelector:@selector(gestureRecognizer:shouldBeRequiredToFailByGestureRecognizer:)] &&
+        [handler gestureRecognizer:gesture shouldBeRequiredToFailByGestureRecognizer:native];
+}
 static UITouch *touchFor(UIView *anchor, CGFloat x) {
     UITouch *touch = [UITouch new]; touch.view = anchor; touch.window = anchor.window;
     touch.point = CGPointMake(x, 12); touch.tapCount = 1; return touch;
@@ -81,6 +97,8 @@ int main(void) {
         DXStatusGestureHandler *handler = objc_getAssociatedObject(anchor, &DXStatusHandlerKey);
         check(handler != nil && window.gestureRecognizers.count == 4 && DXStatusHandlers.count == 1, @"nested views install once per anchor");
         check([handler available], @"app availability does not use SpringBoard lock/panel methods");
+        UITapGestureRecognizer *nativeTap = [UITapGestureRecognizer new]; [nested addGestureRecognizer:nativeTap];
+        UITapGestureRecognizer *lateWindowTap = [UITapGestureRecognizer new]; [window addGestureRecognizer:lateWindowTap];
         for (NSString *region in DXStatusBarRegions()) for (NSString *kind in DXStatusBarGestures()) {
             CGFloat x = [region isEqual:@"left"] ? 10 : ([region isEqual:@"middle"] ? 150 : 300);
             UIGestureRecognizer *gesture = gestureFor(handler, [kind hasSuffix:@"swipe"] ? @"horizontal" : kind);
@@ -89,17 +107,32 @@ int main(void) {
             check([handler gestureRecognizer:gesture shouldReceiveTouch:touchFor(anchor, x)], @"configured touch accepted");
             if ([gesture isKindOfClass:UIPanGestureRecognizer.class]) ((UIPanGestureRecognizer *)gesture).delta = CGPointMake([kind isEqual:@"leftswipe"] ? -40 : 40, 0);
             check([handler gestureRecognizerShouldBegin:gesture], @"eligible gesture begins");
+            if ([kind isEqual:@"tap"] || [kind isEqual:@"doubletap"]) {
+                check(gesture.delaysTouchesBegan && gesture.delaysTouchesEnded, @"configured taps defer native view touch callbacks");
+                check(nativeTapWaits(handler, gesture, nativeTap), @"descendant native single tap waits for configured tap in each region");
+                check(nativeTapWaits(handler, gesture, lateWindowTap), @"late window native single tap also waits");
+                check(!nativeTapWaits(handler, gesture, gestureFor(handler, @"longpress")), @"priority does not subordinate other TypeX gestures");
+                check(!nativeTapWaits(handler, gesture, gestureFor(handler, @"horizontal")), @"priority does not subordinate swipes");
+                nativeTap.numberOfTapsRequired = 2;
+                check(!nativeTapWaits(handler, gesture, nativeTap), @"native double tap keeps its own behavior"); nativeTap.numberOfTapsRequired = 1;
+                nativeTap.numberOfTouchesRequired = 2;
+                check(!nativeTapWaits(handler, gesture, nativeTap), @"native multi-finger tap keeps its own behavior"); nativeTap.numberOfTouchesRequired = 1;
+            }
             NSUInteger before = sends;
             gesture.state = [kind isEqual:@"longpress"] ? UIGestureRecognizerStateBegan : UIGestureRecognizerStateEnded;
             [handler recognized:gesture]; [handler recognized:gesture];
             check(sends == before + 1 && [sentSlot isEqual:DXStatusBarSlot(region, kind)] && [sentSelector isEqual:@"__typex_panel_test-common"] && !sentLandscape, @"one relay for each of fifteen slots");
         }
         UIGestureRecognizer *tap = gestureFor(handler, @"tap"); NSUInteger before = sends;
+        check(!nativeTapWaits(handler, tap, nativeTap), @"dispatched session cannot take native-tap priority");
         check([handler gestureRecognizer:tap shouldReceiveTouch:touchFor(anchor, 10)], @"start pending touch");
+        check([handler gestureRecognizer:tap shouldRequireFailureOfGestureRecognizer:gestureFor(handler, @"doubletap")], @"single tap waits for a configured double tap in the touched region");
         manager.prefs = @{}; tap.state = UIGestureRecognizerStateEnded; [handler recognized:tap];
+        check(!nativeTapWaits(handler, tap, nativeTap), @"changed binding restores native priority");
         check(sends == before, @"changed configuration cancels pending action"); manager.prefs = baseline;
         check([handler gestureRecognizer:tap shouldReceiveTouch:touchFor(anchor, 10)], @"start before refresh"); [handler refresh]; [handler recognized:tap];
         check(sends == before, @"refresh clears old touch session");
+        check(!nativeTapWaits(handler, tap, nativeTap), @"refresh clears pending priority too");
         check([handler gestureRecognizer:tap shouldReceiveTouch:touchFor(anchor, 10)], @"start before anchor moves"); anchor.originInWindow = CGPointMake(1, 0); [handler recognized:tap];
         check(sends == before, @"moved anchor cancels"); anchor.originInWindow = CGPointZero;
         UIApplication.sharedApplication.applicationState = UIApplicationStateInactive;
@@ -111,13 +144,75 @@ int main(void) {
         NSMutableDictionary *landscape = [baseline mutableCopy]; landscape[kDXStatusBarLandscape] = @YES; manager.prefs = landscape;
         check([handler gestureRecognizer:tap shouldReceiveTouch:touchFor(anchor, 10)], @"landscape touch with opt in"); [handler recognized:tap];
         check(sends == before + 1 && sentLandscape, @"relay includes landscape state"); manager.prefs = baseline; window.windowScene = nil;
+        NSMutableDictionary *singleOnly = [baseline mutableCopy];
+        singleOnly[kDXStatusBarBindings] = @{@"left.tap": bindings[@"left.tap"], @"middle.tap": bindings[@"middle.tap"]};
+        manager.prefs = singleOnly; [handler refresh];
+        for (NSString *region in @[@"left", @"middle"]) {
+            CGFloat x = [region isEqual:@"left"] ? 10 : 150;
+            check([handler gestureRecognizer:tap shouldReceiveTouch:touchFor(anchor, x)], @"single-only configured region receives tap");
+            check(![handler gestureRecognizer:tap shouldRequireFailureOfGestureRecognizer:gestureFor(handler, @"doubletap")], @"disabled double tap does not delay single tap");
+            check(nativeTapWaits(handler, tap, nativeTap), @"single-only configured region takes priority");
+            NSUInteger sentBefore = sends; tap.state = UIGestureRecognizerStateEnded; [handler recognized:tap];
+            check(sends == sentBefore + 1 && [sentSlot isEqual:DXStatusBarSlot(region, @"tap")], @"single-only tap dispatches its own slot");
+        }
+        check(![handler gestureRecognizer:tap shouldReceiveTouch:touchFor(anchor, 300)], @"unconfigured right region leaves native tap alone");
+        check(!nativeTapWaits(handler, tap, nativeTap), @"unconfigured region has no failure priority");
+        manager.prefs = baseline; [handler refresh];
+        check([handler gestureRecognizer:tap shouldReceiveTouch:touchFor(anchor, 10)], @"new configured touch for system pan test");
+        UIPanGestureRecognizer *verticalSystem = [[UIPanGestureRecognizer alloc] initWithTarget:nil action:NULL]; [window addGestureRecognizer:verticalSystem];
+        check(!nativeTapWaits(handler, tap, verticalSystem), @"vertical system gestures never wait for TypeX tap");
+        [window removeGestureRecognizer:verticalSystem];
         UIControl *nativeControl = [UIControl new]; [anchor addSubview:nativeControl];
         UITouch *control = touchFor(anchor, 10); control.view = nativeControl;
         check(![handler gestureRecognizer:tap shouldReceiveTouch:control], @"native controls excluded");
+        check(!nativeTapWaits(handler, tap, nativeTap), @"rejected native control clears the previous priority session");
         anchor.hidden = YES; check(![handler available], @"hidden status bar blocked"); anchor.hidden = NO;
         manager.preferencesAvailable = NO; check(![handler available], @"missing snapshot blocked"); manager.preferencesAvailable = YES;
         anchor.window = nil; DXInstallStatusGestures(anchor);
-        check(window.gestureRecognizers.count == 0 && !objc_getAssociatedObject(anchor, &DXStatusHandlerKey), @"detach removes all recognizers");
+        check(window.gestureRecognizers.count == 1 && window.gestureRecognizers[0] == lateWindowTap && !objc_getAssociatedObject(anchor, &DXStatusHandlerKey), @"detach removes only TypeX recognizers");
+
+        NSString *originalProcess = [NSProcessInfo.processInfo.processName copy]; NSProcessInfo.processInfo.processName = @"SpringBoard";
+        testUnlocked = YES; testPanelVisible = NO; manager.prefs = baseline;
+        UIWindow *islandWindow = [UIWindow new]; islandWindow.window = islandWindow; islandWindow.bounds = CGRectMake(0, 0, 390, 844);
+        SBSystemApertureContainerView *island = [SBSystemApertureContainerView new]; island.bounds = CGRectMake(0, 0, 140, 44);
+        island.originInWindow = CGPointMake(125, 10); [islandWindow addSubview:island];
+        SBSystemApertureContainerView *islandChild = [SBSystemApertureContainerView new]; [island addSubview:islandChild];
+        UIControl *islandControl = [UIControl new]; [island addSubview:islandControl];
+        UITapGestureRecognizer *islandNativeTap = [UITapGestureRecognizer new]; [islandControl addGestureRecognizer:islandNativeTap];
+        DXInstallStatusGestures(island); DXInstallStatusGestures(islandChild);
+        DXStatusGestureHandler *islandHandler = objc_getAssociatedObject(island, &DXStatusHandlerKey);
+        check(islandHandler.aperture && islandHandler.recognizers.count == 1 && islandWindow.gestureRecognizers.count == 1, @"nested Dynamic Island views install only one tap recognizer");
+        UIGestureRecognizer *islandTap = gestureFor(islandHandler, @"tap");
+        UIStatusBar *islandStatusBar = [UIStatusBar new]; islandStatusBar.bounds = CGRectMake(0, 0, 390, 54); [islandWindow addSubview:islandStatusBar];
+        DXInstallStatusGestures(islandStatusBar);
+        DXStatusGestureHandler *ordinaryHandler = objc_getAssociatedObject(islandStatusBar, &DXStatusHandlerKey);
+        UITouch *sharedIslandTouch = touchFor(island, 70); sharedIslandTouch.view = islandControl;
+        check(![ordinaryHandler gestureRecognizer:gestureFor(ordinaryHandler, @"tap") shouldReceiveTouch:sharedIslandTouch], @"ordinary status-bar handler rejects an island touch in the same window");
+        for (NSNumber *x in @[@5, @70, @135]) {
+            UITouch *touch = touchFor(island, x.doubleValue); touch.view = islandControl;
+            check([islandHandler gestureRecognizer:islandTap shouldReceiveTouch:touch], @"configured island tap accepts hosted controls");
+            check(nativeTapWaits(islandHandler, islandTap, islandNativeTap), @"island native single tap waits for configured action");
+            NSUInteger sentBefore = sends; islandTap.state = UIGestureRecognizerStateEnded; [islandHandler recognized:islandTap]; [islandHandler recognized:islandTap];
+            check(sends == sentBefore + 1 && [sentSlot isEqual:@"middle.tap"], @"all island content maps to one middle single-tap dispatch");
+        }
+        manager.prefs = @{kDXPanels: DXTestGesturePanels(), kDXStatusBarEnabled: @YES, kDXStatusBarBindings: @{@"left.tap": bindings[@"left.tap"]}};
+        [islandHandler refresh];
+        check(!islandTap.enabled && ![islandHandler gestureRecognizer:islandTap shouldReceiveTouch:touchFor(island, 70)], @"unconfigured middle tap keeps native island behavior");
+        check(!nativeTapWaits(islandHandler, islandTap, islandNativeTap), @"unconfigured island never takes native priority");
+        manager.prefs = baseline; [islandHandler refresh];
+        testUnlocked = NO; check(![islandHandler available], @"island action blocked while locked"); testUnlocked = YES;
+        testPanelVisible = YES; check(![islandHandler available], @"island action blocked while global panel visible"); testPanelVisible = NO;
+        UITouch *outside = touchFor(island, 70); outside.view = islandWindow;
+        check(![islandHandler gestureRecognizer:islandTap shouldReceiveTouch:outside], @"island handler never accepts unrelated window content");
+        check([islandHandler gestureRecognizer:islandTap shouldReceiveTouch:touchFor(island, 70)], @"start island touch before layout change");
+        NSUInteger sentBefore = sends; island.originInWindow = CGPointMake(126, 10); [islandHandler recognized:islandTap];
+        check(sends == sentBefore, @"island layout change cancels pending dispatch"); island.originInWindow = CGPointMake(125, 10);
+        island.window = nil; DXInstallStatusGestures(island);
+        check(islandWindow.gestureRecognizers.count == 4, @"island detach removes only its own tap");
+        islandStatusBar.window = nil; DXInstallStatusGestures(islandStatusBar);
+        check(islandWindow.gestureRecognizers.count == 0, @"ordinary status-bar detach clears its remaining gestures");
+        NSProcessInfo.processInfo.processName = originalProcess;
+        check(!DXIsApertureView(island), @"island hooks do not activate in host apps");
         printf("PASS: %lu production status-bar handler checks with UIKit doubles\n", (unsigned long)checks);
     }
     return 0;

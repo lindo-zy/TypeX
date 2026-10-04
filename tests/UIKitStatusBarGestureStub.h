@@ -13,10 +13,12 @@ static inline BOOL UIInterfaceOrientationIsLandscape(UIInterfaceOrientation valu
 @property(nonatomic) NSUInteger tapCount;
 @end
 @interface UIGestureRecognizer (StatusBarTests)
+@property(nonatomic) BOOL delaysTouchesEnded;
 - (void)requireGestureRecognizerToFail:(UIGestureRecognizer *)gesture;
 @end
 @interface UITapGestureRecognizer : UIGestureRecognizer
 @property(nonatomic) NSUInteger numberOfTapsRequired;
+@property(nonatomic) NSUInteger numberOfTouchesRequired;
 @end
 @interface UILongPressGestureRecognizer : UIGestureRecognizer
 @property(nonatomic) NSTimeInterval minimumPressDuration;
@@ -29,3 +31,4 @@ typedef NS_ENUM(NSInteger, UIImpactFeedbackStyle) { UIImpactFeedbackStyleLight }
 @end
 @interface UIStatusBar : UIView @end
 @interface _UIStatusBar : UIView @end
+@interface SBSystemApertureContainerView : UIView @end
