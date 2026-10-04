@@ -9,7 +9,7 @@
 #import <objc/runtime.h>
 #import <notify.h>
 
-static char DXStatusHandlerKey, DXStatusKindKey, DXStatusSessionKey;
+static char DXStatusHandlerKey, DXStatusApertureHandlerKey, DXStatusKindKey, DXStatusSessionKey;
 static NSHashTable *DXStatusHandlers;
 static void DXTryStatusHooks(void);
 static void DXInstallStatusGestures(UIView *view);
@@ -29,9 +29,24 @@ static BOOL DXIsApertureView(UIView *view) {
     Class cls = NSClassFromString(@"SBSystemApertureContainerView");
     return cls && [cls isSubclassOfClass:UIView.class] && [view isKindOfClass:cls];
 }
+static BOOL DXIsStatusActionRecognizer(UIGestureRecognizer *gesture) {
+    for (NSString *name in @[@"_UIStatusBarActionGestureRecognizer", @"STUIStatusBarActionGestureRecognizer"]) {
+        Class cls = NSClassFromString(name);
+        if (cls && [cls isSubclassOfClass:UIGestureRecognizer.class] && [gesture isKindOfClass:cls]) return YES;
+    }
+    return NO;
+}
+static BOOL DXStatusReceiverVisible(UIView *view, UIWindow *window) {
+    if (!view || view.window != window) return NO;
+    for (UIView *ancestor = view; ancestor; ancestor = ancestor.superview)
+        if (ancestor.hidden || ancestor.alpha < 0.01) return NO;
+    CGRect frame = [view convertRect:view.bounds toView:window];
+    return !CGRectIsEmpty(frame) && !CGRectIsEmpty(CGRectIntersection(frame, window.bounds));
+}
 
 @interface DXStatusGestureSession : NSObject
 @property(nonatomic, weak) UIWindow *window;
+@property(nonatomic, weak) UIView *receiver;
 @property(nonatomic, copy) NSDictionary *preferences;
 @property(nonatomic, copy) NSString *region;
 @property(nonatomic, copy) NSString *horizontalDirection;
@@ -48,6 +63,7 @@ static BOOL DXIsApertureView(UIView *view) {
 @property(nonatomic, copy) NSString *lastRejection;
 @property(nonatomic, copy) NSString *lastConfiguration;
 - (void)refresh;
+- (void)invalidate;
 - (BOOL)available;
 - (BOOL)reject:(NSString *)reason;
 - (BOOL)hasAction:(NSString *)kind region:(NSString *)region preferences:(NSDictionary *)preferences;
@@ -67,6 +83,17 @@ static BOOL DXIsApertureView(UIView *view) {
     NSArray *recognizers = _recognizers;
     if (NSThread.isMainThread) { for (UIGestureRecognizer *gesture in recognizers) { gesture.enabled = NO; [window removeGestureRecognizer:gesture]; } }
     else dispatch_async(dispatch_get_main_queue(), ^{ for (UIGestureRecognizer *gesture in recognizers) { gesture.enabled = NO; [window removeGestureRecognizer:gesture]; } });
+}
+- (void)invalidate {
+    if (!NSThread.isMainThread) return;
+    for (UIGestureRecognizer *gesture in self.recognizers) {
+        gesture.enabled = NO;
+        gesture.delegate = nil;
+        objc_setAssociatedObject(gesture, &DXStatusSessionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [self.window removeGestureRecognizer:gesture];
+    }
+    self.recognizers = @[];
+    self.window = nil;
 }
 - (BOOL)available {
     if (!NSThread.isMainThread) return NO;
@@ -144,11 +171,13 @@ static BOOL DXIsApertureView(UIView *view) {
     // SpringBoard swaps island container instances between presentation modes.
     // The receiver is resolved per touch; binding to the install-time anchor
     // let an earlier instance's window gesture silently reject later ones.
+    UIView *receiver = self.anchor;
     BOOL apertureTap = NO;
     if (self.aperture && [kind isEqual:@"tap"])
         for (UIView *view = touch.view; view && view != self.window; view = view.superview)
-            if (DXIsApertureView(view)) { apertureTap = YES; break; }
+            if (DXIsApertureView(view)) { apertureTap = YES; receiver = view; }
     if (self.aperture && !apertureTap) return [self reject:@"aperture-container"];
+    if (!DXStatusReceiverVisible(receiver, self.window)) return [self reject:@"hidden-receiver"];
     // Only an explicitly configured island tap can replace its native action.
     // The ordinary status-bar handler must not dispatch the same island touch.
     for (UIView *view = touch.view; view && view != self.window; view = view.superview) {
@@ -171,7 +200,7 @@ static BOOL DXIsApertureView(UIView *view) {
     if ([kind isEqual:@"doubletap"] && touch.tapCount > 1 && previous &&
         (![previous.region isEqual:region] || ![previous.preferences isEqual:preferences])) return NO;
     DXStatusGestureSession *session = [DXStatusGestureSession new];
-    session.region = region; session.window = self.window; session.preferences = [preferences copy];
+    session.region = region; session.window = self.window; session.receiver = receiver; session.preferences = [preferences copy];
     session.frame = self.aperture ? touch.window.bounds : [self.anchor convertRect:self.anchor.bounds toView:self.window];
     objc_setAssociatedObject(gesture, &DXStatusSessionKey, session, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     NSLog(@"[TypeX][StatusBarGesture] touch host=%@ slot=%@ view=%@", NSProcessInfo.processInfo.processName,
@@ -180,9 +209,10 @@ static BOOL DXIsApertureView(UIView *view) {
 }
 - (BOOL)sessionIsCurrent:(DXStatusGestureSession *)session {
     return session && !session.dispatched && [self available] && session.window == self.window &&
+        DXStatusReceiverVisible(session.receiver, self.window) &&
         [session.preferences isEqual:DXPrefsManager.sharedInstance.prefs] &&
-        // Island sessions outlive container swaps; the window identity above
-        // is their currency proof, so the frame pin only guards status bar.
+        // A new touch resolves the current island container. An in-flight
+        // touch must keep its receiver attached, without pinning its frame.
         (self.aperture || CGRectEqualToRect(session.frame, [self.anchor convertRect:self.anchor.bounds toView:self.window]));
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldRequireFailureOfGestureRecognizer:(UIGestureRecognizer *)other {
@@ -194,20 +224,27 @@ static BOOL DXIsApertureView(UIView *view) {
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer *)other {
     NSString *kind = objc_getAssociatedObject(gesture, &DXStatusKindKey);
-    if (!gesture.enabled || ![@[@"tap", @"doubletap"] containsObject:kind ?: @""] ||
-        objc_getAssociatedObject(other, &DXStatusKindKey) || !other.enabled ||
-        ![other isKindOfClass:UITapGestureRecognizer.class]) return NO;
-    UITapGestureRecognizer *native = (UITapGestureRecognizer *)other;
-    if (native.numberOfTapsRequired != 1 || native.numberOfTouchesRequired != 1) return NO;
+    if (!gesture.enabled || !kind || objc_getAssociatedObject(other, &DXStatusKindKey) || !other.enabled) return NO;
+    BOOL nativeAction = !self.aperture && DXIsStatusActionRecognizer(other);
+    if (!nativeAction) {
+        if (![@[@"tap", @"doubletap"] containsObject:kind] || ![other isKindOfClass:UITapGestureRecognizer.class]) return NO;
+        UITapGestureRecognizer *native = (UITapGestureRecognizer *)other;
+        if (native.numberOfTapsRequired != 1 || native.numberOfTouchesRequired != 1) return NO;
+    }
+    DXStatusGestureSession *session = objc_getAssociatedObject(gesture, &DXStatusSessionKey);
+    if (![self sessionIsCurrent:session]) return NO;
     UIView *view = other.view;
     if (!view || (view != self.window && view.window != self.window) ||
-        !(view == self.window || [view isDescendantOfView:self.anchor] || [self.anchor isDescendantOfView:view])) return NO;
-    DXStatusGestureSession *session = objc_getAssociatedObject(gesture, &DXStatusSessionKey);
-    if (![self sessionIsCurrent:session] || ![self hasAction:kind region:session.region preferences:session.preferences]) return NO;
+        !(view == self.window || [view isDescendantOfView:session.receiver] || [session.receiver isDescendantOfView:view])) return NO;
+    BOOL configured = [kind isEqual:@"horizontal"] ?
+        ([self hasAction:@"leftswipe" region:session.region preferences:session.preferences] ||
+         [self hasAction:@"rightswipe" region:session.region preferences:session.preferences]) :
+        [self hasAction:kind region:session.region preferences:session.preferences];
+    if (!configured) return NO;
     // UIKit evaluates this per touch, including descendant taps and recognizers
     // installed after ours. Unconfigured/native-control touches never get here.
-    NSLog(@"[TypeX][StatusBarGesture] tap priority host=%@ slot=%@ native=%@", NSProcessInfo.processInfo.processName,
-        DXStatusBarSlot(session.region, kind), NSStringFromClass(other.class));
+    NSLog(@"[TypeX][StatusBarGesture] priority host=%@ slot=%@ native=%@", NSProcessInfo.processInfo.processName,
+        DXStatusBarSlot(session.region, kind) ?: [session.region stringByAppendingString:@".horizontal"], NSStringFromClass(other.class));
     return YES;
 }
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gesture {
@@ -265,14 +302,24 @@ static void DXInstallStatusGestures(UIView *view) {
     UIView *anchor = view;
     for (UIView *parent = view.superview; parent; parent = parent.superview)
         if (aperture ? DXIsApertureView(parent) : DXIsStatusView(parent)) anchor = parent;
-    // One gesture set per window covers every island container instance;
-    // per-anchor sets would stack on the shared window and double-dispatch.
-    if (aperture) for (DXStatusGestureHandler *existing in DXStatusHandlers)
-        if (existing.aperture && existing.window == anchor.window) return;
-    DXStatusGestureHandler *handler = objc_getAssociatedObject(anchor, &DXStatusHandlerKey);
+    // The window owns the island handler. A transient container must never
+    // tear down the shared recognizer when another container is still alive.
+    if (aperture && !anchor.window) return;
+    id owner = aperture ? (id)anchor.window : (id)anchor;
+    const void *key = aperture ? &DXStatusApertureHandlerKey : &DXStatusHandlerKey;
+    DXStatusGestureHandler *handler = objc_getAssociatedObject(owner, key);
+    // A core can enter the window before its wrapper. Retire its earlier set
+    // when the enclosing wrapper arrives, regardless of hook/scan order.
+    if (!aperture && anchor.window) for (DXStatusGestureHandler *existing in DXStatusHandlers.allObjects) {
+        UIView *oldAnchor = existing.anchor;
+        if (!existing.aperture && oldAnchor != anchor && [oldAnchor isDescendantOfView:anchor]) {
+            [existing invalidate];
+            objc_setAssociatedObject(oldAnchor, &DXStatusHandlerKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
     if (handler && handler.window == anchor.window) return;
-    for (UIGestureRecognizer *gesture in handler.recognizers) { gesture.enabled = NO; [handler.window removeGestureRecognizer:gesture]; }
-    objc_setAssociatedObject(anchor, &DXStatusHandlerKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [handler invalidate];
+    objc_setAssociatedObject(owner, key, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (!anchor.window) return;
     handler = [DXStatusGestureHandler new]; handler.anchor = anchor; handler.window = anchor.window; handler.aperture = aperture;
     NSMutableArray *recognizers = [NSMutableArray array];
@@ -296,7 +343,7 @@ static void DXInstallStatusGestures(UIView *view) {
         [recognizers addObject:gesture];
     }
     handler.recognizers = recognizers;
-    objc_setAssociatedObject(anchor, &DXStatusHandlerKey, handler, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(owner, key, handler, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [DXStatusHandlers addObject:handler];
     for (UIGestureRecognizer *gesture in recognizers) [anchor.window addGestureRecognizer:gesture];
     [handler refresh];
@@ -342,6 +389,7 @@ static void DXScanStatusViews(UIView *view) {
 
 static void DXTryStatusHooks(void) {
     if (!NSThread.isMainThread) return;
+    if (!DXPrefsManager.sharedInstance.preferencesAvailable) [DXPrefsManager.sharedInstance reload];
     static BOOL wrapperInstalled = NO, coreInstalled = NO, modernInstalled = NO, apertureInstalled = NO, loggedUnavailable = NO;
     static BOOL systemWrapperInstalled = NO, systemCoreInstalled = NO;
     Class wrapper = NSClassFromString(@"UIStatusBar") ?: NSClassFromString(@"UIStatusBar_Modern");
@@ -358,9 +406,18 @@ static void DXTryStatusHooks(void) {
         if (!method) continue;
         NSMethodSignature *signature = [NSMethodSignature signatureWithObjCTypes:method_getTypeEncoding(method)];
         if (signature.numberOfArguments != 2 || strcmp(signature.methodReturnType, @encode(void))) continue;
-        if (cls == wrapper && !wrapperInstalled) { %init(TypeXStatusBarWrapper, UIStatusBar = wrapper); wrapperInstalled = YES; }
-        if (cls == core && !coreInstalled) { %init(TypeXStatusBarCore, _UIStatusBar = core); coreInstalled = YES; }
-        if (cls == modern && modern != wrapper && !modernInstalled) { %init(TypeXStatusBarModern, UIStatusBar_Modern = modern); modernInstalled = YES; }
+        if (cls == wrapper && !wrapperInstalled) {
+            %init(TypeXStatusBarWrapper, UIStatusBar = wrapper); wrapperInstalled = YES;
+            NSLog(@"[TypeX][StatusBarGesture] hook host=%@ class=%@", NSProcessInfo.processInfo.processName, NSStringFromClass(cls));
+        }
+        if (cls == core && !coreInstalled) {
+            %init(TypeXStatusBarCore, _UIStatusBar = core); coreInstalled = YES;
+            NSLog(@"[TypeX][StatusBarGesture] hook host=%@ class=%@", NSProcessInfo.processInfo.processName, NSStringFromClass(cls));
+        }
+        if (cls == modern && modern != wrapper && !modernInstalled) {
+            %init(TypeXStatusBarModern, UIStatusBar_Modern = modern); modernInstalled = YES;
+            NSLog(@"[TypeX][StatusBarGesture] hook host=%@ class=%@", NSProcessInfo.processInfo.processName, NSStringFromClass(cls));
+        }
         if (cls == systemWrapper && !systemWrapperInstalled) {
             %init(TypeXSystemStatusBarWrapper, STUIStatusBar_Wrapper = systemWrapper); systemWrapperInstalled = YES;
             NSLog(@"[TypeX][StatusBarGesture] hook host=%@ class=%@", NSProcessInfo.processInfo.processName, NSStringFromClass(cls));
@@ -375,6 +432,10 @@ static void DXTryStatusHooks(void) {
     #pragma clang diagnostic ignored "-Wdeprecated-declarations"
     for (UIWindow *window in UIApplication.sharedApplication.windows) DXScanStatusViews(window);
     #pragma clang diagnostic pop
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes)
+        if ([scene isKindOfClass:UIWindowScene.class])
+            for (UIWindow *window in ((UIWindowScene *)scene).windows) DXScanStatusViews(window);
+    for (DXStatusGestureHandler *handler in DXStatusHandlers.allObjects) [handler refresh];
     if (!wrapperInstalled && !coreInstalled && !modernInstalled && !systemWrapperInstalled && !systemCoreInstalled && !loggedUnavailable) {
         loggedUnavailable = YES;
         NSLog(@"[TypeX][StatusBarGesture] unavailable: status-bar classes missing");
@@ -393,13 +454,13 @@ void DXStartStatusBarGestures(void) {
                 // Retry class hooks as well as scanning this notification's window.
                 DXTryStatusHooks();
                 if ([note.object isKindOfClass:UIWindow.class]) DXScanStatusViews(note.object);
-                for (DXStatusGestureHandler *handler in DXStatusHandlers.allObjects) [handler refresh];
             }];
-            [center addObserverForName:UIApplicationDidFinishLaunchingNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) { DXTryStatusHooks(); }];
+            for (NSString *name in @[UIApplicationDidFinishLaunchingNotification, UISceneDidConnectNotification, UISceneDidActivateNotification]) {
+                [center addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) { DXTryStatusHooks(); }];
+            }
             [center addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) {
                 [DXPrefsManager.sharedInstance reload];
                 DXTryStatusHooks();
-                for (DXStatusGestureHandler *handler in DXStatusHandlers.allObjects) [handler refresh];
             }];
             for (NSString *name in @[UIApplicationWillResignActiveNotification, UISceneWillDeactivateNotification]) {
                 [center addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) {
@@ -414,7 +475,6 @@ void DXStartStatusBarGestures(void) {
                 uint32_t result = notify_register_dispatch(name.UTF8String, &token, dispatch_get_main_queue(), ^(__unused int delivered) {
                     [DXPrefsManager.sharedInstance reload];
                     DXTryStatusHooks();
-                    for (DXStatusGestureHandler *handler in DXStatusHandlers.allObjects) [handler refresh];
                 });
                 if (result != NOTIFY_STATUS_OK) NSLog(@"[TypeX][StatusBarGesture] notification registration failed status=%u", result);
             }

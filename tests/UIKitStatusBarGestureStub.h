@@ -5,10 +5,13 @@ static inline BOOL UIInterfaceOrientationIsLandscape(UIInterfaceOrientation valu
 @interface UIApplication : NSObject
 @property(nonatomic) UIApplicationState applicationState;
 @property(nonatomic, copy) NSArray<UIWindow *> *windows;
+@property(nonatomic, copy) NSSet *connectedScenes;
 + (instancetype)sharedApplication;
 @end
+typedef NSObject UIScene;
 @interface UIWindowScene (StatusBarTests)
 @property(nonatomic) UIInterfaceOrientation interfaceOrientation;
+@property(nonatomic, copy) NSArray<UIWindow *> *windows;
 @end
 @interface UITouch (StatusBarTests)
 @property(nonatomic) NSUInteger tapCount;
@@ -25,6 +28,9 @@ static inline BOOL UIInterfaceOrientationIsLandscape(UIInterfaceOrientation valu
 @property(nonatomic) NSTimeInterval minimumPressDuration;
 @property(nonatomic) CGFloat allowableMovement;
 @end
+// Real status-bar action recognizers are not UITapGestureRecognizer subclasses.
+@interface _UIStatusBarActionGestureRecognizer : UIGestureRecognizer @end
+@interface STUIStatusBarActionGestureRecognizer : UIGestureRecognizer @end
 typedef NS_ENUM(NSInteger, UIImpactFeedbackStyle) { UIImpactFeedbackStyleLight };
 @interface UIImpactFeedbackGenerator : NSObject
 - (instancetype)initWithStyle:(UIImpactFeedbackStyle)style;

@@ -14,6 +14,7 @@ static NSUInteger checks, sends;
 static NSString *sentSlot, *sentSelector;
 static BOOL sentLandscape;
 static BOOL testUnlocked, testPanelVisible = YES;
+static NSDictionary *reloadPreferences;
 static void check(BOOL condition, NSString *name) { checks++; NSCAssert(condition, @"%@", name); }
 void DXRequestStatusBarGesture(NSString *slot, NSString *selector, BOOL landscape, DXSystemOpenReply reply) {
     check(NSThread.isMainThread && DXStatusBarSlotValid(slot), @"relay from main thread with valid slot");
@@ -34,7 +35,7 @@ void DXRequestStatusBarGesture(NSString *slot, NSString *selector, BOOL landscap
 @end
 @implementation DXPrefsManager
 + (instancetype)sharedInstance { static DXPrefsManager *manager; if (!manager) manager = [self new]; return manager; }
-- (void)reload {}
+- (void)reload { if (reloadPreferences) { self.prefs = reloadPreferences; self.preferencesAvailable = YES; } }
 @end
 #include "StatusDoubles.inc"
 @implementation UIApplication
@@ -46,6 +47,8 @@ void DXRequestStatusBarGesture(NSString *slot, NSString *selector, BOOL landscap
 @implementation UIWindowScene (StatusBarTests)
 - (UIInterfaceOrientation)interfaceOrientation { return [objc_getAssociatedObject(self, @selector(interfaceOrientation)) integerValue]; }
 - (void)setInterfaceOrientation:(UIInterfaceOrientation)value { objc_setAssociatedObject(self, @selector(interfaceOrientation), @(value), OBJC_ASSOCIATION_RETAIN_NONATOMIC); }
+- (NSArray *)windows { return objc_getAssociatedObject(self, @selector(windows)); }
+- (void)setWindows:(NSArray *)value { objc_setAssociatedObject(self, @selector(windows), value, OBJC_ASSOCIATION_COPY_NONATOMIC); }
 @end
 @implementation UITouch (StatusBarTests)
 - (NSUInteger)tapCount { return [objc_getAssociatedObject(self, @selector(tapCount)) unsignedIntegerValue]; }
@@ -63,6 +66,8 @@ void DXRequestStatusBarGesture(NSString *slot, NSString *selector, BOOL landscap
 }
 @end
 @implementation UILongPressGestureRecognizer @end
+@implementation _UIStatusBarActionGestureRecognizer @end
+@implementation STUIStatusBarActionGestureRecognizer @end
 @implementation UIImpactFeedbackGenerator
 - (instancetype)initWithStyle:(UIImpactFeedbackStyle)style { (void)style; return [super init]; }
 - (void)impactOccurred {}
@@ -110,6 +115,8 @@ int main(void) {
         check(handler != nil && window.gestureRecognizers.count == 4 && DXStatusHandlers.count == 1, @"nested views install once per anchor");
         check([handler available], @"app availability does not use SpringBoard lock/panel methods");
         UITapGestureRecognizer *nativeTap = [UITapGestureRecognizer new]; [nested addGestureRecognizer:nativeTap];
+        UIGestureRecognizer *legacyAction = [[_UIStatusBarActionGestureRecognizer alloc] initWithTarget:nil action:NULL]; [nested addGestureRecognizer:legacyAction];
+        UIGestureRecognizer *systemAction = [[STUIStatusBarActionGestureRecognizer alloc] initWithTarget:nil action:NULL]; [nested addGestureRecognizer:systemAction];
         UITapGestureRecognizer *lateWindowTap = [UITapGestureRecognizer new]; [window addGestureRecognizer:lateWindowTap];
         for (NSString *region in DXStatusBarRegions()) for (NSString *kind in DXStatusBarGestures()) {
             CGFloat x = [region isEqual:@"left"] ? 10 : ([region isEqual:@"middle"] ? 150 : 300);
@@ -119,6 +126,8 @@ int main(void) {
             check([handler gestureRecognizer:gesture shouldReceiveTouch:touchFor(anchor, x)], @"configured touch accepted");
             if ([gesture isKindOfClass:UIPanGestureRecognizer.class]) ((UIPanGestureRecognizer *)gesture).delta = CGPointMake([kind isEqual:@"leftswipe"] ? -40 : 40, 0);
             check([handler gestureRecognizerShouldBegin:gesture], @"eligible gesture begins");
+            check(nativeTapWaits(handler, gesture, legacyAction), @"UIKit status action waits for each configured gesture");
+            check(nativeTapWaits(handler, gesture, systemAction), @"SystemStatusUI action waits for each configured gesture");
             if ([kind isEqual:@"tap"] || [kind isEqual:@"doubletap"]) {
                 check(gesture.delaysTouchesBegan && gesture.delaysTouchesEnded, @"configured taps defer native view touch callbacks");
                 check(nativeTapWaits(handler, gesture, nativeTap), @"descendant native single tap waits for configured tap in each region");
@@ -169,6 +178,8 @@ int main(void) {
         }
         check(![handler gestureRecognizer:tap shouldReceiveTouch:touchFor(anchor, 300)], @"unconfigured right region leaves native tap alone");
         check(!nativeTapWaits(handler, tap, nativeTap), @"unconfigured region has no failure priority");
+        check(!nativeTapWaits(handler, tap, legacyAction), @"unconfigured region keeps UIKit status action");
+        check(!nativeTapWaits(handler, tap, systemAction), @"unconfigured region keeps SystemStatusUI action");
         manager.prefs = baseline; [handler refresh];
         check([handler gestureRecognizer:tap shouldReceiveTouch:touchFor(anchor, 10)], @"new configured touch for system pan test");
         UIPanGestureRecognizer *verticalSystem = [[UIPanGestureRecognizer alloc] initWithTarget:nil action:NULL]; [window addGestureRecognizer:verticalSystem];
@@ -178,8 +189,10 @@ int main(void) {
         UITouch *control = touchFor(anchor, 10); control.view = nativeControl;
         check(![handler gestureRecognizer:tap shouldReceiveTouch:control], @"native controls excluded");
         check(!nativeTapWaits(handler, tap, nativeTap), @"rejected native control clears the previous priority session");
+        check(!nativeTapWaits(handler, tap, legacyAction), @"rejected native controls keep status action");
         anchor.hidden = YES; check(![handler available], @"hidden status bar blocked"); anchor.hidden = NO;
         manager.preferencesAvailable = NO; check(![handler available], @"missing snapshot blocked"); manager.preferencesAvailable = YES;
+        [nested removeGestureRecognizer:legacyAction]; [nested removeGestureRecognizer:systemAction];
         anchor.window = nil; DXInstallStatusGestures(anchor);
         check(window.gestureRecognizers.count == 1 && window.gestureRecognizers[0] == lateWindowTap && !objc_getAssociatedObject(anchor, &DXStatusHandlerKey), @"detach removes only TypeX recognizers");
 
@@ -192,7 +205,7 @@ int main(void) {
         UIControl *islandControl = [UIControl new]; [island addSubview:islandControl];
         UITapGestureRecognizer *islandNativeTap = [UITapGestureRecognizer new]; [islandControl addGestureRecognizer:islandNativeTap];
         DXInstallStatusGestures(island); DXInstallStatusGestures(islandChild);
-        DXStatusGestureHandler *islandHandler = objc_getAssociatedObject(island, &DXStatusHandlerKey);
+        DXStatusGestureHandler *islandHandler = objc_getAssociatedObject(islandWindow, &DXStatusApertureHandlerKey);
         check(islandHandler.aperture && islandHandler.recognizers.count == 1 && islandWindow.gestureRecognizers.count == 1, @"nested Dynamic Island views install only one tap recognizer");
         UIGestureRecognizer *islandTap = gestureFor(islandHandler, @"tap");
         UIStatusBar *islandStatusBar = [UIStatusBar new]; islandStatusBar.bounds = CGRectMake(0, 0, 390, 54); [islandWindow addSubview:islandStatusBar];
@@ -223,17 +236,51 @@ int main(void) {
         UIControl *swapControl = [UIControl new]; [islandSwap addSubview:swapControl];
         DXInstallStatusGestures(islandSwap);
         check(!objc_getAssociatedObject(islandSwap, &DXStatusHandlerKey) && islandWindow.gestureRecognizers.count == 5, @"second island instance reuses the window gesture set");
+        UITapGestureRecognizer *swapNativeTap = [UITapGestureRecognizer new]; [swapControl addGestureRecognizer:swapNativeTap];
         UITouch *swapTouch = touchFor(islandSwap, 70); swapTouch.view = swapControl;
         check([islandHandler gestureRecognizer:islandTap shouldReceiveTouch:swapTouch], @"the window gesture accepts a swapped container's touch");
+        check(nativeTapWaits(islandHandler, islandTap, swapNativeTap), @"swapped container's native tap uses the current receiver");
+        islandSwap.hidden = YES;
+        check(![islandHandler gestureRecognizer:islandTap shouldReceiveTouch:swapTouch], @"hidden swapped receiver rejected"); islandSwap.hidden = NO;
+        check([islandHandler gestureRecognizer:islandTap shouldReceiveTouch:swapTouch], @"visible swapped receiver accepted");
+        NSUInteger invalidBefore = sends; islandSwap.window = nil; islandTap.state = UIGestureRecognizerStateEnded; [islandHandler recognized:islandTap];
+        check(sends == invalidBefore, @"detached touch receiver cancels pending island session"); islandSwap.window = islandWindow;
         check([islandHandler gestureRecognizer:islandTap shouldReceiveTouch:touchFor(island, 70)], @"start island touch before layout change");
         NSUInteger sentBefore = sends; island.originInWindow = CGPointMake(126, 10); [islandHandler recognized:islandTap];
         check(sends == sentBefore + 1 && [sentSlot isEqual:@"middle.tap"], @"island sessions ride window identity, not anchor frames");
         island.window = nil; DXInstallStatusGestures(island);
-        check(islandWindow.gestureRecognizers.count == 4, @"island detach removes only its own tap");
+        check(islandWindow.gestureRecognizers.count == 5, @"island detach preserves window-owned tap for replacement container");
         check([islandHandler available], @"released island anchor does not gate the window gesture");
         check([islandHandler gestureRecognizer:islandTap shouldReceiveTouch:swapTouch], @"window gesture still serves the swapped container");
         islandStatusBar.window = nil; DXInstallStatusGestures(islandStatusBar);
-        check(islandWindow.gestureRecognizers.count == 0, @"ordinary status-bar detach clears its remaining gestures");
+        check(islandWindow.gestureRecognizers.count == 1, @"ordinary detach preserves independent island recognizer");
+
+        // No strong local reference to the handler or install-time container:
+        // the original test hid this lifetime bug by retaining islandHandler.
+        __weak DXStatusGestureHandler *weakIslandHandler;
+        __weak UIView *weakOriginalIsland;
+        __weak DXStatusGestureHandler *releasedWithWindow;
+        @autoreleasepool {
+            UIWindow *lifetimeWindow = [UIWindow new]; lifetimeWindow.window = lifetimeWindow; lifetimeWindow.bounds = window.bounds;
+            SBSystemApertureContainerView *replacement = [SBSystemApertureContainerView new]; replacement.bounds = CGRectMake(0, 0, 140, 44);
+            @autoreleasepool {
+                SBSystemApertureContainerView *original = [SBSystemApertureContainerView new]; original.bounds = replacement.bounds;
+                [lifetimeWindow addSubview:original]; DXInstallStatusGestures(original);
+                for (DXStatusGestureHandler *entry in DXStatusHandlers.allObjects)
+                    if (entry.aperture && entry.window == lifetimeWindow) weakIslandHandler = entry;
+                weakOriginalIsland = original;
+                [lifetimeWindow addSubview:replacement]; DXInstallStatusGestures(replacement);
+                [lifetimeWindow.subviews removeObject:original]; original.superview = nil; original.window = nil;
+                DXInstallStatusGestures(original);
+            }
+            check(!weakOriginalIsland && weakIslandHandler && lifetimeWindow.gestureRecognizers.count == 1, @"original container release preserves shared window handler");
+            UIGestureRecognizer *replacementTap = lifetimeWindow.gestureRecognizers.firstObject;
+            check([weakIslandHandler gestureRecognizer:replacementTap shouldReceiveTouch:touchFor(replacement, 70)], @"replacement responds without another install or scan");
+            NSUInteger lifetimeBefore = sends; replacementTap.state = UIGestureRecognizerStateEnded; [weakIslandHandler recognized:replacementTap];
+            check(sends == lifetimeBefore + 1, @"replacement dispatches after install-time container is gone");
+            releasedWithWindow = weakIslandHandler;
+        }
+        check(!releasedWithWindow, @"window release releases its handler without a retain cycle");
         NSProcessInfo.processInfo.processName = originalProcess;
         check(!DXIsApertureView(island), @"island hooks do not activate in host apps");
 
@@ -247,6 +294,53 @@ int main(void) {
         check([hookInstallCounts[@"UIStatusBar"] unsignedIntegerValue] == 1 &&
               [hookInstallCounts[@"UIStatusBar_Modern"] unsignedIntegerValue] == 1 &&
               [hookInstallCounts[@"_UIStatusBar"] unsignedIntegerValue] == 1, @"UIKit hooks remain available before SystemStatusUI loads");
+
+        // A UIKit status bar can exist before preferences and only belong to
+        // a connected scene, outside UIApplication's legacy windows array.
+        UIWindow *sceneWindow = [UIWindow new]; sceneWindow.window = sceneWindow; sceneWindow.bounds = window.bounds;
+        UIStatusBar *sceneBar = [UIStatusBar new]; sceneBar.bounds = anchor.bounds; [sceneWindow addSubview:sceneBar];
+        manager.preferencesAvailable = NO; manager.prefs = @{}; DXInstallStatusGestures(sceneBar);
+        DXStatusGestureHandler *sceneHandler = objc_getAssociatedObject(sceneBar, &DXStatusHandlerKey);
+        UIGestureRecognizer *sceneTap = gestureFor(sceneHandler, @"tap"); check(!sceneTap.enabled, @"cold unavailable configuration leaves recognizer disabled");
+        UIWindowScene *connectedScene = [UIWindowScene new]; connectedScene.windows = @[sceneWindow];
+        sceneWindow.windowScene = connectedScene; UIApplication.sharedApplication.connectedScenes = [NSSet setWithObject:connectedScene];
+        UIWindow *unscannedWindow = [UIWindow new]; unscannedWindow.window = unscannedWindow; unscannedWindow.bounds = window.bounds;
+        UIStatusBar *unscannedBar = [UIStatusBar new]; unscannedBar.bounds = anchor.bounds; [unscannedWindow addSubview:unscannedBar];
+        connectedScene.windows = @[sceneWindow, unscannedWindow];
+        reloadPreferences = baseline; DXTryStatusHooks(); reloadPreferences = nil;
+        check(unscannedWindow.gestureRecognizers.count == 4 && objc_getAssociatedObject(unscannedBar, &DXStatusHandlerKey), @"connected scene scan discovers an existing unhooked status bar");
+        check(sceneTap.enabled && [sceneHandler gestureRecognizer:sceneTap shouldReceiveTouch:touchFor(sceneBar, 10)], @"late preferences recover already installed scene-only recognizer");
+        NSUInteger sceneBefore = sends; sceneTap.state = UIGestureRecognizerStateEnded; [sceneHandler recognized:sceneTap];
+        check(sends == sceneBefore + 1, @"scene-only UIKit status bar dispatches after cold configuration recovery");
+        UIApplication.sharedApplication.connectedScenes = nil; sceneBar.window = nil; DXInstallStatusGestures(sceneBar);
+        unscannedBar.window = nil; DXInstallStatusGestures(unscannedBar);
+
+        // Child-first didMoveToWindow order must not leave two competing sets.
+        UIWindow *orderedWindow = [UIWindow new]; orderedWindow.window = orderedWindow; orderedWindow.bounds = window.bounds;
+        _UIStatusBar *earlyCore = [_UIStatusBar new]; earlyCore.bounds = anchor.bounds; [orderedWindow addSubview:earlyCore]; DXInstallStatusGestures(earlyCore);
+        DXStatusGestureHandler *earlyHandler = objc_getAssociatedObject(earlyCore, &DXStatusHandlerKey);
+        UIGestureRecognizer *earlyTap = gestureFor(earlyHandler, @"tap");
+        check([earlyHandler gestureRecognizer:earlyTap shouldReceiveTouch:touchFor(earlyCore, 10)], @"core begins session before wrapper arrival");
+        UIStatusBar *lateWrapper = [UIStatusBar new]; lateWrapper.bounds = anchor.bounds; [orderedWindow addSubview:lateWrapper];
+        DXInstallStatusGestures(lateWrapper);
+        check(orderedWindow.gestureRecognizers.count == 8, @"separate status views initially own separate sets");
+        [orderedWindow.subviews removeObject:earlyCore]; [lateWrapper addSubview:earlyCore]; DXInstallStatusGestures(earlyCore);
+        check(orderedWindow.gestureRecognizers.count == 4 && !objc_getAssociatedObject(earlyCore, &DXStatusHandlerKey), @"wrapper arrival retires earlier core set");
+        NSUInteger orderBefore = sends; earlyTap.state = UIGestureRecognizerStateEnded; [earlyHandler recognized:earlyTap];
+        check(sends == orderBefore && !earlyTap.enabled && !earlyTap.delegate, @"retired core cannot execute pending session");
+        DXStatusGestureHandler *lateHandler = objc_getAssociatedObject(lateWrapper, &DXStatusHandlerKey);
+        UIGestureRecognizer *lateTap = gestureFor(lateHandler, @"tap");
+        check([lateHandler gestureRecognizer:lateTap shouldReceiveTouch:touchFor(earlyCore, 10)], @"wrapper receives nested core touch after consolidation");
+        lateTap.state = UIGestureRecognizerStateEnded; [lateHandler recognized:lateTap];
+        check(sends == orderBefore + 1, @"consolidated wrapper dispatches once");
+        lateWrapper.window = nil; DXInstallStatusGestures(lateWrapper);
+
+        UIWindow *oldCoreWindow = [UIWindow new]; oldCoreWindow.window = oldCoreWindow; oldCoreWindow.bounds = window.bounds;
+        _UIStatusBar *movingCore = [_UIStatusBar new]; movingCore.bounds = anchor.bounds; [oldCoreWindow addSubview:movingCore]; DXInstallStatusGestures(movingCore);
+        UIStatusBar *newWrapper = [UIStatusBar new]; newWrapper.bounds = anchor.bounds; [orderedWindow addSubview:newWrapper]; DXInstallStatusGestures(newWrapper);
+        [oldCoreWindow.subviews removeObject:movingCore]; [newWrapper addSubview:movingCore]; DXInstallStatusGestures(movingCore);
+        check(oldCoreWindow.gestureRecognizers.count == 0 && orderedWindow.gestureRecognizers.count == 4 && !objc_getAssociatedObject(movingCore, &DXStatusHandlerKey), @"cross-window reparent also removes the old core's recognizers");
+        newWrapper.window = nil; DXInstallStatusGestures(newWrapper);
         Class systemWrapperClass = objc_allocateClassPair(UIStatusBar_Base.class, "STUIStatusBar_Wrapper", 0);
         Class systemCoreClass = objc_allocateClassPair(UIView.class, "STUIStatusBar", 0);
         objc_registerClassPair(systemWrapperClass); objc_registerClassPair(systemCoreClass);
