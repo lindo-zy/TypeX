@@ -2,8 +2,6 @@
 #import "DXPSubActionPickerController.h"
 #import "DXPKeyboardPanelPreviewHeader.h"
 #import "DXPPanelSliderCell.h"
-#import "DXPIconInputView.h"
-#import "DXPSFSymbolPickerController.h"
 #import "DXPLinkActionEditorController.h"
 #import "DXPPanelActionCatalog.h"
 #import "../DXKeyboardPanelPreferences.h"
@@ -85,7 +83,7 @@ static NSString *DXPanelLocalized(NSString *key) {
             for (NSDictionary *panel in DXPanelDefinitions(preferences, kind)) {
                 PSSpecifier *link = [PSSpecifier preferenceSpecifierNamed:DXPanelString(panel[@"name"]) target:self set:nil get:nil detail:DXPKeyboardPanelController.class cell:PSLinkCell edit:nil];
                 [link setProperty:DXPanelSelector(panel[@"id"]) forKey:@"panelSelector"];
-                [link setProperty:[DXHelper imageForIconConfig:panel[@"icon"] defaultSymbolName:@"square.grid.2x2"] forKey:@"iconImage"];
+                [link setProperty:[DXHelper imageForIconConfig:DXPanelDefaultIconName(panel[@"kind"]) defaultSymbolName:@"square.grid.2x2"] forKey:@"iconImage"];
                 [items addObject:link];
             }
         }
@@ -97,7 +95,6 @@ static NSString *DXPanelLocalized(NSString *key) {
     [group setProperty:DXPanelLocalized([panel[@"kind"] isEqual:DXPanelKeyboardKind] ? @"PANEL_KEYBOARD_FOOTER" : @"PANEL_GESTURE_FOOTER") forKey:@"footerText"];
     [items addObject:group];
     [items addObject:[self setting:@"PANEL_NAME" key:@"name" defaultValue:@"" cell:PSEditTextCell]];
-    [items addObject:[self setting:@"KEYBOARD_PANEL_ICON" key:@"icon" defaultValue:@"square.grid.2x2" cell:PSEditTextCell]];
     [items addObject:[self setting:@"KEYBOARD_PANEL_SYSTEM_TOGGLES" key:kDXPanelSystemTogglesVisible defaultValue:@YES cell:PSSwitchCell]];
     [items addObject:[self setting:@"KEYBOARD_PANEL_SYSTEM_SLIDERS" key:kDXPanelSystemSlidersVisible defaultValue:@YES cell:PSSwitchCell]];
     PSSpecifier *actions = [PSSpecifier preferenceSpecifierNamed:DXPanelLocalized(@"KEYBOARD_PANEL_ACTIONS") target:self set:nil get:nil detail:DXPKeyboardPanelItemsController.class cell:PSLinkCell edit:nil];
@@ -116,7 +113,7 @@ static NSString *DXPanelLocalized(NSString *key) {
     NSString *key = [specifier propertyForKey:@"key"], *selector = [self panelSelector];
     if (!selector) return preferences[key] ?: [specifier propertyForKey:@"default"];
     NSDictionary *panel = DXPanelDefinition(preferences, selector);
-    return ([key isEqual:@"name"] || [key isEqual:@"icon"] ? panel[key] : DXPanelPreferences(preferences, selector)[key]) ?: [specifier propertyForKey:@"default"];
+    return ([key isEqual:@"name"] ? panel[key] : DXPanelPreferences(preferences, selector)[key]) ?: [specifier propertyForKey:@"default"];
 }
 - (void)setPreferenceValue:(id)value specifier:(PSSpecifier *)specifier {
     NSString *key = [specifier propertyForKey:@"key"], *selector = [self panelSelector];
@@ -124,9 +121,9 @@ static NSString *DXPanelLocalized(NSString *key) {
     if (!selector) { [DXPrefsManager.sharedInstance setValue:value forKey:key]; return; }
     NSMutableDictionary *preferences = [[DXPrefsManager.sharedInstance readPrefs] mutableCopy];
     if (!DXPanelDefinition(preferences, selector)) return;
-    if ([key isEqual:@"name"] || [key isEqual:@"icon"]) {
+    if ([key isEqual:@"name"]) {
         value = [DXPanelString(value) stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-        if ([key isEqual:@"name"] && ![value length]) return;
+        if (![value length]) return;
         DXPanelUpdate(preferences, selector, @{key: value});
     } else {
         if ([key isEqual:kDXPanelColumns]) value = @(MIN(5, MAX(3, lround([value doubleValue]))));
@@ -158,7 +155,7 @@ static NSString *DXPanelLocalized(NSString *key) {
         NSMutableArray *panels = [DXPanelDefinitions(preferences, nil) mutableCopy];
         NSString *name = [weakAlert.textFields.firstObject.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
         if (!name.length) name = DXPanelLocalized([kind isEqual:DXPanelKeyboardKind] ? @"PANEL_KIND_KEYBOARD" : @"PANEL_KIND_GESTURE");
-        NSDictionary *panel = @{@"id": NSUUID.UUID.UUIDString, @"kind": kind, @"name": name, @"icon": [kind isEqual:DXPanelKeyboardKind] ? @"keyboard" : @"hand.draw", @"items": @[], @"preferences": @{}};
+        NSDictionary *panel = @{@"id": NSUUID.UUID.UUIDString, @"kind": kind, @"name": name, @"icon": DXPanelDefaultIconName(kind), @"items": @[], @"preferences": @{}};
         [panels addObject:panel]; preferences[kDXPanels] = panels;
         [DXPrefsManager.sharedInstance writePrefs:preferences]; [self reloadSpecifiers];
         DXPKeyboardPanelController *editor = [DXPKeyboardPanelController new];
@@ -194,12 +191,10 @@ static NSString *DXPanelLocalized(NSString *key) {
     configuration.performsFirstActionWithFullSwipe = NO; return configuration;
 }
 @end
-// 面板条目外观编辑页：两行表单（名称、图标），图标行走 DXPIconInputView
-// （预览缩略图 + 输入框 + 图标库入口），保存回传完整条目。
+// 面板条目只编辑名称，图标跟随引用的动作或面板。
 @interface DXPPanelItemAppearanceController : PSViewController <UITableViewDataSource, UITableViewDelegate>
 @property(nonatomic, copy) NSDictionary *entry;
 @property(nonatomic, strong) UITextField *nameField;
-@property(nonatomic, strong) DXPIconInputView *iconInputView;
 @property(nonatomic, copy) void (^completion)(NSDictionary *updatedEntry);
 @end
 
@@ -214,29 +209,6 @@ static NSString *DXPanelLocalized(NSString *key) {
     self.nameField.placeholder = DXPanelLocalized(@"KEYBOARD_PANEL_NAME");
     self.nameField.text = [self.entry[@"name"] isKindOfClass:NSString.class] ? self.entry[@"name"] : @"";
 
-    self.iconInputView = [[DXPIconInputView alloc] initWithFrame:CGRectMake(0, 0, 267, 36)];
-    self.iconInputView.textField.placeholder = DXPanelLocalized(@"KEYBOARD_PANEL_ICON");
-    self.iconInputView.textField.text = [self.entry[@"icon"] isKindOfClass:NSString.class] ? self.entry[@"icon"] : @"";
-    __weak typeof(self) weakSelf = self;
-    self.iconInputView.browseTapped = ^{
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf) return;
-        [strongSelf.view endEditing:YES];
-        DXPSFSymbolPickerController *picker = [[DXPSFSymbolPickerController alloc] init];
-        picker.selectedSymbolName = [strongSelf.iconInputView.textField.text
-            stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-        __weak typeof(strongSelf) weakOwner = strongSelf;
-        picker.completion = ^(NSString *symbolName) {
-            typeof(weakOwner) owner = weakOwner;
-            if (!owner || !symbolName.length) return;
-            owner.iconInputView.textField.text = symbolName;
-            [owner.iconInputView refreshPreview];
-        };
-        [picker setRootController:[strongSelf rootController]];
-        [picker setParentController:[strongSelf parentController]];
-        [strongSelf pushController:picker];
-    };
-
     UITableView *table = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
     table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     table.dataSource = self;
@@ -248,17 +220,18 @@ static NSString *DXPanelLocalized(NSString *key) {
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     (void)tableView; (void)section;
-    return 2;
+    return 1;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"PanelAppearanceCell"];
     if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"PanelAppearanceCell"];
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
-    cell.textLabel.text = DXPanelLocalized(indexPath.row == 0 ? @"KEYBOARD_PANEL_NAME" : @"KEYBOARD_PANEL_ICON");
+    (void)indexPath;
+    cell.textLabel.text = DXPanelLocalized(@"KEYBOARD_PANEL_NAME");
     cell.textLabel.font = [UIFont systemFontOfSize:16];
     cell.imageView.image = nil;
-    cell.accessoryView = indexPath.row == 0 ? self.nameField : self.iconInputView;
+    cell.accessoryView = self.nameField;
     return cell;
 }
 
@@ -266,7 +239,7 @@ static NSString *DXPanelLocalized(NSString *key) {
     [self.view endEditing:YES];
     NSMutableDictionary *updated = [self.entry mutableCopy] ?: [NSMutableDictionary dictionary];
     updated[@"name"] = [self.nameField.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"";
-    updated[@"icon"] = [self.iconInputView.textField.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"";
+    [updated removeObjectForKey:@"icon"];
     if (self.completion) self.completion(updated);
     [self.navigationController popViewControllerAnimated:YES];
 }
@@ -334,8 +307,7 @@ static NSString *DXPanelLocalized(NSString *key) {
     return name.length ? name : [DXHelper localizedStringForActionNamed:entry[@"selector"] shortName:NO bundle:[NSBundle bundleWithPath:bundlePath]];
 }
 - (UIImage *)imageForEntry:(NSDictionary *)entry {
-    NSString *icon = entry[@"icon"];
-    if (!icon.length) icon = [self definitionForSelector:entry[@"selector"]][@"icon"];
+    NSString *icon = [self definitionForSelector:entry[@"selector"]][@"icon"];
     if (icon.length) return [DXHelper imageForIconConfig:icon defaultSymbolName:@"link"];
     return [UIImage systemImageNamed:@"square.grid.2x2"];
 }
@@ -491,8 +463,7 @@ static NSString *DXPanelLocalized(NSString *key) {
     };
     [self pushPicker:picker];
 }
-// 外观编辑改为独立页面：名称 + 图标行（DXPIconInputView 提供实时预览与
-// 图标库入口），替代原双文本框弹窗。
+// 名称编辑保留独立页面；图标不提供条目覆盖。
 - (void)pushAppearanceEditorAtRow:(NSInteger)row {
     if (row < 0 || row >= (NSInteger)self.entries.count) return;
     NSDictionary *original = self.entries[row];

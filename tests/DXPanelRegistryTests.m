@@ -48,6 +48,13 @@ int main(void) {
         check(DXPanelItems(preferences, gesture).count == 2, @"gesture panel cannot run keyboard panel, built-in, text or script");
         check([DXPanelDefinition(preferences, keyboard)[@"id"] isEqual:@"legacy-keyboard-left"], @"rename preserves selector identity");
         check([DXPanelDefinition(preferences, gesture)[@"name"] isEqual:DXPanelDefinition(migrated, gesture)[@"name"]], @"rename does not affect another panel");
+        DXPanelUpdate(preferences, keyboard, @{@"icon": @"star", @"items": @[@{@"id": @"named-item", @"selector": @"copyAction:", @"name": @"My copy", @"icon": @"heart"}]});
+        DXPanelUpdate(preferences, gesture, @{@"icon": @"com.apple.mobilenotes"});
+        NSDictionary *beforeDisplay = [preferences copy];
+        check([DXPanelDisplayDefinition(preferences, keyboard)[@"icon"] isEqual:@"keyboard"] && [DXPanelDisplayDefinition(preferences, gesture)[@"icon"] isEqual:@"hand.draw"], @"legacy panel icon overrides display as their type defaults");
+        check([DXPanelItems(preferences, keyboard) isEqual:@[@{@"id": @"named-item", @"selector": @"copyAction:", @"name": @"My copy"}]], @"legacy item icon override ignored while name, identity and action survive");
+        check([preferences isEqual:beforeDisplay] && [DXPanelDefinition(preferences, keyboard)[@"icon"] isEqual:@"star"], @"display resolution leaves stored definitions intact for update and deletion");
+        check(!DXPanelDisplayDefinition(preferences, @"__typex_panel_deleted"), @"deleted panel has no default display definition");
         DXPanelUpdate(preferences, keyboard, @{@"preferences": @{kDXPanelColumns: @4, @"linkactions": @[], kDXPanels: @[]}});
         check([DXPanelPreferences(preferences, keyboard)[kDXPanelColumns] isEqual:@4] && [DXPanelPreferences(preferences, keyboard)[@"linkactions"] isEqual:old[@"linkactions"]], @"panel options cannot override action authority");
         preferences[kDXToolbarBindings] = @{@"top.left": keyboard, @"top.right": gesture, @"bottom.left": link};

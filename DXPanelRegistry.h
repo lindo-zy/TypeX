@@ -10,6 +10,9 @@
 
 static inline NSString *DXPanelString(id value) { return [value isKindOfClass:NSString.class] ? value : @""; }
 static inline BOOL DXPanelKindValid(id kind) { return [@[DXPanelKeyboardKind, DXPanelGestureKind] containsObject:kind ?: NSNull.null]; }
+static inline NSString *DXPanelDefaultIconName(id kind) {
+    return [kind isEqual:DXPanelKeyboardKind] ? @"keyboard" : @"hand.draw";
+}
 static inline NSString *DXPanelSelector(NSString *identifier) {
     return DXPanelString(identifier).length ? [DXPanelSelectorPrefix stringByAppendingString:identifier] : nil;
 }
@@ -35,6 +38,15 @@ static inline NSDictionary *DXPanelDefinition(NSDictionary *preferences, NSStrin
     for (NSDictionary *panel in DXPanelDefinitions(preferences, nil))
         if ([DXPanelSelector(panel[@"id"]) isEqual:selector]) return panel;
     return nil;
+}
+// Display uses the type's icon; keep the stored definition intact for updates
+// and deletion, including configurations with a legacy custom icon.
+static inline NSDictionary *DXPanelDisplayDefinition(NSDictionary *preferences, NSString *selector) {
+    NSDictionary *panel = DXPanelDefinition(preferences, selector);
+    if (!panel) return nil;
+    NSMutableDictionary *display = [panel mutableCopy];
+    display[@"icon"] = DXPanelDefaultIconName(panel[@"kind"]);
+    return display;
 }
 static inline BOOL DXPanelAllowed(NSDictionary *preferences, NSString *selector, NSString *kind) {
     return [DXPanelDefinition(preferences, selector)[@"kind"] isEqual:kind];
@@ -69,7 +81,8 @@ static inline NSArray<NSDictionary *> *DXPanelItems(NSDictionary *preferences, N
     for (id item in stored) {
         if (![item isKindOfClass:NSDictionary.class] || !DXPanelItemAllowed(preferences, item[@"selector"], panel[@"kind"])) continue;
         NSMutableDictionary *sanitized = [NSMutableDictionary dictionary];
-        for (NSString *field in @[@"selector", @"id", @"name", @"icon"])
+        // Item icons always follow the referenced action or panel definition.
+        for (NSString *field in @[@"selector", @"id", @"name"])
             if ([item[field] isKindOfClass:NSString.class]) sanitized[field] = item[field];
         [items addObject:sanitized];
     }
@@ -148,7 +161,7 @@ static inline NSDictionary *DXPanelMigratePreferences(NSDictionary *preferences)
                 NSString *identifier = [NSString stringWithFormat:@"legacy-%@-%@", kind, side];
                 [panels addObject:@{@"id": identifier, @"kind": kind,
                     @"name": [NSString stringWithFormat:@"%@ %lu", [kind isEqual:DXPanelKeyboardKind] ? @"键盘面板" : @"手势面板", (unsigned long)number],
-                    @"icon": [kind isEqual:DXPanelKeyboardKind] ? @"keyboard" : @"hand.draw", @"items": DXKeyboardPanelItems(preferences, side), @"preferences": options}];
+                    @"icon": DXPanelDefaultIconName(kind), @"items": DXKeyboardPanelItems(preferences, side), @"preferences": options}];
             }
         }
         NSMutableDictionary *bindings = [dock mutableCopy];

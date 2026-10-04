@@ -56,7 +56,7 @@
         icon.tag = 2;
         icon.contentMode = UIViewContentModeScaleAspectFit;
         icon.tintColor = textColor;
-        id iconConfig = [entry[@"icon"] length] ? entry[@"icon"] : definition[@"icon"];
+        id iconConfig = definition[@"icon"];
         if (![iconConfig isKindOfClass:NSString.class]) iconConfig = @"link";
         icon.image = [DXHelper imageForIconConfig:iconConfig defaultSymbolName:@"link"];
         [item addSubview:icon];

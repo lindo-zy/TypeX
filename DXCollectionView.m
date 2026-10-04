@@ -2217,7 +2217,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 -(UIImage *)subActionPanelImageForSelector:(NSString *)selectorName {
-    NSDictionary *linkAction = DXPanelDefinition(prefs, selectorName) ?: preferencesLinkActionForSelector(selectorName);
+    NSDictionary *linkAction = DXPanelDisplayDefinition(prefs, selectorName) ?: preferencesLinkActionForSelector(selectorName);
     if (linkAction) {
         NSString *iconName = [linkAction[@"icon"] isKindOfClass:[NSString class]] ? linkAction[@"icon"] : @"";
         return [DXHelper imageForIconConfig:iconName defaultSymbolName:@"link"]
