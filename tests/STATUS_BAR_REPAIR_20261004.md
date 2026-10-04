@@ -67,4 +67,13 @@ syslog 只记录模块、宿主、槽位、类名和状态，不写设备日志�
 
 源码分析：已确认四处源码缺陷；用户故障设备的完整运行时根因未确认。
 
-编译、包结构、归档及同步结果在集成构建完成后补记。核心功能、安装／卸载、冷／热启动：未验证。
+源码提交 `7ad350e` 与 SDK 通知名称更正 `9072efe` 已本地快进合入 `dev`。首次构建因误用不存在的 `UISceneDidConnectNotification` 失败；按本地 SDK 的 `UIScene.h` 改为 `UISceneWillConnectNotification` 后，仅通过 `./build.sh` 重跑，两目标成功，版本从 4.2.7 自动推进至 4.2.8，Bark 完成通知已发送。失败构建没有推进版本。未推送代码。
+
+编译：已确认 iOS 16／17 两目标成功。包结构：已确认 `com.lindo.typex / 4.2.8 / iphoneos-arm64e`；依赖沿用 `firmware(>=15.0)`。Tweak 和 Preferences 均含 arm64／arm64e，iOS 16 包最低系统为 16.0，iOS 17 包按既有构建脚本为 15.0。注入过滤器、PreferenceLoader 资源、修复符号及安装／卸载脚本的内容、可执行权限和语法均已核对。
+
+| 目标 | 构建产物 | 字节数 | SHA-256 |
+| --- | --- | ---: | --- |
+| iOS 16 | `packages/ios16/com.lindo.typex_4.2.8_ios16_iphoneos-arm64e.deb` | 1155402 | `5b67897ed59f8c4b9ec99515e6479b36f9aa5cd84bfc3c4dea60d398e57c2275` |
+| iOS 17 | `packages/ios17/com.lindo.typex_4.2.8_ios17_iphoneos-arm64e.deb` | 1163674 | `75833b1137d1fa93052640f2b96cf63685a222c58ed97cb1755d8de245a155c5` |
+
+核心功能、安装／卸载、冷／热启动：未验证。包和本地测试成功不等于用户 iOS 16 故障设备已修复。
