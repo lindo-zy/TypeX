@@ -65,3 +65,12 @@
 
 - 两套包已分别 `cp` 到 iCloud 的 `Downloads/TypeX/ios16` 和 `ios17`，归档与构建产物 SHA-256 一致，旧 4.2.1 保留。`python3 webdav-sync.py TypeX` 退出 0，上传 2 个、大小一致跳过 125 个，最终所有本地归档与坚果云文件大小对账一致。
 - 最终状态：源码分析、编译、包结构已确认；核心功能、冷／热启动、安装卸载及实际系统点击／长按／拖动竞争未验证。已知限制：用户本次设备单击失效的确切运行时原因仍待其自行验收反馈；容器类缺失时不会建立灵动岛入口。
+
+灵动岛容器切换修复（2026-10-04）：
+
+- 问题：用户实机反馈灵动岛中区手势只在打开设置时生效，其余形态（桌面、其他前台形态）不响应。
+- 根因：4.2.2 的灵动岛入口把触摸归属锚定在安装那一刻的单个 `SBSystemApertureContainerView` 实例上——`shouldReceiveTouch` 用 `isDescendantOfView:anchor` 判定、坐标与 `available`／`sessionIsCurrent` 也全部围绕该 anchor。SpringBoard 会在锁屏／桌面／前台 App 之间切换岛容器实例或挂载点，切换后旧实例的手势仍占着窗口（手势挂在 window 不随视图卸下），新实例的触摸因不是旧 anchor 后代被 `return NO` 静默拒绝，且 anchor 悬空、anchor 链隐藏检查与 frame 相等校验都会随之误拦。打开设置恰是一次前台形态切换，触发容器重新挂载并为当前显示实例装上新手势，因此呈现「打开设置才生效」。
+- 涉及文件／边界：`DXStatusBarGestureHooks.xm`（仅灵动岛路径）、生产处理器替身测试及本验收记录。普通状态栏五手势路径、绑定格式、动作执行器、Dock 和键盘逻辑未动。
+- 方案／实现：灵动岛手势改为窗口级锚定＋触摸时动态解析——`shouldReceiveTouch` 沿触摸视图祖先链在触摸窗口内实时解析 `SBSystemApertureContainerView`，不再绑定安装时实例；`available` 对灵动岛跳过 anchor 悬空／隐藏链／几何检查（窗口身份与锁屏、面板、偏好门保留），中区固定 `middle` 不再依赖 anchor 坐标三等分，会话时效以窗口身份为准、不再做 anchor frame 相等校验；同窗口多容器实例只保留一组手势（安装时按 `aperture + window` 去重），避免窗口手势叠加双发。`touch.window` 不匹配与灵动岛归属失败两条原先静默返回的路径补 `rejected gate=window-mismatch／aperture-container` 日志，供实机定位。
+- 本地回归：配置策略 174 项、生产处理器 183 项（新增容器切换、窗口手势复用、anchor 悬空可用、窗口身份会话 4 类场景）、转发／发送 22 项通过；全套 run-*.py 退出码 0。UIKit 替身测试没有运行设备触摸。
+- 实机验收（尚未执行）：iOS 16／17 冷／热启动，桌面与 App 内分别触发灵动岛中区单击应各执行一次所选动作；设置→桌面→设置来回切换后仍生效；长按展开、实时活动、拖动、锁屏不误发。若仍失效，抓 syslog `[TypeX][StatusBarGesture]` 的 `installed`／`rejected gate=…`／`touch … view=类名` 序列——`touch` 的 view 类名可直接暴露桌面形态下真实接收触摸的视图类，用于判断是否存在 `SBSystemApertureContainerView` 之外的入口类需要补充。

@@ -67,12 +67,16 @@ static BOOL DXIsApertureView(UIView *view) {
 }
 - (BOOL)available {
     if (!NSThread.isMainThread) return NO;
-    if (!self.anchor || !self.window || self.anchor.window != self.window || self.window.hidden) return [self reject:@"window"];
+    if (!self.window || self.window.hidden) return [self reject:@"window"];
+    // The island anchor is only the install-time container; touch-time
+    // resolution owns the receiver, so a swapped or released instance and its
+    // geometry must not gate the window-level gesture.
+    if (!self.aperture && (!self.anchor || self.anchor.window != self.window)) return [self reject:@"window"];
     BOOL springBoard = [NSProcessInfo.processInfo.processName isEqual:@"SpringBoard"];
     if (springBoard) {
         if (![DXGlobalPanel deviceUnlocked] || [DXGlobalPanel.sharedInstance isVisible]) return [self reject:@"lock/panel"];
     } else if (UIApplication.sharedApplication.applicationState != UIApplicationStateActive) return [self reject:@"inactive-app"];
-    for (UIView *view = self.anchor; view; view = view.superview) if (view.hidden || view.alpha < 0.01) return [self reject:@"hidden-anchor"];
+    if (!self.aperture) for (UIView *view = self.anchor; view; view = view.superview) if (view.hidden || view.alpha < 0.01) return [self reject:@"hidden-anchor"];
     UIWindowScene *scene = self.window.windowScene;
     if (scene && scene.activationState != UISceneActivationStateForegroundActive) return [self reject:@"inactive-scene"];
     DXPrefsManager *manager = DXPrefsManager.sharedInstance;
@@ -82,8 +86,10 @@ static BOOL DXIsApertureView(UIView *view) {
     BOOL landscape = UIInterfaceOrientationIsLandscape(orientation) ||
         (orientation == UIInterfaceOrientationUnknown && self.window.bounds.size.width > self.window.bounds.size.height);
     if (landscape && !DXStatusBarFlag(manager.prefs[kDXStatusBarLandscape])) return [self reject:@"landscape-disabled"];
-    CGRect frame = [self.anchor convertRect:self.anchor.bounds toView:self.window];
-    if (CGRectIsEmpty(frame) || CGRectIsEmpty(CGRectIntersection(frame, self.window.bounds))) return [self reject:@"geometry"];
+    if (!self.aperture) {
+        CGRect frame = [self.anchor convertRect:self.anchor.bounds toView:self.window];
+        if (CGRectIsEmpty(frame) || CGRectIsEmpty(CGRectIntersection(frame, self.window.bounds))) return [self reject:@"geometry"];
+    }
     return YES;
 }
 - (BOOL)hasAction:(NSString *)kind region:(NSString *)region preferences:(NSDictionary *)preferences {
@@ -129,19 +135,30 @@ static BOOL DXIsApertureView(UIView *view) {
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldReceiveTouch:(UITouch *)touch {
     DXStatusGestureSession *previous = objc_getAssociatedObject(gesture, &DXStatusSessionKey);
     objc_setAssociatedObject(gesture, &DXStatusSessionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    if (![self available] || touch.window != self.window) return NO;
+    if (![self available]) return NO;
+    if (touch.window != self.window) return [self reject:@"window-mismatch"];
     NSString *kind = objc_getAssociatedObject(gesture, &DXStatusKindKey);
-    BOOL apertureTap = self.aperture && [kind isEqual:@"tap"] && [touch.view isDescendantOfView:self.anchor];
-    if (self.aperture && !apertureTap) return NO;
+    // SpringBoard swaps island container instances between presentation modes.
+    // The receiver is resolved per touch; binding to the install-time anchor
+    // let an earlier instance's window gesture silently reject later ones.
+    BOOL apertureTap = NO;
+    if (self.aperture && [kind isEqual:@"tap"])
+        for (UIView *view = touch.view; view && view != self.window; view = view.superview)
+            if (DXIsApertureView(view)) { apertureTap = YES; break; }
+    if (self.aperture && !apertureTap) return [self reject:@"aperture-container"];
     // Only an explicitly configured island tap can replace its native action.
     // The ordinary status-bar handler must not dispatch the same island touch.
     for (UIView *view = touch.view; view && view != self.window; view = view.superview) {
         if (!apertureTap && ([view isKindOfClass:UIControl.class] || [NSStringFromClass(view.class) containsString:@"Aperture"])) return [self reject:@"native-control"];
     }
-    CGPoint point = [touch locationInView:self.anchor];
-    CGRect bounds = self.anchor.bounds;
-    NSString *region = DXStatusBarRegion(point.x - bounds.origin.x, point.y - bounds.origin.y, bounds.size.width, bounds.size.height);
-    if (self.aperture && region) region = @"middle";
+    NSString *region;
+    if (self.aperture) {
+        region = @"middle";
+    } else {
+        CGPoint point = [touch locationInView:self.anchor];
+        CGRect bounds = self.anchor.bounds;
+        region = DXStatusBarRegion(point.x - bounds.origin.x, point.y - bounds.origin.y, bounds.size.width, bounds.size.height);
+    }
     if (!region) return NO;
     NSDictionary *preferences = DXPrefsManager.sharedInstance.prefs;
     BOOL enabled = [kind isEqual:@"horizontal"] ? ([self hasAction:@"leftswipe" region:region preferences:preferences] ||
@@ -152,7 +169,7 @@ static BOOL DXIsApertureView(UIView *view) {
         (![previous.region isEqual:region] || ![previous.preferences isEqual:preferences])) return NO;
     DXStatusGestureSession *session = [DXStatusGestureSession new];
     session.region = region; session.window = self.window; session.preferences = [preferences copy];
-    session.frame = [self.anchor convertRect:self.anchor.bounds toView:self.window];
+    session.frame = self.aperture ? touch.window.bounds : [self.anchor convertRect:self.anchor.bounds toView:self.window];
     objc_setAssociatedObject(gesture, &DXStatusSessionKey, session, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     NSLog(@"[TypeX][StatusBarGesture] touch host=%@ slot=%@ view=%@", NSProcessInfo.processInfo.processName,
         DXStatusBarSlot(region, kind) ?: [region stringByAppendingString:@".horizontal"], NSStringFromClass(touch.view.class));
@@ -161,7 +178,9 @@ static BOOL DXIsApertureView(UIView *view) {
 - (BOOL)sessionIsCurrent:(DXStatusGestureSession *)session {
     return session && !session.dispatched && [self available] && session.window == self.window &&
         [session.preferences isEqual:DXPrefsManager.sharedInstance.prefs] &&
-        CGRectEqualToRect(session.frame, [self.anchor convertRect:self.anchor.bounds toView:self.window]);
+        // Island sessions outlive container swaps; the window identity above
+        // is their currency proof, so the frame pin only guards status bar.
+        (self.aperture || CGRectEqualToRect(session.frame, [self.anchor convertRect:self.anchor.bounds toView:self.window]));
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldRequireFailureOfGestureRecognizer:(UIGestureRecognizer *)other {
     NSString *kind = objc_getAssociatedObject(gesture, &DXStatusKindKey);
@@ -243,6 +262,10 @@ static void DXInstallStatusGestures(UIView *view) {
     UIView *anchor = view;
     for (UIView *parent = view.superview; parent; parent = parent.superview)
         if (aperture ? DXIsApertureView(parent) : DXIsStatusView(parent)) anchor = parent;
+    // One gesture set per window covers every island container instance;
+    // per-anchor sets would stack on the shared window and double-dispatch.
+    if (aperture) for (DXStatusGestureHandler *existing in DXStatusHandlers)
+        if (existing.aperture && existing.window == anchor.window) return;
     DXStatusGestureHandler *handler = objc_getAssociatedObject(anchor, &DXStatusHandlerKey);
     if (handler && handler.window == anchor.window) return;
     for (UIGestureRecognizer *gesture in handler.recognizers) { gesture.enabled = NO; [handler.window removeGestureRecognizer:gesture]; }

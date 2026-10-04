@@ -204,11 +204,22 @@ int main(void) {
         testPanelVisible = YES; check(![islandHandler available], @"island action blocked while global panel visible"); testPanelVisible = NO;
         UITouch *outside = touchFor(island, 70); outside.view = islandWindow;
         check(![islandHandler gestureRecognizer:islandTap shouldReceiveTouch:outside], @"island handler never accepts unrelated window content");
+        // A second container instance in the same window (presentation swap)
+        // resolves at touch time and must not stack another gesture set.
+        SBSystemApertureContainerView *islandSwap = [SBSystemApertureContainerView new]; islandSwap.bounds = island.bounds;
+        islandSwap.originInWindow = island.originInWindow; [islandWindow addSubview:islandSwap];
+        UIControl *swapControl = [UIControl new]; [islandSwap addSubview:swapControl];
+        DXInstallStatusGestures(islandSwap);
+        check(!objc_getAssociatedObject(islandSwap, &DXStatusHandlerKey) && islandWindow.gestureRecognizers.count == 5, @"second island instance reuses the window gesture set");
+        UITouch *swapTouch = touchFor(islandSwap, 70); swapTouch.view = swapControl;
+        check([islandHandler gestureRecognizer:islandTap shouldReceiveTouch:swapTouch], @"the window gesture accepts a swapped container's touch");
         check([islandHandler gestureRecognizer:islandTap shouldReceiveTouch:touchFor(island, 70)], @"start island touch before layout change");
         NSUInteger sentBefore = sends; island.originInWindow = CGPointMake(126, 10); [islandHandler recognized:islandTap];
-        check(sends == sentBefore, @"island layout change cancels pending dispatch"); island.originInWindow = CGPointMake(125, 10);
+        check(sends == sentBefore + 1 && [sentSlot isEqual:@"middle.tap"], @"island sessions ride window identity, not anchor frames");
         island.window = nil; DXInstallStatusGestures(island);
         check(islandWindow.gestureRecognizers.count == 4, @"island detach removes only its own tap");
+        check([islandHandler available], @"released island anchor does not gate the window gesture");
+        check([islandHandler gestureRecognizer:islandTap shouldReceiveTouch:swapTouch], @"window gesture still serves the swapped container");
         islandStatusBar.window = nil; DXInstallStatusGestures(islandStatusBar);
         check(islandWindow.gestureRecognizers.count == 0, @"ordinary status-bar detach clears its remaining gestures");
         NSProcessInfo.processInfo.processName = originalProcess;
