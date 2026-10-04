@@ -13,6 +13,11 @@ typedef NSObject UIScene;
 @property(nonatomic) UIInterfaceOrientation interfaceOrientation;
 @property(nonatomic, copy) NSArray<UIWindow *> *windows;
 @end
+@interface UIWindow (StatusBarTests)
+@property(nonatomic, strong) id screen;
+@property(nonatomic, getter=isKeyWindow) BOOL keyWindow;
+@property(nonatomic) CGFloat windowLevel;
+@end
 @interface UITouch (StatusBarTests)
 @property(nonatomic) NSUInteger tapCount;
 @end
@@ -47,3 +52,4 @@ typedef NS_ENUM(NSInteger, UIImpactFeedbackStyle) { UIImpactFeedbackStyleLight }
 @interface STUIStatusBar_Wrapper : UIStatusBar_Base @end
 @interface STUIStatusBar : UIView @end
 @interface SBSystemApertureContainerView : UIView @end
+@interface SBHomeScreenWindow : UIWindow @end

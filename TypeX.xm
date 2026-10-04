@@ -1182,12 +1182,14 @@ static void reloadPrefs(void);
     // heal 不会播种，所有 App 的工具栏会一直等到本进程下次 heal。桌面首次出现
     // 是早于任何 App 可用的必然事件；prefs 可用时 reload 依旧早退、零成本。
     if (![DXPrefsManager sharedInstance].preferencesAvailable) reloadPrefs();
+    DXStatusBarHomeScreenDidAppear(((UIViewController *)self).view.window);
     g_aiDesktopVisible = YES;
     DXPresentAIPanelWhenDesktop();
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
     %orig;
+    DXStatusBarHomeScreenWillDisappear(((UIViewController *)self).view.window);
     g_aiDesktopVisible = NO;
 }
 
