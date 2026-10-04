@@ -40,13 +40,27 @@ int main(void) {
         check([DXGlobalPanelNormalizedPayload(@"com.apple.mobilenotes") isEqual:@"com.apple.mobilenotes"]);
         check([DXGlobalPanelNormalizedPayload(NSNull.null) isEqual:@""]);
         check([DXGlobalPanelString(@42) isEqual:@""]);
-        CGRect portrait = DXGlobalPanelFrame(CGRectMake(0, 0, 390, 844), 47, 34);
-        check(CGRectEqualToRect(portrait, CGRectMake(10, 500, 370, 300)));
-        CGRect landscape = DXGlobalPanelFrame(CGRectMake(0, 0, 844, 390), 0, 21);
-        check(CGRectEqualToRect(landscape, CGRectMake(172, 59, 500, 300)));
-        check(CGRectIsNull(DXGlobalPanelFrame(CGRectZero, 0, 0)));
-        check(CGRectIsNull(DXGlobalPanelFrame(CGRectMake(0, 0, 100, 100), 0, 0)));
-        check(CGRectIsNull(DXGlobalPanelFrame(CGRectMake(0, 0, 390, 844), NAN, 34)));
+        // Fits content, bottom-anchored: available = 844-47-34-20 = 743.
+        CGRect portrait = DXGlobalPanelFrame(CGRectMake(0, 0, 390, 844), 47, 34, 200, NO);
+        check(CGRectEqualToRect(portrait, CGRectMake(10, 600, 370, 200)));
+        // Status-bar origin anchors the same content below the top inset.
+        CGRect anchored = DXGlobalPanelFrame(CGRectMake(0, 0, 390, 844), 47, 34, 200, YES);
+        check(CGRectEqualToRect(anchored, CGRectMake(10, 57, 370, 200)));
+        // Content beyond the on-screen space clamps and scrolls inside.
+        CGRect clamped = DXGlobalPanelFrame(CGRectMake(0, 0, 390, 844), 47, 34, 900, NO);
+        check(CGRectEqualToRect(clamped, CGRectMake(10, 57, 370, 743)));
+        // Sparse content stretches to the 100pt floor.
+        CGRect floor_ = DXGlobalPanelFrame(CGRectMake(0, 0, 390, 844), 47, 34, 54, YES);
+        check(CGRectEqualToRect(floor_, CGRectMake(10, 57, 370, 100)));
+        CGRect landscape = DXGlobalPanelFrame(CGRectMake(0, 0, 844, 390), 0, 21, 200, NO);
+        check(CGRectEqualToRect(landscape, CGRectMake(172, 159, 500, 200)));
+        check(CGRectIsNull(DXGlobalPanelFrame(CGRectZero, 0, 0, 200, NO)));
+        check(CGRectIsNull(DXGlobalPanelFrame(CGRectMake(0, 0, 100, 100), 0, 0, 200, NO)));
+        check(CGRectIsNull(DXGlobalPanelFrame(CGRectMake(0, 0, 390, 844), NAN, 34, 200, NO)));
+        check(CGRectIsNull(DXGlobalPanelFrame(CGRectMake(0, 0, 390, 844), 47, 34, NAN, NO)));
+        check(CGRectIsNull(DXGlobalPanelFrame(CGRectMake(0, 0, 390, 844), 47, 34, -1, NO)));
+        // Less than the 100pt floor of on-screen space stays invalid.
+        check(CGRectIsNull(DXGlobalPanelFrame(CGRectMake(0, 0, 390, 110), 0, 0, 54, NO)));
         check(DXKeyboardPanelBool(@{}, kDXPanelGlobalEnabled, YES));
         check(!DXKeyboardPanelBool(@{kDXPanelGlobalEnabled: @NO}, kDXPanelGlobalEnabled, YES));
         check(!DXKeyboardPanelBool(@{kDXPanelDockSwipeEnabled: @"yes"}, kDXPanelDockSwipeEnabled, YES));
