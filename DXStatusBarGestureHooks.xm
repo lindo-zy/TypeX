@@ -24,6 +24,23 @@ static BOOL DXIsStatusView(UIView *view) {
     }
     return NO;
 }
+// SquidGesturePro installs on _UIStatusBar itself in initWithStyle:.
+// A Wrapper is only a fallback when it contains no concrete status bar.
+static BOOL DXIsStatusCore(UIView *view) {
+    for (NSString *name in @[@"_UIStatusBar", @"STUIStatusBar"]) {
+        Class cls = NSClassFromString(name);
+        if (cls && [cls isSubclassOfClass:UIView.class] && [view isKindOfClass:cls]) return YES;
+    }
+    return NO;
+}
+static BOOL DXInstallStatusCoresBelow(UIView *view) {
+    BOOL found = NO;
+    for (UIView *child in view.subviews) {
+        if (DXIsStatusCore(child)) { DXInstallStatusGestures(child); found = YES; }
+        else found |= DXInstallStatusCoresBelow(child);
+    }
+    return found;
+}
 static BOOL DXIsApertureView(UIView *view) {
     if (![NSProcessInfo.processInfo.processName isEqual:@"SpringBoard"]) return NO;
     Class cls = NSClassFromString(@"SBSystemApertureContainerView");
@@ -319,18 +336,33 @@ static void DXInstallStatusGestures(UIView *view) {
     if (!DXStatusHandlers) DXStatusHandlers = [NSHashTable weakObjectsHashTable];
     BOOL aperture = DXIsApertureView(view);
     UIView *anchor = view;
-    for (UIView *parent = view.superview; parent; parent = parent.superview)
-        if (aperture ? DXIsApertureView(parent) : DXIsStatusView(parent)) anchor = parent;
-    if (!anchor.window) return;
-    // A core can enter the window before its wrapper. Retire its earlier set
-    // when the enclosing wrapper arrives, regardless of hook/scan order.
-    if (!aperture) for (DXStatusGestureHandler *existing in DXStatusHandlers.allObjects) {
-        UIView *oldAnchor = existing.anchor;
-        if (!existing.aperture && oldAnchor != anchor && [oldAnchor isDescendantOfView:anchor]) {
-            [existing invalidate];
-            objc_setAssociatedObject(oldAnchor, &DXStatusHandlerKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (!aperture && DXIsStatusCore(view)) {
+        // A newly constructed/reparented core supersedes any wrapper fallback.
+        // Keep the recognizers on the native action receiver, even when an
+        // enclosing wrapper enters the window after the core.
+        for (UIView *parent = view.superview; parent; parent = parent.superview) {
+            DXStatusGestureHandler *fallback = objc_getAssociatedObject(parent, &DXStatusHandlerKey);
+            if (fallback && !DXIsStatusCore(parent)) {
+                [fallback invalidate];
+                objc_setAssociatedObject(parent, &DXStatusHandlerKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+        }
+    } else {
+        for (UIView *parent = view.superview; parent; parent = parent.superview)
+            if (aperture ? DXIsApertureView(parent) : DXIsStatusView(parent)) anchor = parent;
+        if (!aperture && DXInstallStatusCoresBelow(anchor)) return;
+        if (!aperture) for (DXStatusGestureHandler *existing in DXStatusHandlers.allObjects) {
+            UIView *oldAnchor = existing.anchor;
+            if (!existing.aperture && oldAnchor != anchor && [oldAnchor isDescendantOfView:anchor]) {
+                [existing invalidate];
+                objc_setAssociatedObject(oldAnchor, &DXStatusHandlerKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
         }
     }
+    // View-owned recognizers can be installed before UIKit assigns a window.
+    // Touch-time availability still rejects detached/hidden receivers. The
+    // island's distinct window-owned path requires a window as before.
+    if (aperture && !anchor.window) return;
     id owner = aperture ? (id)anchor.window : (id)anchor;
     const void *key = aperture ? &DXStatusApertureHandlerKey : &DXStatusHandlerKey;
     DXStatusGestureHandler *handler = objc_getAssociatedObject(owner, key);
@@ -374,6 +406,15 @@ static void DXScanStatusViews(UIView *view) {
     for (UIView *child in view.subviews) DXScanStatusViews(child);
 }
 
+static BOOL DXStatusConstructionSupported(Class cls) {
+    if (![cls isSubclassOfClass:UIView.class]) return NO;
+    Method method = class_getInstanceMethod(cls, @selector(initWithStyle:));
+    if (!method) return NO;
+    NSMethodSignature *signature = [NSMethodSignature signatureWithObjCTypes:method_getTypeEncoding(method)];
+    return signature.numberOfArguments == 3 && signature.methodReturnType[0] == '@' &&
+        !strcmp([signature getArgumentTypeAtIndex:2], @encode(long long));
+}
+
 %group TypeXStatusBarWrapper
 %hook UIStatusBar
 - (void)didMoveToWindow { %orig; DXInstallStatusGestures((UIView *)self); }
@@ -399,6 +440,24 @@ static void DXScanStatusViews(UIView *view) {
 - (void)didMoveToWindow { %orig; DXInstallStatusGestures((UIView *)self); }
 %end
 %end
+%group TypeXStatusBarCoreConstruction
+%hook _UIStatusBar
+- (id)initWithStyle:(long long)style {
+    id result = %orig;
+    DXInstallStatusGestures(result);
+    return result;
+}
+%end
+%end
+%group TypeXSystemStatusBarCoreConstruction
+%hook STUIStatusBar
+- (id)initWithStyle:(long long)style {
+    id result = %orig;
+    DXInstallStatusGestures(result);
+    return result;
+}
+%end
+%end
 %group TypeXStatusBarAperture
 %hook SBSystemApertureContainerView
 - (void)didMoveToWindow { %orig; DXInstallStatusGestures((UIView *)self); }
@@ -410,6 +469,7 @@ static void DXTryStatusHooks(void) {
     if (!DXPrefsManager.sharedInstance.preferencesAvailable) [DXPrefsManager.sharedInstance reload];
     static BOOL wrapperInstalled = NO, coreInstalled = NO, modernInstalled = NO, apertureInstalled = NO, loggedUnavailable = NO;
     static BOOL systemWrapperInstalled = NO, systemCoreInstalled = NO;
+    static BOOL coreConstructionInstalled = NO, systemCoreConstructionInstalled = NO;
     Class wrapper = NSClassFromString(@"UIStatusBar") ?: NSClassFromString(@"UIStatusBar_Modern");
     Class core = NSClassFromString(@"_UIStatusBar");
     Class modern = NSClassFromString(@"UIStatusBar_Modern");
@@ -446,6 +506,19 @@ static void DXTryStatusHooks(void) {
         }
         if (cls == aperture && !apertureInstalled) { %init(TypeXStatusBarAperture, SBSystemApertureContainerView = aperture); apertureInstalled = YES; }
     }
+    // Keep construction hooks independent of didMoveToWindow availability.
+    // Only register the exact object-returning, signed 64-bit style ABI.
+    for (Class cls in @[core ?: NSObject.class, systemCore ?: NSObject.class]) {
+        if (!DXStatusConstructionSupported(cls)) continue;
+        if (cls == core && !coreConstructionInstalled) {
+            %init(TypeXStatusBarCoreConstruction, _UIStatusBar = core); coreConstructionInstalled = YES;
+            NSLog(@"[TypeX][StatusBarGesture] construction hook class=%@", NSStringFromClass(cls));
+        }
+        if (cls == systemCore && !systemCoreConstructionInstalled) {
+            %init(TypeXSystemStatusBarCoreConstruction, STUIStatusBar = systemCore); systemCoreConstructionInstalled = YES;
+            NSLog(@"[TypeX][StatusBarGesture] construction hook class=%@", NSStringFromClass(cls));
+        }
+    }
     #pragma clang diagnostic push
     #pragma clang diagnostic ignored "-Wdeprecated-declarations"
     for (UIWindow *window in UIApplication.sharedApplication.windows) DXScanStatusViews(window);
@@ -462,7 +535,7 @@ static void DXTryStatusHooks(void) {
 
 void DXStartStatusBarGestures(void) {
     if (!DXStatusBarHostAllowed(NSProcessInfo.processInfo.processName, NSBundle.mainBundle.bundleURL.pathExtension)) return;
-    dispatch_async(dispatch_get_main_queue(), ^{
+    void (^start)(void) = ^{
         static dispatch_once_t once;
         dispatch_once(&once, ^{
             if (!DXStatusHandlers) DXStatusHandlers = [NSHashTable weakObjectsHashTable];
@@ -500,5 +573,7 @@ void DXStartStatusBarGestures(void) {
             }
             DXTryStatusHooks();
         });
-    });
+    };
+    if (NSThread.isMainThread) start();
+    else dispatch_async(dispatch_get_main_queue(), start);
 }
