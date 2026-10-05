@@ -32,14 +32,35 @@ static inline NSArray<NSDictionary *> *DXSystemActionCatalog(void) {
             @[@"brightness-up", @"SYSTEM_BRIGHTNESS_UP", @"sun.max.fill", @"control"],
             @[@"brightness-down", @"SYSTEM_BRIGHTNESS_DOWN", @"sun.min.fill", @"control"],
             @[@"volume-up", @"SYSTEM_VOLUME_UP", @"speaker.plus.fill", @"control"],
-            @[@"volume-down", @"SYSTEM_VOLUME_DOWN", @"speaker.minus.fill", @"control"]
+            @[@"volume-down", @"SYSTEM_VOLUME_DOWN", @"speaker.minus.fill", @"control"],
+            @[@"pixpin-full", @"SYSTEM_PIXPIN_FULL", @"camera.viewfinder", @"pixpin", @"com.pixpin.screenshot/capture/full"],
+            @[@"pixpin-area", @"SYSTEM_PIXPIN_AREA", @"crop", @"pixpin", @"com.pixpin.screenshot/capture/area"],
+            @[@"pixpin-freeze", @"SYSTEM_PIXPIN_FREEZE", @"snowflake", @"pixpin", @"com.pixpin.screenshot/capture/freeze"],
+            @[@"pixpin-instant", @"SYSTEM_PIXPIN_INSTANT", @"bolt.fill", @"pixpin", @"com.pixpin.screenshot/capture/instant"],
+            @[@"pixpin-markup", @"SYSTEM_PIXPIN_MARKUP", @"pencil.tip.crop.circle", @"pixpin", @"com.pixpin.screenshot/capture/markup"],
+            @[@"pixpin-long", @"SYSTEM_PIXPIN_LONG", @"rectangle.expand.vertical", @"pixpin", @"com.pixpin.screenshot/capture/long"],
+            @[@"pixpin-cancel", @"SYSTEM_PIXPIN_CANCEL", @"xmark.circle", @"pixpin", @"com.pixpin.screenshot/capture/cancel"]
         ];
         NSSet *destructive = [NSSet setWithArray:@[@"respring", @"respring-sb", @"safe-mode", @"shutdown", @"reboot", @"userspace-reboot"]];
-        for (NSArray *row in rows) [items addObject:@{@"id": row[0], @"title": row[1], @"icon": row[2],
-            @"group": row[3], @"destructive": @([destructive containsObject:row[0]])}];
+        for (NSArray *row in rows) {
+            NSMutableDictionary *entry = [@{@"id": row[0], @"title": row[1], @"icon": row[2],
+                @"group": row[3], @"destructive": @([destructive containsObject:row[0]])} mutableCopy];
+            if (row.count > 4) entry[@"pixpinNotification"] = row[4];
+            [items addObject:[entry copy]];
+        }
         catalog = [items copy];
     });
     return catalog;
+}
+
+// Keep definitions stable for saved actions, but hide optional candidates when
+// the tweak is absent. Re-evaluate installation whenever the picker appears.
+static inline NSArray<NSDictionary *> *DXVisibleSystemActionCatalog(BOOL pixPinInstalled) {
+    if (pixPinInstalled) return DXSystemActionCatalog();
+    NSMutableArray *visible = [NSMutableArray array];
+    for (NSDictionary *entry in DXSystemActionCatalog())
+        if (!entry[@"pixpinNotification"]) [visible addObject:entry];
+    return [visible copy];
 }
 
 static inline BOOL DXSystemActionIsRecording(NSString *action) {

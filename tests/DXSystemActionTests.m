@@ -3,6 +3,19 @@
 #import "../DXSystemActionCompatibility.h"
 #import "../DXKeyboardPanelPreferences.h"
 #import "../DXKeyboardPanelHostPolicy.h"
+#import <notify.h>
+
+static NSUInteger pixPinPosts;
+static NSString *pixPinPostedName;
+static uint32_t pixPinPostStatus;
+static uint32_t DXPixPinTestPost(const char *name) {
+    pixPinPosts++;
+    pixPinPostedName = [NSString stringWithUTF8String:name];
+    return pixPinPostStatus;
+}
+#define notify_post DXPixPinTestPost
+#import "../DXPixPinIntegration.h"
+#undef notify_post
 
 @interface DXInvocationSpy : NSObject
 @property(nonatomic) NSUInteger calls;
@@ -71,7 +84,7 @@ static void check(BOOL value) { NSCAssert(value, @"check %lu failed", (unsigned 
 int main(void) {
     @autoreleasepool {
         NSArray *catalog = DXSystemActionCatalog();
-        check(catalog.count == 27);
+        check(catalog.count == 34);
         NSMutableSet *ids = [NSMutableSet set];
         NSUInteger destructive = 0;
         for (NSDictionary *action in catalog) {
@@ -80,6 +93,44 @@ int main(void) {
             destructive += [action[@"destructive"] boolValue];
         }
         check(destructive == 6);
+        NSDictionary *pixPinModes = @{
+            @"pixpin-full": @"full", @"pixpin-area": @"area", @"pixpin-freeze": @"freeze",
+            @"pixpin-instant": @"instant", @"pixpin-markup": @"markup", @"pixpin-long": @"long",
+            @"pixpin-cancel": @"cancel"
+        };
+        check([DXPixPinDylibPath isEqual:@"/Library/MobileSubstrate/DynamicLibraries/PixPin.dylib"]);
+        check(DXVisibleSystemActionCatalog(NO).count == 27 && DXVisibleSystemActionCatalog(YES).count == 34);
+        for (NSDictionary *action in DXVisibleSystemActionCatalog(NO)) check(!action[@"pixpinNotification"]);
+        NSString *fixtureDirectory = [NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
+        NSString *fixtureDylib = [fixtureDirectory stringByAppendingPathComponent:@"PixPin.dylib"];
+        check([NSFileManager.defaultManager createDirectoryAtPath:fixtureDirectory withIntermediateDirectories:YES attributes:nil error:nil]);
+        check(!DXPixPinInstalledAtPath(nil) && !DXPixPinInstalledAtPath(fixtureDylib) && !DXPixPinInstalledAtPath(fixtureDirectory));
+        for (NSString *identifier in pixPinModes) {
+            NSDictionary *definition = DXSystemActionDefinition(identifier);
+            NSString *expectedName = [@"com.pixpin.screenshot/capture/" stringByAppendingString:pixPinModes[identifier]];
+            check([definition[@"pixpinNotification"] isEqual:expectedName] && [definition[@"group"] isEqual:@"pixpin"] && ![definition[@"destructive"] boolValue]);
+            check(DXPostPixPinSystemAction(identifier, fixtureDylib) == DXSystemOpenUnavailable && pixPinPosts == 0);
+        }
+        check([NSFileManager.defaultManager createFileAtPath:fixtureDylib contents:NSData.data attributes:nil]);
+        check(DXPixPinInstalledAtPath(fixtureDylib));
+        pixPinPostStatus = NOTIFY_STATUS_OK;
+        for (NSString *identifier in pixPinModes) {
+            NSUInteger beforePosts = pixPinPosts;
+            NSString *expectedName = [@"com.pixpin.screenshot/capture/" stringByAppendingString:pixPinModes[identifier]];
+            check(DXPostPixPinSystemAction(identifier, fixtureDylib) == DXSystemOpenSucceeded && pixPinPosts == beforePosts + 1 && [pixPinPostedName isEqual:expectedName]);
+            check(DXSystemActionIsConfigured(@[@{@"selector": @"__custom_pixpin", @"type": @"system", @"systemaction": identifier}], identifier, @"__custom_"));
+        }
+        NSUInteger beforePosts = pixPinPosts;
+        check(DXPostPixPinSystemAction(@"wifi", fixtureDylib) == DXSystemOpenInvalid && pixPinPosts == beforePosts);
+        check(DXPostPixPinSystemAction(@"pixpin-full;anything", fixtureDylib) == DXSystemOpenInvalid && pixPinPosts == beforePosts);
+        pixPinPostStatus = NOTIFY_STATUS_FAILED;
+        check(DXPostPixPinSystemAction(@"pixpin-full", fixtureDylib) == DXSystemOpenFailed && pixPinPosts == beforePosts + 1);
+        check([NSFileManager.defaultManager removeItemAtPath:fixtureDylib error:nil]);
+        beforePosts = pixPinPosts;
+        check(DXPostPixPinSystemAction(@"pixpin-cancel", fixtureDylib) == DXSystemOpenUnavailable && pixPinPosts == beforePosts);
+        // Removing the optional tweak must not erase saved action definitions.
+        check(DXSystemActionDefinition(@"pixpin-cancel") != nil && DXVisibleSystemActionCatalog(DXPixPinInstalledAtPath(fixtureDylib)).count == 27);
+        check([NSFileManager.defaultManager removeItemAtPath:fixtureDirectory error:nil]);
         check(!DXSystemActionDefinition(@"reboot;anything") && !DXSystemActionDefinition(@42));
         NSString *prefix = @"__custom_";
         NSDictionary *saved = @{@"selector": @"__custom_1", @"type": @"system", @"systemaction": @"wifi"};
@@ -132,7 +183,7 @@ int main(void) {
         check(DXKeyboardPanelHostRank(@"UIRemoteKeyboardWindow", NO) > DXKeyboardPanelHostRank(@"UITextEffectsWindow", NO));
         check(DXKeyboardPanelHostRank(@"UIWindow", NO) == 0);
         check(DXKeyboardPanelHostRank(@"UIWindow", YES) > DXKeyboardPanelHostRank(@"UITextEffectsWindow", NO));
-        NSLog(@"PASS: %lu system/panel checks (ABI rejection, native errors, one-shot compatibility, DND route, configured custom actions, host rank)", (unsigned long)checks);
+        NSLog(@"PASS: %lu system/panel checks (PixPin installation/filtering/one-shot dispatch, ABI rejection, native errors, DND route, configured custom actions, host rank)", (unsigned long)checks);
     }
     return 0;
 }

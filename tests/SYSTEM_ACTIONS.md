@@ -1,5 +1,39 @@
 # 自定义系统动作
 
+## PixPin 截图联动（2026-10-05）
+
+问题：系统动作缺少本地 PixPin 的截图入口，未安装时应隐藏这些候选项。
+根因：共用目录没有 PixPin 动作，执行器没有 PixPin 原生通知映射。
+涉及文件：DXSystemActionCatalog.h、DXPixPinIntegration.h、DXSystemActionExecutor.m、
+DXPSystemActionPickerController.m、中英文本地化和系统动作测试。
+修改边界：仅 TypeX 系统动作的候选目录和调用；不修改 PixPin、ShellX、键盘显隐、
+面板生命周期、现有跨进程请求协议或用户保存的动作配置。
+实现方案：参照本地 PixPin HEAD f12a546 的 PXConstants.m、PXSpringBoardEntry.xm、
+PXCaptureCoordinator.m 和 USAGE.md，增加全屏、区域、冻结、即时区域、全屏标记、
+滚动截图与取消当前任务七项；activate 是全屏别名，不重复列出。每次进入选择页按
+DX_ROOT_PATH_NS 解析的 PixPin.dylib 实际安装路径过滤，未安装时整个 PixPin 分组消失。
+点击候选和 SpringBoard 主线程执行前再次检查安装；卸载后旧配置保留，执行返回
+不可用，不发送通知。调用沿用已保存动作校验、TTL 和去重，每次只发送一条 PixPin
+原生 Darwin 通知，不用 Snapper3/ShellX 兼容广播，不自动重试。
+运行时风险：安装文件存在不证明已经注入、开关已启用或任务被接收。notify_post 成功
+仅表示请求已发送，PixPin 没有完成回执；任务忙碌/重复启动与取消由 PixPin 协调器处理。
+源码确认接收方回到主线程；设备上的私有截图、窗口、保存与系统兼容性仍需实机验证。
+验证步骤：宿主测试检查全部七项精确通知、已安装/未安装/卸载后的过滤、文件夹误判、
+非法 ID、单次发送及发送失败；现有系统动作、全局面板和设置资源回归后，在 dev 合入
+源码再运行 ./build.sh，检查 iOS 16/17 两套 DEB 并归档和同步。
+设备验收：iOS 16/17 冷/热启动，分别在已安装/未安装 PixPin 时进入“系统动作”；
+已安装应出现七项，未安装不出现分组。保存到工具栏、键盘面板或桌面手势后逐项触发，
+核对对应截图/编辑/长截图流程。启动任务后重复触发不叠加，取消后可重新启动；关闭
+PixPin、卸载、切 App、取消选择和发送失败时无重复截图、崩溃或错误保存。
+日志核对：[TypeX][PixPin] request / unavailable、[PixPin] external request source=darwin、
+capture request accepted、request ignored、task cancelled 和 output completed。设备不写日志文件。
+
+源码审查结果：git diff --check 与中英文 strings 语法通过；141 项系统/面板检查、
+38 项录屏检查、79 项全局面板检查、22 项 Dock 触摸策略和 4508 项设置搜索/布局检查
+通过。PixPin 发送测试替换 notify_post 并使用临时安装文件，不调用设备截图接口。
+源码分析：已确认；编译/包结构：待集成后验证；核心功能：未验证；冷/热启动、
+实际注入、选择页显示、截图输出与取消流程需设备验收。
+
 入口：自定义动作管理页「选择动作」分组点「系统动作」，或任意选择动作页
 添加流程的类型菜单选「系统动作」，选择系统动作后保存。类型清单两处共用
 同一集合（网页链接已退役不出现在新建入口）。系统动作保存为 `type=system` 和

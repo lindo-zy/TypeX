@@ -422,6 +422,15 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SYSTEM_GROUP_MEDIA" = "Media";
 "SYSTEM_GROUP_DEVICE" = "Device";
 "SYSTEM_GROUP_CONTROL" = "Control Center";
+"SYSTEM_GROUP_PIXPIN" = "PixPin Screenshots";
+"SYSTEM_PIXPIN_FULL" = "PixPin Full-Screen Capture";
+"SYSTEM_PIXPIN_AREA" = "PixPin Area Capture";
+"SYSTEM_PIXPIN_FREEZE" = "PixPin Frozen Capture";
+"SYSTEM_PIXPIN_INSTANT" = "PixPin Instant Area Capture";
+"SYSTEM_PIXPIN_MARKUP" = "PixPin Full-Screen Markup";
+"SYSTEM_PIXPIN_LONG" = "PixPin Scrolling Capture";
+"SYSTEM_PIXPIN_CANCEL" = "PixPin Cancel Current Task";
+"SYSTEM_PIXPIN_FOOTER" = "Shown only when PixPin is installed. Uses PixPin's current settings; disabled features, a busy task, or missing injection may prevent a response. Sending a request does not confirm capture or saving.";
 "SYSTEM_DEVICE_FOOTER" = "Respring restarts the interface service; Respring (SB) exits SpringBoard. Safe mode requires jailbreak support and userspace reboot requires system permission. Exit and power actions require confirmation.";
 "SYSTEM_ACTION_CONFIRM" = "This action interrupts the current session. Continue?";
 "SYSTEM_ACTION_UNAVAILABLE" = "No supported system interface is available";

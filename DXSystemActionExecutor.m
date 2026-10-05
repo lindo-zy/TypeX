@@ -3,6 +3,7 @@
 #import "DXSystemActionCompatibility.h"
 #import "DXSystemRecordingSession.h"
 #import "common.h"
+#import "DXPixPinIntegration.h"
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <dlfcn.h>
@@ -182,6 +183,8 @@ BOOL DXSystemExitActionAvailable(NSString *action) {
 DXSystemOpenResult DXPerformSystemAction(NSString *action) {
     if (!DXSystemActionDefinition(action)) return DXSystemOpenInvalid;
     if (![NSProcessInfo.processInfo.processName isEqualToString:@"SpringBoard"] || !NSThread.isMainThread) return DXSystemOpenUnavailable;
+    if (DXSystemActionDefinition(action)[@"pixpinNotification"])
+        return DXPostPixPinSystemAction(action, DX_ROOT_PATH_NS(DXPixPinDylibPath));
     DXLoadSystemActionFrameworks();
     NSLog(@"[TypeX][SystemAction] execute id=%@", action);
     if ([action isEqual:@"previous-track"] || [action isEqual:@"next-track"]) {
