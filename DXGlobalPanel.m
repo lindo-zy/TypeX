@@ -46,6 +46,7 @@
 @property(nonatomic, strong) NSDictionary *snapshot;
 @property(nonatomic, assign) CGFloat scale;
 @property(nonatomic, assign) NSInteger columns;
+@property(nonatomic, assign) BOOL topAnchored;
 @property(nonatomic, assign) NSTimeInterval lastOpen;
 - (void)layout;
 - (void)showMessage:(NSString *)message;
@@ -105,7 +106,7 @@ static NSString *DXGlobalLocalized(NSString *key) {
 }
 - (void)interrupted:(NSNotification *)notification { (void)notification; [self dismiss]; }
 - (NSDictionary *)definition:(NSString *)selector {
-    NSDictionary *panel = DXPanelDefinition(DXPrefsManager.sharedInstance.prefs, selector);
+    NSDictionary *panel = DXPanelDisplayDefinition(DXPrefsManager.sharedInstance.prefs, selector);
     if (panel && [panel[@"kind"] isEqual:DXPanelGestureKind]) return panel;
     id definitions = DXPrefsManager.sharedInstance.prefs[kLinkActionskey];
     if (![definitions isKindOfClass:NSArray.class]) return nil;
@@ -126,6 +127,9 @@ static NSString *DXGlobalLocalized(NSString *key) {
     NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
     if (now - self.lastOpen < 0.35 && ![origin isEqual:@"panel-action"]) return;
     self.lastOpen = now;
+    // Status-bar gestures pull the panel toward the touch at the top edge;
+    // in-panel switches keep the current anchor, dock stays bottom.
+    if (![origin isEqual:@"panel-action"]) self.topAnchored = [origin isEqual:@"statusbar"];
     [self dismiss];
     [[DXKeyboardPanel sharedInstance] dismiss];
     NSDictionary *preferences = manager.prefs;
@@ -234,7 +238,7 @@ static NSString *DXGlobalLocalized(NSString *key) {
         button.icon.userInteractionEnabled = NO;
         button.icon.contentMode = UIViewContentModeScaleAspectFit;
         button.icon.tintColor = text;
-        NSString *icon = [entry[@"icon"] length] ? entry[@"icon"] : DXGlobalPanelString(definition[@"icon"]);
+        NSString *icon = DXGlobalPanelString(definition[@"icon"]);
         button.icon.image = [DXHelper imageForIconConfig:icon defaultSymbolName:@"square.grid.2x2"];
         [button addSubview:button.icon];
         button.name = [UILabel new];
@@ -262,19 +266,24 @@ static NSString *DXGlobalLocalized(NSString *key) {
 - (void)layout {
     if (!self.window || !self.panel) return;
     UIView *root = self.window.rootViewController.view;
-    CGRect frame = DXGlobalPanelFrame(root.bounds, MAX(self.window.safeAreaInsets.top, root.safeAreaInsets.top),
-        MAX(self.window.safeAreaInsets.bottom, root.safeAreaInsets.bottom));
+    CGRect bounds = root.bounds;
+    CGFloat width = MIN(500, MAX(0, bounds.size.width - 20));
+    CGFloat contentWidth = MAX(0, width - 16);
+    CGFloat messageHeight = self.message.text.length ? 44 : 0;
+    CGFloat controlsHeight = [self.controls preferredHeightForWidth:contentWidth];
+    CGFloat gridHeight = self.items.count ? DXKeyboardPanelContentHeight(self.items.count, contentWidth, self.columns, self.scale) : 0;
+    // Header plus the scroll's 8pt bottom inset wrap the scrollable content.
+    CGFloat contentHeight = 46 + messageHeight + controlsHeight + gridHeight + 8;
+    CGRect frame = DXGlobalPanelFrame(bounds, MAX(self.window.safeAreaInsets.top, root.safeAreaInsets.top),
+        MAX(self.window.safeAreaInsets.bottom, root.safeAreaInsets.bottom), contentHeight, self.topAnchored);
     if (CGRectIsNull(frame)) { [self dismiss]; return; }
     self.panel.frame = frame;
-    CGFloat width = frame.size.width, height = frame.size.height;
+    CGFloat height = frame.size.height;
     self.header.frame = CGRectMake(0, 0, width, 46);
     self.title.frame = CGRectMake(16, 10, MAX(0, width - 68), 28);
     self.closeButton.frame = CGRectMake(width - 48, 2, 44, 44);
-    CGFloat messageHeight = self.message.text.length ? 44 : 0;
     self.message.frame = CGRectMake(10, 46, width - 20, messageHeight);
-    self.scroll.frame = CGRectMake(8, 46 + messageHeight, width - 16, MAX(0, height - 54 - messageHeight));
-    CGFloat contentWidth = self.scroll.bounds.size.width;
-    CGFloat controlsHeight = [self.controls preferredHeightForWidth:contentWidth];
+    self.scroll.frame = CGRectMake(8, 46 + messageHeight, contentWidth, MAX(0, height - 54 - messageHeight));
     self.controls.frame = CGRectMake(0, 0, contentWidth, controlsHeight);
     CGFloat circle = DXKeyboardPanelCircle(contentWidth, self.columns, self.scale);
     for (NSUInteger index = 0; index < self.items.count; index++) {
@@ -289,7 +298,6 @@ static NSString *DXGlobalLocalized(NSString *key) {
         button.icon.frame = CGRectMake((slot - icon) / 2, 4 + (circle - icon) / 2, icon, icon);
         button.name.frame = CGRectMake(3, circle + 9, slot - 6, 30 * self.scale);
     }
-    CGFloat gridHeight = self.items.count ? DXKeyboardPanelContentHeight(self.items.count, contentWidth, self.columns, self.scale) : 0;
     CGFloat total = MAX(self.scroll.bounds.size.height, controlsHeight + gridHeight);
     self.scroll.contentSize = CGSizeMake(contentWidth, total);
     self.blank.frame = CGRectMake(0, 0, contentWidth, total);

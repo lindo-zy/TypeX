@@ -13,6 +13,17 @@ static NSString *DXGestureLocalized(NSString *key) {
     return [[NSBundle bundleWithPath:bundlePath] localizedStringForKey:key value:key table:nil];
 }
 
+// Both the gesture list and its editor resolve the current saved binding.
+static NSString *DXToolbarActionName(PSSpecifier *specifier) {
+    NSDictionary *preferences = [DXPrefsManager.sharedInstance readPrefs];
+    NSString *selector = DXToolbarAction(preferences, [specifier propertyForKey:@"toolbarConfiguration"],
+        [specifier propertyForKey:@"toolbarDirection"]);
+    NSDictionary *entry = selector.length ? DXPPanelDisplayDefinition(preferences, selector) : nil;
+    if (!entry) return DXGestureLocalized(@"STATUS_BAR_UNASSIGNED");
+    NSString *name = DXPanelString(entry[@"name"]);
+    return name.length ? name : DXGestureLocalized(@"DEFAULT_BUTTON_NAME");
+}
+
 // The moved switches retain their original keys and defaults.
 @interface DXPPanelGestureController : PSListController
 - (PSSpecifier *)toggle:(NSString *)label key:(NSString *)key;
@@ -83,12 +94,20 @@ static NSString *DXGestureLocalized(NSString *key) {
         [group setProperty:DXGestureLocalized(@"PANEL_TOOLBAR_FOOTER") forKey:@"footerText"]; [items addObject:group];
         [items addObject:[self toggle:@"ENABLED" key:[configuration isEqual:@"top"] ? kDXPanelTopEnabled : kDXPanelBottomEnabled]];
         for (NSString *direction in @[@"left", @"right"]) {
-            PSSpecifier *link = [PSSpecifier preferenceSpecifierNamed:DXGestureLocalized([direction isEqual:@"left"] ? @"STATUS_BAR_LEFTSWIPE" : @"STATUS_BAR_RIGHTSWIPE") target:self set:nil get:nil detail:DXPToolbarBindingController.class cell:PSLinkCell edit:nil];
+            PSSpecifier *link = [PSSpecifier preferenceSpecifierNamed:DXGestureLocalized([direction isEqual:@"left"] ? @"STATUS_BAR_LEFTSWIPE" : @"STATUS_BAR_RIGHTSWIPE") target:self set:nil get:@selector(readActionName:) detail:DXPToolbarBindingController.class cell:PSLinkCell edit:nil];
             [link setProperty:configuration forKey:@"toolbarConfiguration"]; [link setProperty:direction forKey:@"toolbarDirection"]; [items addObject:link];
         }
     }
     _specifiers = items;
     return _specifiers;
+}
+- (id)readActionName:(PSSpecifier *)specifier { return DXToolbarActionName(specifier); }
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)path {
+    PSSpecifier *item = [self specifierAtIndexPath:path];
+    if (item.cellType == PSLinkCell && DXToolbarBindingSlot([item propertyForKey:@"toolbarConfiguration"], [item propertyForKey:@"toolbarDirection"]))
+        return DXPGestureActionCell(tableView, @"DXPToolbarGestureRecord", item.name, [self readActionName:item], nil,
+            UITableViewCellAccessoryDisclosureIndicator);
+    return [super tableView:tableView cellForRowAtIndexPath:path];
 }
 @end
 
@@ -100,10 +119,11 @@ static NSString *DXGestureLocalized(NSString *key) {
     if (_specifiers) return _specifiers;
     PSSpecifier *group = [PSSpecifier groupSpecifierWithName:nil];
     [group setProperty:DXGestureLocalized(@"PANEL_TOOLBAR_FOOTER") forKey:@"footerText"];
-    PSSpecifier *choose = [PSSpecifier preferenceSpecifierNamed:DXGestureLocalized(@"CHOOSE_ACTION") target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; choose->action = @selector(chooseAction:);
+    PSSpecifier *choose = [PSSpecifier preferenceSpecifierNamed:DXGestureLocalized(@"CHOOSE_ACTION") target:self set:nil get:@selector(readActionName:) detail:nil cell:PSButtonCell edit:nil]; choose->action = @selector(chooseAction:);
     PSSpecifier *clear = [PSSpecifier preferenceSpecifierNamed:DXGestureLocalized(@"STATUS_BAR_CLEAR") target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; clear->action = @selector(clearAction:);
     _specifiers = [@[group, choose, clear] mutableCopy]; return _specifiers;
 }
+- (id)readActionName:(PSSpecifier *)specifier { (void)specifier; return DXToolbarActionName(self.specifier); }
 - (BOOL)saveSelector:(NSString *)selector {
     NSString *slot = [self slot]; if (!slot || ![selector isKindOfClass:NSString.class]) return NO;
     DXPrefsManager *manager = DXPrefsManager.sharedInstance;
@@ -139,10 +159,8 @@ static NSString *DXGestureLocalized(NSString *key) {
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)path {
     PSSpecifier *item = [self specifierAtIndexPath:path];
     if (item && item->action == @selector(chooseAction:)) {
-        NSDictionary *preferences = [DXPrefsManager.sharedInstance readPrefs];
-        NSString *selector = DXToolbarAction(preferences, [self.specifier propertyForKey:@"toolbarConfiguration"], [self.specifier propertyForKey:@"toolbarDirection"]);
-        NSDictionary *entry = DXPPanelDisplayDefinition(preferences, selector);
-        return DXPGestureActionCell(tableView, @"DXPToolbarActionRecord", item.name, entry ? DXPanelString(entry[@"name"]) : DXGestureLocalized(@"STATUS_BAR_UNASSIGNED"), nil, UITableViewCellAccessoryDisclosureIndicator);
+        return DXPGestureActionCell(tableView, @"DXPToolbarActionRecord", item.name, [self readActionName:item], nil,
+            UITableViewCellAccessoryDisclosureIndicator);
     }
     return [super tableView:tableView cellForRowAtIndexPath:path];
 }

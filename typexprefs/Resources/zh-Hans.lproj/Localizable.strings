@@ -405,9 +405,8 @@
 "KEYBOARD_PANEL_SCALE" = "内容大小（%）";
 "KEYBOARD_PANEL_ITEMS_FOOTER" = "键盘面板支持全部操作，手势面板只支持无需键盘的动作及手势面板。左滑删除当前条目，长按拖动排序，点击编辑；条目删除不删除原动作或原面板。";
 "KEYBOARD_PANEL_PICKER_DELETE_FOOTER" = "点击选择动作或同类面板。左滑可删除自定义动作，并清除其引用；面板请在面板设置中管理。";
-"KEYBOARD_PANEL_ITEM_APPEARANCE" = "编辑名称与图标";
+"KEYBOARD_PANEL_ITEM_APPEARANCE" = "编辑名称";
 "KEYBOARD_PANEL_NAME" = "名称（留空使用动作名称）";
-"KEYBOARD_PANEL_ICON" = "系统图标名称或应用标识";
 "KEYBOARD_PANEL_SAVE" = "保存";
 "KEYBOARD_PANEL_REPLACE_ACTION" = "更换动作";
 "KEYBOARD_PANEL_EDIT_ACTION" = "编辑自定义动作";
@@ -422,6 +421,15 @@
 "SYSTEM_GROUP_MEDIA" = "媒体控制";
 "SYSTEM_GROUP_DEVICE" = "设备操作";
 "SYSTEM_GROUP_CONTROL" = "控制中心";
+"SYSTEM_GROUP_PIXPIN" = "PixPin 截图";
+"SYSTEM_PIXPIN_FULL" = "PixPin 全屏截图";
+"SYSTEM_PIXPIN_AREA" = "PixPin 区域截图";
+"SYSTEM_PIXPIN_FREEZE" = "PixPin 冻结截图";
+"SYSTEM_PIXPIN_INSTANT" = "PixPin 即时区域截图";
+"SYSTEM_PIXPIN_MARKUP" = "PixPin 全屏标记";
+"SYSTEM_PIXPIN_LONG" = "PixPin 滚动截图";
+"SYSTEM_PIXPIN_CANCEL" = "PixPin 取消当前任务";
+"SYSTEM_PIXPIN_FOOTER" = "仅在已安装 PixPin 时显示。按 PixPin 当前设置执行；关闭功能、任务忙碌或尚未注入时可能不响应。请求已发送不代表截图或保存完成。";
 "SYSTEM_DEVICE_FOOTER" = "注销会重启界面服务，注销（SB）仅退出 SpringBoard。安全模式依赖越狱环境，重启用户空间需要系统权限。注销、安全模式、关机和重启执行前需要确认。";
 "SYSTEM_ACTION_CONFIRM" = "此操作会中断当前会话。确定继续？";
 "SYSTEM_ACTION_UNAVAILABLE" = "当前系统没有可用的动作接口";
@@ -436,6 +444,7 @@
 "SYSTEM_USERSPACE_REBOOT" = "重启用户空间";
 "SYSTEM_HOME" = "返回桌面";
 "SYSTEM_SWITCHER" = "打开后台";
+"SYSTEM_SCREENSHOT" = "系统截图";
 "SYSTEM_CONTROL_CENTER" = "打开控制中心";
 "SYSTEM_SCREEN_RECORDING" = "录屏";
 "SYSTEM_SCREEN_RECORDING_MICROPHONE" = "开麦录屏";

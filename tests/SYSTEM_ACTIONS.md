@@ -1,5 +1,48 @@
 # 自定义系统动作
 
+## PixPin 截图联动（2026-10-05）
+
+问题：系统动作缺少本地 PixPin 的截图入口，未安装时应隐藏这些候选项。
+根因：共用目录没有 PixPin 动作，执行器没有 PixPin 原生通知映射。
+涉及文件：DXSystemActionCatalog.h、DXPixPinIntegration.h、DXSystemActionExecutor.m、
+DXPSystemActionPickerController.m、中英文本地化和系统动作测试。
+修改边界：仅 TypeX 系统动作的候选目录和调用；不修改 PixPin、ShellX、键盘显隐、
+面板生命周期、现有跨进程请求协议或用户保存的动作配置。
+实现方案：参照本地 PixPin HEAD f12a546 的 PXConstants.m、PXSpringBoardEntry.xm、
+PXCaptureCoordinator.m 和 USAGE.md，增加全屏、区域、冻结、即时区域、全屏标记、
+滚动截图与取消当前任务七项；activate 是全屏别名，不重复列出。每次进入选择页按
+DX_ROOT_PATH_NS 解析的 PixPin.dylib 实际安装路径过滤，未安装时整个 PixPin 分组消失。
+点击候选和 SpringBoard 主线程执行前再次检查安装；卸载后旧配置保留，执行返回
+不可用，不发送通知。调用沿用已保存动作校验、TTL 和去重，每次只发送一条 PixPin
+原生 Darwin 通知，不用 Snapper3/ShellX 兼容广播，不自动重试。
+运行时风险：安装文件存在不证明已经注入、开关已启用或任务被接收。notify_post 成功
+仅表示请求已发送，PixPin 没有完成回执；任务忙碌/重复启动与取消由 PixPin 协调器处理。
+源码确认接收方回到主线程；设备上的私有截图、窗口、保存与系统兼容性仍需实机验证。
+验证步骤：宿主测试检查全部七项精确通知、已安装/未安装/卸载后的过滤、文件夹误判、
+非法 ID、单次发送及发送失败；现有系统动作、全局面板和设置资源回归后，在 dev 合入
+源码再运行 ./build.sh，检查 iOS 16/17 两套 DEB 并归档和同步。
+设备验收：iOS 16/17 冷/热启动，分别在已安装/未安装 PixPin 时进入“系统动作”；
+已安装应出现七项，未安装不出现分组。保存到工具栏、键盘面板或桌面手势后逐项触发，
+核对对应截图/编辑/长截图流程。启动任务后重复触发不叠加，取消后可重新启动；关闭
+PixPin、卸载、切 App、取消选择和发送失败时无重复截图、崩溃或错误保存。
+日志核对：[TypeX][PixPin] request / unavailable、[PixPin] external request source=darwin、
+capture request accepted、request ignored、task cancelled 和 output completed。设备不写日志文件。
+
+源码审查结果：git diff --check 与中英文 strings 语法通过；141 项系统/面板检查、
+38 项录屏检查、79 项全局面板检查、22 项 Dock 触摸策略和 4508 项设置搜索/布局检查
+通过。PixPin 发送测试替换 notify_post 并使用临时安装文件，不调用设备截图接口。
+源码分析：已确认；编译/包结构：已确认；核心功能：未验证；冷/热启动、
+实际注入、选择页显示、截图输出与取消流程需设备验收。
+
+构建结果（4.3.1）：集成起点 dev / ba29c5f，codex/pixpin-system-actions 提交
+43ee944 已快进合入 dev，用户未跟踪的 .zcodeignore 保留。仅执行 ./build.sh，
+两套包成功，版本自动 4.3.0 → 4.3.1，Bark 构建完成通知已发送。DEB 均为
+com.lindo.typex / iphoneos-arm64e，TypeX 与 TypeXPrefs 二进制均含 arm64、arm64e；
+七项 PixPin 原生通知、安装检测路径、分组/动作/提示的中英文资源均存在于成品。
+安装/卸载脚本语法通过，实际安装/卸载未验证。firmware >= 15.0 沿用现有打包依赖，
+ios16 目标为 SDK 16.5 / deployment 16.0，ios17 目标为 SDK 16.5 / deployment 15.0；
+这不证明 PixPin 或 TypeX 的 iOS 15 设备支持。没有新增调试观察者、重试或键盘恢复逻辑。
+
 入口：自定义动作管理页「选择动作」分组点「系统动作」，或任意选择动作页
 添加流程的类型菜单选「系统动作」，选择系统动作后保存。类型清单两处共用
 同一集合（网页链接已退役不出现在新建入口）。系统动作保存为 `type=system` 和
@@ -25,6 +68,7 @@
 | --- | --- | --- |
 | 媒体 | 上一首、下一首、播放/暂停 | SBMediaController |
 | 设备 | 返回桌面、打开后台 | SpringBoard Home 模拟、Switcher 控制器 |
+| 设备 | 系统截图 | SpringBoard 的 takeScreenshot，沿用系统截图与保存流程 |
 | 设备 | 注销 | SBSRelaunchAction + FBSSystemService |
 | 设备 | 注销（SB） | 仅退出本进程 SpringBoard |
 | 设备 | 安全模式 | 已加载 SafeMode/MobileSafety 处理器时触发 SB 信号；否则不可用 |
@@ -36,7 +80,7 @@
 | 控制中心 | 勿扰、深色模式 | DNDStateService + DNDToggleManager、UIUserInterfaceStyleArbiter |
 | 控制中心 | 亮度增减、音量增减 | UIScreen 每次 0.1（钳制 0–1）、SBVolumeControl 每次一档 |
 
-共 26 项。控制开关反转当前状态，Wi-Fi/蓝牙对应系统开关，不承诺与控制中心
+共 27 项。控制开关反转当前状态，Wi-Fi/蓝牙对应系统开关，不承诺与控制中心
 临时断连语义完全相同。勿扰只切换系统勿扰标识，不新增/管理其他专注模式。
 
 运行时检测类、selector、参数数量和 ABI；NSInvocation 按实际标量类型传参，
@@ -183,3 +227,36 @@ RPScreenRecorder 类方法在目标设备可用的证明。
 ./build.sh 成功构建 iOS 16/17 两套包，版本由 3.9.6 推进至 3.9.7。
 真机未安装或录屏：麦克风授权/音轨、照片保存、外部控制中心录屏同步、冷/热启动
 及左滑删除/排序真实 UIKit 交互均未验证。
+
+## 系统截图
+
+问题：系统动作选择页缺少系统截图。
+根因：共用动作目录和 SpringBoard 执行器没有截图项。
+涉及文件：DXSystemActionCatalog.h、DXSystemActionExecutor.m、中英文本地化、
+DXSystemActionTests.m 和本验证记录。
+修改边界：增加固定 ID `screenshot`，在「设备操作」分组显示「系统截图」。
+实现方案：沿用已保存动作校验、Darwin 通道、TTL 和回复处理；只在 SpringBoard
+主线程通过 DXSystemCall 调用 UIApplication.sharedApplication 的 takeScreenshot。
+本地 PullOver-X/PullOverX/PullOverX.mm 已使用同名 SpringBoard Hook；这是源码参考，
+不能证明目标设备实际存在该方法。调用前检查方法存在性和运行时 ABI，缺失或异常
+沿用不可用提示和 `[TypeX][SystemAction]` syslog，失败后不重试。
+不修改的部分：ShellX 截图、键盘显隐、面板生命周期、其他插件和跨进程协议。
+运行时风险：系统私有接口及第三方 Hook 仍需实机检查；void 返回仅表示调用完成，
+不证明截图已写入相册。不新增截图完成观察者或自动键盘恢复。
+验证步骤：运行现有系统动作和全局面板测试、检查中英文资源、经 ./build.sh 构建
+iOS 16/17 两套包并检查 DEB。设备上分别冷/热启动，创建并重进该动作，加入工具栏、
+键盘面板和手势入口；截图应使用系统捕获流程并在相册保存。连续触发、切 App、
+取消选择和接口不可用时检查无重复执行、旧回调或崩溃；观察 takeScreenshot 缺失日志。
+
+本次结果（4.2.6）：在 codex/system-screenshot 临时工作树完成实现和审查，提交
+6dfa023 后快进合入 dev；集成起点为 b82e1bc，已有 .zcodeignore 未跟踪文件保留。
+git diff --check、中英文 strings 语法检查通过；66 项系统/面板、38 项录屏、
+79 项全局面板、22 项 Dock 触摸策略和 4508 项设置搜索/布局检查通过。
+这些自动检查使用宿主逻辑或替身，不调用设备的 takeScreenshot。
+只运行项目 ./build.sh，两个目标构建成功，自动推进版本 4.2.5 → 4.2.6，
+并发送构建完成 Bark。两套 DEB 的包名、版本、arm64e 元数据、依赖、RootHide 路径、
+arm64 + arm64e 二进制、截图 selector、中英文资源和 SpringBoard 注入过滤器均已核对。
+iOS 16 包 minOS 16.0；iOS 17 包按现有脚本使用 16.5 SDK / minOS 15.0。
+安装/卸载脚本存在、可执行、与源码一致且 bash 语法通过；实际安装/卸载未执行。
+源码分析：已确认；编译：已确认；包结构：已确认；核心功能：未真机验证。
+已知限制：系统截图保存、第三方截图 Hook 兼容、冷/热启动和真实设置交互待设备验收。

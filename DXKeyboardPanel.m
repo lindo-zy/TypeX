@@ -345,8 +345,7 @@
         button.actionImage = [[UIImageView alloc] init];
         button.actionImage.contentMode = UIViewContentModeScaleAspectFit;
         button.actionImage.tintColor = text;
-        NSString *icon = entry[@"icon"];
-        button.actionImage.image = icon.length ? [DXHelper imageForIconConfig:icon defaultSymbolName:@"square.grid.2x2"] : [toolbar subActionPanelImageForSelector:selector];
+        button.actionImage.image = [toolbar subActionPanelImageForSelector:selector];
         button.actionLabel = [[UILabel alloc] init];
         NSString *name = entry[@"name"];
         button.actionLabel.text = name.length ? name : [toolbar subActionPanelTitleForSelector:selector];

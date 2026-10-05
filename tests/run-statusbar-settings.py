@@ -18,6 +18,8 @@ gestures = common[common.index("typedef NS_ENUM(NSInteger, DXShortcutGestureType
 source = (root / "typexprefs/DXPStatusBarGestureController.m").read_text()
 source = re.sub(r'^#import .*\n', '', source, flags=re.M)
 dock_source = re.sub(r'^#import .*\n', '', (root / "typexprefs/DXPDockGestureController.m").read_text(), flags=re.M)
+keyboard_source = re.sub(r'^#import .*\n', '', (root / "typexprefs/DXPGestureSettingsController.m").read_text(), flags=re.M)
+catalog_source = re.sub(r'^#import .*\n', '', (root / "typexprefs/DXPPanelActionCatalog.h").read_text(), flags=re.M)
 toolbar = (root / "typexprefs/DXPGesturePickerController.mm").read_text()
 summary = toolbar[toolbar.index("- (NSString *)readGestureActionSummary:"):toolbar.index("// All preference stores")]
 canonical = toolbar[toolbar.index("- (NSDictionary *)canonicalEntryForSelector:"):toolbar.index("// After the tap action picker")]
@@ -50,7 +52,7 @@ with tempfile.TemporaryDirectory(prefix="typex-statusbar-settings-") as temporar
     (tmp / "StatusBarSettingsProduction.h").write_text(
         '#import "PreferencesStatusBarStub.h"\n#import "DXPanelRegistry.h"\n#import "DXStatusBarGesturePolicy.h"\n#import "DXGlobalPanelPolicy.h"\n#import "DXDockGesturePolicy.h"\n#import "DXPGestureActionCell.h"\n'
         + defines + '\n#define bundlePath @' + json.dumps(str(root / "typexprefs/Resources")) + '\n'
-        + scoped + gestures + '\n' + source + '\n' + dock_source + '\n' + toolbar_fixture + subaction_fixture)
+        + scoped + gestures + '\n' + source + '\n' + dock_source + '\n' + catalog_source + '\n' + keyboard_source + '\n' + toolbar_fixture + subaction_fixture)
     binary = tmp / "statusbar-settings-tests"
     subprocess.run(["xcrun", "clang", "-fobjc-arc", "-fblocks", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",
                     "-framework", "Foundation", "-I", str(tmp), "-I", str(root), "-I", str(root / "tests"), "-I", str(root / "typexprefs"),

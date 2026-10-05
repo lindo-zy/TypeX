@@ -21,7 +21,7 @@ static inline NSArray<NSDictionary *> *DXPPanelBuiltInActions(void) {
     return actions;
 }
 static inline NSDictionary *DXPPanelDisplayDefinition(NSDictionary *preferences, NSString *selector) {
-    NSDictionary *entry = DXPanelDefinition(preferences, selector) ?: DXPanelActionDefinition(preferences, selector);
+    NSDictionary *entry = DXPanelDisplayDefinition(preferences, selector) ?: DXPanelActionDefinition(preferences, selector);
     if (entry) return entry;
     for (NSDictionary *action in DXPPanelBuiltInActions()) if ([action[@"selector"] isEqual:selector]) return action;
     return nil;

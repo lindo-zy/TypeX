@@ -1174,6 +1174,8 @@ static void reloadPrefs(void);
 %end
 
 // 桌面可见性信号：app 来源的延迟 AI 请求在桌面真正出现时才创建面板。
+// 状态栏手势不再依赖桌面可见性簿记：识别器直接挂在状态栏视图上，
+// 由系统自身的实例构造/替换路径维护（DXStatusBarGestureHooks.xm）。
 %hook SBHomeScreenViewController
 
 - (void)viewDidAppear:(BOOL)animated {

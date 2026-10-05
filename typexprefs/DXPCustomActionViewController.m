@@ -386,7 +386,7 @@ static NSBundle *tweakBundle;
         NSString *selector = DXPanelSelector(panel[@"id"]);
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"TypeXCustomLinkActionCell" forIndexPath:indexPath];
         cell.textLabel.text = DXPanelString(panel[@"name"]);
-        cell.imageView.image = [DXHelper imageForIconConfig:panel[@"icon"] defaultSymbolName:@"square.grid.2x2"];
+        cell.imageView.image = [DXHelper imageForIconConfig:DXPanelDefaultIconName(panel[@"kind"]) defaultSymbolName:@"square.grid.2x2"];
         BOOL selected = self.allowsMultipleSelection ? [self.pickedSelectors containsObject:selector] : [self.selectedSelector isEqual:selector];
         cell.accessoryType = selected ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
         cell.textLabel.textColor = UIColor.labelColor;

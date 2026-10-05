@@ -3,6 +3,7 @@
 #import "DXSystemActionCompatibility.h"
 #import "DXSystemRecordingSession.h"
 #import "common.h"
+#import "DXPixPinIntegration.h"
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <dlfcn.h>
@@ -182,6 +183,8 @@ BOOL DXSystemExitActionAvailable(NSString *action) {
 DXSystemOpenResult DXPerformSystemAction(NSString *action) {
     if (!DXSystemActionDefinition(action)) return DXSystemOpenInvalid;
     if (![NSProcessInfo.processInfo.processName isEqualToString:@"SpringBoard"] || !NSThread.isMainThread) return DXSystemOpenUnavailable;
+    if (DXSystemActionDefinition(action)[@"pixpinNotification"])
+        return DXPostPixPinSystemAction(action, DX_ROOT_PATH_NS(DXPixPinDylibPath));
     DXLoadSystemActionFrameworks();
     NSLog(@"[TypeX][SystemAction] execute id=%@", action);
     if ([action isEqual:@"previous-track"] || [action isEqual:@"next-track"]) {
@@ -191,6 +194,9 @@ DXSystemOpenResult DXPerformSystemAction(NSString *action) {
     if ([action isEqual:@"play-pause"]) return DXSystemCall(DXSystemShared(@"SBMediaController", @"sharedInstance"), @"togglePlayPauseForEventSource:", @[@0]);
     if ([action isEqual:@"home"]) return DXSystemCallFirstAvailable(UIApplication.sharedApplication, @[
         @[@"_simulateHomeButtonPress", @[]], @[@"_simulateHomeButtonPressWithCompletion:", @[NSNull.null]]]);
+    // Enter SpringBoard's native capture path so screenshot hooks still run.
+    // Its void return acknowledges dispatch, not photo-library persistence.
+    if ([action isEqual:@"screenshot"]) return DXSystemCall(UIApplication.sharedApplication, @"takeScreenshot", @[]);
     if ([action isEqual:@"switcher"]) {
         id coordinator = DXSystemShared(@"SBMainSwitcherControllerCoordinator", @"sharedInstance");
         NSArray *interfaces = @[@[@"toggleSwitcherNoninteractivelyWithSource:", @[@1]],

@@ -406,9 +406,8 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "KEYBOARD_PANEL_SCALE" = "Content size (%)";
 "KEYBOARD_PANEL_ITEMS_FOOTER" = "Keyboard panels support all actions. Gesture panels support actions without a keyboard and other gesture panels. Swipe to remove an item, hold to reorder or tap to edit. Removing an item keeps its original action or panel.";
 "KEYBOARD_PANEL_PICKER_DELETE_FOOTER" = "Select an action or a panel of the same type. Swipe to delete a custom action and its references. Manage panels in Panel settings.";
-"KEYBOARD_PANEL_ITEM_APPEARANCE" = "Edit name and icon";
+"KEYBOARD_PANEL_ITEM_APPEARANCE" = "Edit name";
 "KEYBOARD_PANEL_NAME" = "Name (empty uses action name)";
-"KEYBOARD_PANEL_ICON" = "SF Symbol or App Bundle ID";
 "KEYBOARD_PANEL_SAVE" = "Save";
 "KEYBOARD_PANEL_REPLACE_ACTION" = "Choose another action";
 "KEYBOARD_PANEL_EDIT_ACTION" = "Edit custom action";
@@ -423,6 +422,15 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SYSTEM_GROUP_MEDIA" = "Media";
 "SYSTEM_GROUP_DEVICE" = "Device";
 "SYSTEM_GROUP_CONTROL" = "Control Center";
+"SYSTEM_GROUP_PIXPIN" = "PixPin Screenshots";
+"SYSTEM_PIXPIN_FULL" = "PixPin Full-Screen Capture";
+"SYSTEM_PIXPIN_AREA" = "PixPin Area Capture";
+"SYSTEM_PIXPIN_FREEZE" = "PixPin Frozen Capture";
+"SYSTEM_PIXPIN_INSTANT" = "PixPin Instant Area Capture";
+"SYSTEM_PIXPIN_MARKUP" = "PixPin Full-Screen Markup";
+"SYSTEM_PIXPIN_LONG" = "PixPin Scrolling Capture";
+"SYSTEM_PIXPIN_CANCEL" = "PixPin Cancel Current Task";
+"SYSTEM_PIXPIN_FOOTER" = "Shown only when PixPin is installed. Uses PixPin's current settings; disabled features, a busy task, or missing injection may prevent a response. Sending a request does not confirm capture or saving.";
 "SYSTEM_DEVICE_FOOTER" = "Respring restarts the interface service; Respring (SB) exits SpringBoard. Safe mode requires jailbreak support and userspace reboot requires system permission. Exit and power actions require confirmation.";
 "SYSTEM_ACTION_CONFIRM" = "This action interrupts the current session. Continue?";
 "SYSTEM_ACTION_UNAVAILABLE" = "No supported system interface is available";
@@ -437,6 +445,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "SYSTEM_USERSPACE_REBOOT" = "Reboot userspace";
 "SYSTEM_HOME" = "Home";
 "SYSTEM_SWITCHER" = "App switcher";
+"SYSTEM_SCREENSHOT" = "System Screenshot";
 "SYSTEM_CONTROL_CENTER" = "Open Control Center";
 "SYSTEM_SCREEN_RECORDING" = "Screen Recording";
 "SYSTEM_SCREEN_RECORDING_MICROPHONE" = "Screen Recording with Microphone";
