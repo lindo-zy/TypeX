@@ -52,4 +52,3 @@ typedef NS_ENUM(NSInteger, UIImpactFeedbackStyle) { UIImpactFeedbackStyleLight }
 @interface STUIStatusBar_Wrapper : UIStatusBar_Base @end
 @interface STUIStatusBar : UIView @end
 @interface SBSystemApertureContainerView : UIView @end
-@interface SBHomeScreenWindow : UIWindow @end

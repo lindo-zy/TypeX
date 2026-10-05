@@ -1174,6 +1174,8 @@ static void reloadPrefs(void);
 %end
 
 // 桌面可见性信号：app 来源的延迟 AI 请求在桌面真正出现时才创建面板。
+// 状态栏手势不再依赖桌面可见性簿记：识别器直接挂在状态栏视图上，
+// 由系统自身的实例构造/替换路径维护（DXStatusBarGestureHooks.xm）。
 %hook SBHomeScreenViewController
 
 - (void)viewDidAppear:(BOOL)animated {
@@ -1182,14 +1184,12 @@ static void reloadPrefs(void);
     // heal 不会播种，所有 App 的工具栏会一直等到本进程下次 heal。桌面首次出现
     // 是早于任何 App 可用的必然事件；prefs 可用时 reload 依旧早退、零成本。
     if (![DXPrefsManager sharedInstance].preferencesAvailable) reloadPrefs();
-    DXStatusBarHomeScreenDidAppear(((UIViewController *)self).view.window);
     g_aiDesktopVisible = YES;
     DXPresentAIPanelWhenDesktop();
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
     %orig;
-    DXStatusBarHomeScreenWillDisappear(((UIViewController *)self).view.window);
     g_aiDesktopVisible = NO;
 }
 

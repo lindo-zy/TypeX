@@ -85,7 +85,6 @@ void DXRequestStatusBarGesture(NSString *slot, NSString *selector, BOOL landscap
 @implementation UIStatusBar_Modern @end
 @implementation _UIStatusBar @end
 @implementation SBSystemApertureContainerView @end
-@implementation SBHomeScreenWindow @end
 #include "StatusHandler.inc"
 static NSMutableDictionary<NSString *, NSNumber *> *hookInstallCounts;
 static void DXTestInstallHook(NSString *group, Class cls) {
@@ -122,7 +121,7 @@ int main(void) {
         DXStatusHandlers = nil; DXInstallStatusGestures(anchor); DXInstallStatusGestures(nested); DXInstallStatusGestures(anchor);
         check(DXStatusHandlers.count == 1, @"early lifecycle installation initializes the weak handler registry");
         DXStatusGestureHandler *handler = objc_getAssociatedObject(anchor, &DXStatusHandlerKey);
-        check(handler != nil && window.gestureRecognizers.count == 4 && DXStatusHandlers.count == 1, @"nested views install once per anchor");
+        check(handler != nil && anchor.gestureRecognizers.count == 4 && window.gestureRecognizers.count == 0 && DXStatusHandlers.count == 1, @"nested views install once per anchor on the bar view itself");
         check([handler available], @"app availability does not use SpringBoard lock/panel methods");
         UITapGestureRecognizer *nativeTap = [UITapGestureRecognizer new]; [nested addGestureRecognizer:nativeTap];
         UIGestureRecognizer *legacyAction = [[_UIStatusBarActionGestureRecognizer alloc] initWithTarget:nil action:NULL]; [nested addGestureRecognizer:legacyAction];
@@ -204,7 +203,9 @@ int main(void) {
         manager.preferencesAvailable = NO; check(![handler available], @"missing snapshot blocked"); manager.preferencesAvailable = YES;
         [nested removeGestureRecognizer:legacyAction]; [nested removeGestureRecognizer:systemAction];
         anchor.window = nil; DXInstallStatusGestures(anchor);
-        check(window.gestureRecognizers.count == 1 && window.gestureRecognizers[0] == lateWindowTap && !objc_getAssociatedObject(anchor, &DXStatusHandlerKey), @"detach removes only TypeX recognizers");
+        check(anchor.gestureRecognizers.count == 4 && objc_getAssociatedObject(anchor, &DXStatusHandlerKey) != nil, @"detach keeps view-owned recognizers for re-attachment");
+        anchor.window = window; DXInstallStatusGestures(anchor);
+        check([handler gestureRecognizer:gestureFor(handler, @"tap") shouldReceiveTouch:touchFor(anchor, 10)], @"re-attached bar serves touches without reinstall");
 
         NSString *originalProcess = [NSProcessInfo.processInfo.processName copy]; NSProcessInfo.processInfo.processName = @"SpringBoard";
         testUnlocked = YES; testPanelVisible = NO; manager.prefs = baseline;
@@ -245,7 +246,8 @@ int main(void) {
         islandSwap.originInWindow = island.originInWindow; [islandWindow addSubview:islandSwap];
         UIControl *swapControl = [UIControl new]; [islandSwap addSubview:swapControl];
         DXInstallStatusGestures(islandSwap);
-        check(!objc_getAssociatedObject(islandSwap, &DXStatusHandlerKey) && islandWindow.gestureRecognizers.count == 5, @"second island instance reuses the window gesture set");
+        check(!objc_getAssociatedObject(islandSwap, &DXStatusHandlerKey) && islandWindow.gestureRecognizers.count == 1 &&
+              islandStatusBar.gestureRecognizers.count == 4, @"second island instance reuses the window gesture set");
         UITapGestureRecognizer *swapNativeTap = [UITapGestureRecognizer new]; [swapControl addGestureRecognizer:swapNativeTap];
         UITouch *swapTouch = touchFor(islandSwap, 70); swapTouch.view = swapControl;
         check([islandHandler gestureRecognizer:islandTap shouldReceiveTouch:swapTouch], @"the window gesture accepts a swapped container's touch");
@@ -259,7 +261,7 @@ int main(void) {
         NSUInteger sentBefore = sends; island.originInWindow = CGPointMake(126, 10); [islandHandler recognized:islandTap];
         check(sends == sentBefore + 1 && [sentSlot isEqual:@"middle.tap"], @"island sessions ride window identity, not anchor frames");
         island.window = nil; DXInstallStatusGestures(island);
-        check(islandWindow.gestureRecognizers.count == 5, @"island detach preserves window-owned tap for replacement container");
+        check(islandWindow.gestureRecognizers.count == 1 && islandStatusBar.gestureRecognizers.count == 4, @"island detach preserves window-owned tap for replacement container");
         check([islandHandler available], @"released island anchor does not gate the window gesture");
         check([islandHandler gestureRecognizer:islandTap shouldReceiveTouch:swapTouch], @"window gesture still serves the swapped container");
         islandStatusBar.window = nil; DXInstallStatusGestures(islandStatusBar);
@@ -318,7 +320,8 @@ int main(void) {
         UIStatusBar *unscannedBar = [UIStatusBar new]; unscannedBar.bounds = anchor.bounds; [unscannedWindow addSubview:unscannedBar];
         connectedScene.windows = @[sceneWindow, unscannedWindow];
         reloadPreferences = baseline; DXTryStatusHooks(); reloadPreferences = nil;
-        check(unscannedWindow.gestureRecognizers.count == 4 && objc_getAssociatedObject(unscannedBar, &DXStatusHandlerKey), @"connected scene scan discovers an existing unhooked status bar");
+        check(unscannedBar.gestureRecognizers.count == 4 && unscannedWindow.gestureRecognizers.count == 0 &&
+              objc_getAssociatedObject(unscannedBar, &DXStatusHandlerKey), @"connected scene scan discovers an existing unhooked status bar");
         check(sceneTap.enabled && [sceneHandler gestureRecognizer:sceneTap shouldReceiveTouch:touchFor(sceneBar, 10)], @"late preferences recover already installed scene-only recognizer");
         NSUInteger sceneBefore = sends; sceneTap.state = UIGestureRecognizerStateEnded; [sceneHandler recognized:sceneTap];
         check(sends == sceneBefore + 1, @"scene-only UIKit status bar dispatches after cold configuration recovery");
@@ -333,9 +336,11 @@ int main(void) {
         check([earlyHandler gestureRecognizer:earlyTap shouldReceiveTouch:touchFor(earlyCore, 10)], @"core begins session before wrapper arrival");
         UIStatusBar *lateWrapper = [UIStatusBar new]; lateWrapper.bounds = anchor.bounds; [orderedWindow addSubview:lateWrapper];
         DXInstallStatusGestures(lateWrapper);
-        check(orderedWindow.gestureRecognizers.count == 8, @"separate status views initially own separate sets");
+        check(earlyCore.gestureRecognizers.count == 4 && lateWrapper.gestureRecognizers.count == 4 &&
+              orderedWindow.gestureRecognizers.count == 0, @"separate status views initially own separate sets");
         [orderedWindow.subviews removeObject:earlyCore]; [lateWrapper addSubview:earlyCore]; DXInstallStatusGestures(earlyCore);
-        check(orderedWindow.gestureRecognizers.count == 4 && !objc_getAssociatedObject(earlyCore, &DXStatusHandlerKey), @"wrapper arrival retires earlier core set");
+        check(lateWrapper.gestureRecognizers.count == 4 && earlyCore.gestureRecognizers.count == 0 &&
+              !objc_getAssociatedObject(earlyCore, &DXStatusHandlerKey), @"wrapper arrival retires earlier core set");
         NSUInteger orderBefore = sends; earlyTap.state = UIGestureRecognizerStateEnded; [earlyHandler recognized:earlyTap];
         check(sends == orderBefore && !earlyTap.enabled && !earlyTap.delegate, @"retired core cannot execute pending session");
         DXStatusGestureHandler *lateHandler = objc_getAssociatedObject(lateWrapper, &DXStatusHandlerKey);
@@ -349,7 +354,8 @@ int main(void) {
         _UIStatusBar *movingCore = [_UIStatusBar new]; movingCore.bounds = anchor.bounds; [oldCoreWindow addSubview:movingCore]; DXInstallStatusGestures(movingCore);
         UIStatusBar *newWrapper = [UIStatusBar new]; newWrapper.bounds = anchor.bounds; [orderedWindow addSubview:newWrapper]; DXInstallStatusGestures(newWrapper);
         [oldCoreWindow.subviews removeObject:movingCore]; [newWrapper addSubview:movingCore]; DXInstallStatusGestures(movingCore);
-        check(oldCoreWindow.gestureRecognizers.count == 0 && orderedWindow.gestureRecognizers.count == 4 && !objc_getAssociatedObject(movingCore, &DXStatusHandlerKey), @"cross-window reparent also removes the old core's recognizers");
+        check(oldCoreWindow.gestureRecognizers.count == 0 && movingCore.gestureRecognizers.count == 0 &&
+              newWrapper.gestureRecognizers.count == 4 && !objc_getAssociatedObject(movingCore, &DXStatusHandlerKey), @"cross-window reparent also removes the old core's recognizers");
         newWrapper.window = nil; DXInstallStatusGestures(newWrapper);
         Class systemWrapperClass = objc_allocateClassPair(UIStatusBar_Base.class, "STUIStatusBar_Wrapper", 0);
         Class systemCoreClass = objc_allocateClassPair(UIView.class, "STUIStatusBar", 0);
@@ -364,7 +370,7 @@ int main(void) {
             check(DXIsStatusView(systemWrapper) && DXIsStatusView(systemCore), @"SystemStatusUI wrapper and core accepted");
             UIApplication.sharedApplication.windows = @[hostWindow]; DXTryStatusHooks(); DXTryStatusHooks();
             DXStatusGestureHandler *systemHandler = objc_getAssociatedObject(systemWrapper, &DXStatusHandlerKey);
-            check(systemHandler && hostWindow.gestureRecognizers.count == 4 &&
+            check(systemHandler && systemWrapper.gestureRecognizers.count == 4 &&
                   !objc_getAssociatedObject(systemCore, &DXStatusHandlerKey), @"scan installs one set for nested SystemStatusUI views across hosts");
             check([hookInstallCounts[@"STUIStatusBar_Wrapper"] unsignedIntegerValue] == 1 &&
                   [hookInstallCounts[@"STUIStatusBar"] unsignedIntegerValue] == 1, @"late SystemStatusUI hooks register exactly once");
@@ -381,114 +387,55 @@ int main(void) {
             }
             UIView *unrelated = [UIView new]; unrelated.bounds = systemWrapper.bounds; [hostWindow addSubview:unrelated];
             DXInstallStatusGestures(unrelated);
-            check(!objc_getAssociatedObject(unrelated, &DXStatusHandlerKey) && hostWindow.gestureRecognizers.count == 4, @"unrelated views do not install status gestures");
+            check(!objc_getAssociatedObject(unrelated, &DXStatusHandlerKey) && unrelated.gestureRecognizers.count == 0, @"unrelated views do not install status gestures");
             UIGestureRecognizer *systemTap = gestureFor(systemHandler, @"tap");
             check([systemHandler gestureRecognizer:systemTap shouldReceiveTouch:touchFor(systemCore, 10)], @"start SystemStatusUI session before window switch");
             NSUInteger sentBefore = sends;
             UIWindow *replacementWindow = [UIWindow new]; replacementWindow.window = replacementWindow; replacementWindow.bounds = hostWindow.bounds;
             systemWrapper.window = replacementWindow; systemCore.window = replacementWindow;
             DXInstallStatusGestures(systemWrapper); [systemHandler recognized:systemTap];
-            check(sends == sentBefore && hostWindow.gestureRecognizers.count == 0 && replacementWindow.gestureRecognizers.count == 4, @"window switch removes old gestures and cancels old session");
-            DXStatusGestureHandler *replacementHandler = objc_getAssociatedObject(systemWrapper, &DXStatusHandlerKey);
-            systemTap = gestureFor(replacementHandler, @"tap");
-            check([replacementHandler gestureRecognizer:systemTap shouldReceiveTouch:touchFor(systemCore, 10)], @"replacement SystemStatusUI window receives touches");
-            systemTap.state = UIGestureRecognizerStateEnded; [replacementHandler recognized:systemTap];
-            check(sends == sentBefore + 1 && [sentSlot isEqual:@"left.tap"], @"replacement SystemStatusUI window dispatches");
+            check(sends == sentBefore && systemWrapper.gestureRecognizers.count == 4 && hostWindow.gestureRecognizers.count == 0,
+                  @"window switch rides the view-owned set and cancels the old session");
+            check([systemHandler gestureRecognizer:systemTap shouldReceiveTouch:touchFor(systemCore, 10)], @"moved SystemStatusUI view receives touches in its new window");
+            systemTap.state = UIGestureRecognizerStateEnded; [systemHandler recognized:systemTap];
+            check(sends == sentBefore + 1 && [sentSlot isEqual:@"left.tap"], @"moved SystemStatusUI view dispatches");
             systemWrapper.window = nil; DXInstallStatusGestures(systemWrapper);
-            check(replacementWindow.gestureRecognizers.count == 0, @"SystemStatusUI detach cleans recognizers");
+            check(systemWrapper.gestureRecognizers.count == 4, @"SystemStatusUI detach keeps the set for re-attachment");
         }
-        // Home-screen touches can land in a different window from the visible
-        // status-bar renderer. Previous tests always equated those windows.
+        // Desktop churn: the bar is rendered in its own display window and
+        // SpringBoard replaces the bar instance without touching any other
+        // window. The recognizer set must ride the bar view across the swap,
+        // and a stale in-flight session must die with the replaced instance.
         NSProcessInfo.processInfo.processName = @"SpringBoard"; manager.prefs = baseline;
+        testUnlocked = YES; testPanelVisible = NO;
         UIWindow *displayWindow = [UIWindow new]; displayWindow.window = displayWindow; displayWindow.bounds = window.bounds;
-        UIStatusBar *desktopBar = [UIStatusBar new]; desktopBar.bounds = CGRectMake(0, 0, 390, 54); [displayWindow addSubview:desktopBar]; DXInstallStatusGestures(desktopBar);
-        SBHomeScreenWindow *homeWindow = [SBHomeScreenWindow new]; homeWindow.window = homeWindow; homeWindow.bounds = window.bounds; homeWindow.keyWindow = YES;
-        NSObject *mainScreen = [NSObject new]; homeWindow.screen = mainScreen; displayWindow.screen = mainScreen;
-        UIView *homeContent = [UIView new]; [homeWindow addSubview:homeContent];
-        DXScanStatusViews(homeWindow);
-        DXStatusGestureHandler *homeHandler;
-        for (DXStatusGestureHandler *entry in DXStatusHandlers.allObjects) if (entry.window == homeWindow) homeHandler = entry;
-        check(homeHandler && homeWindow.gestureRecognizers.count == 4, @"desktop touch window owns a status-bar gesture set");
-        homeWindow.keyWindow = NO;
-        check(![homeHandler available], @"unobserved non-key desktop window waits for appearance");
-        DXStatusBarHomeScreenDidAppear(homeWindow);
-        check([homeHandler available], @"observed desktop appearance activates a non-key touch window");
-        homeWindow.keyWindow = YES;
-        for (NSString *region in DXStatusBarRegions()) for (NSString *kind in DXStatusBarGestures()) {
-            CGFloat x = [region isEqual:@"left"] ? 10 : ([region isEqual:@"middle"] ? 150 : 300);
-            UITouch *homeTouch = touchFor(desktopBar, x); homeTouch.view = homeContent; homeTouch.window = homeWindow;
-            UIGestureRecognizer *gesture = gestureFor(homeHandler, [kind hasSuffix:@"swipe"] ? @"horizontal" : kind);
-            check([homeHandler gestureRecognizer:gesture shouldReceiveTouch:homeTouch], @"desktop pass-through touch accepted in displayed status-bar bounds");
-            if ([gesture isKindOfClass:UIPanGestureRecognizer.class]) ((UIPanGestureRecognizer *)gesture).delta = CGPointMake([kind isEqual:@"leftswipe"] ? -40 : 40, 0);
-            check([homeHandler gestureRecognizerShouldBegin:gesture], @"desktop configured gesture begins");
-            NSUInteger desktopBefore = sends;
-            gesture.state = [kind isEqual:@"longpress"] ? UIGestureRecognizerStateBegan : UIGestureRecognizerStateEnded;
-            [homeHandler recognized:gesture]; [homeHandler recognized:gesture];
-            check(sends == desktopBefore + 1 && [sentSlot isEqual:DXStatusBarSlot(region, kind)], @"desktop pass-through dispatches each slot exactly once");
-        }
-        DXStatusBarHomeScreenDidAppear(homeWindow); DXStatusBarHomeScreenDidAppear(homeWindow);
-        check(homeWindow.gestureRecognizers.count == 4, @"desktop appearance and repeated scans do not stack recognizers");
-        UIGestureRecognizer *homeTap = gestureFor(homeHandler, @"tap");
-        UITouch *homeTouch = touchFor(desktopBar, 10); homeTouch.window = homeWindow; homeTouch.view = homeContent;
-        UITapGestureRecognizer *desktopNativeTap = [UITapGestureRecognizer new]; desktopNativeTap.numberOfTapsRequired = 1; desktopNativeTap.numberOfTouchesRequired = 1;
-        [homeContent addGestureRecognizer:desktopNativeTap];
-        check([homeHandler gestureRecognizer:homeTap shouldReceiveTouch:homeTouch] &&
-              [homeHandler gestureRecognizer:homeTap shouldBeRequiredToFailByGestureRecognizer:desktopNativeTap], @"desktop native content tap waits on configured status-bar touch");
-        UIPanGestureRecognizer *desktopNativePan = [UIPanGestureRecognizer new]; [homeContent addGestureRecognizer:desktopNativePan];
-        check(![homeHandler gestureRecognizer:homeTap shouldBeRequiredToFailByGestureRecognizer:desktopNativePan], @"desktop vertical/system pan gets no tap failure priority");
-        homeTouch.point = CGPointMake(10, 54);
-        check(![homeHandler gestureRecognizer:homeTap shouldReceiveTouch:homeTouch], @"desktop content below actual status bar excluded"); homeTouch.point = CGPointMake(10, 12);
-        UIControl *desktopControl = [UIControl new]; [homeWindow addSubview:desktopControl]; homeTouch.view = desktopControl;
-        check(![homeHandler gestureRecognizer:homeTap shouldReceiveTouch:homeTouch], @"desktop native control excluded");
-        SBIconView *desktopIcon = [SBIconView new]; [homeWindow addSubview:desktopIcon]; homeTouch.view = desktopIcon;
-        check(![homeHandler gestureRecognizer:homeTap shouldReceiveTouch:homeTouch], @"desktop icons excluded even when overlapping status bar"); homeTouch.view = homeContent;
-        homeWindow.keyWindow = NO; check([homeHandler gestureRecognizer:homeTap shouldReceiveTouch:homeTouch], @"visible desktop does not require key-window role"); homeWindow.keyWindow = YES;
-        testUnlocked = NO; check(![homeHandler available], @"locked desktop excluded"); testUnlocked = YES;
-        testPanelVisible = YES; check(![homeHandler available], @"desktop excluded while panel visible"); testPanelVisible = NO;
-        homeWindow.windowScene = [UIWindowScene new]; homeWindow.windowScene.activationState = UISceneActivationStateBackground;
-        check(![homeHandler available], @"inactive desktop scene excluded"); homeWindow.windowScene = nil;
-        displayWindow.screen = [NSObject new]; check(![homeHandler available], @"status bar from another screen excluded"); displayWindow.screen = mainScreen;
-        desktopBar.hidden = YES; check(![homeHandler available], @"hidden displayed status bar excluded"); desktopBar.hidden = NO;
-        check([homeHandler gestureRecognizer:homeTap shouldReceiveTouch:homeTouch], @"start before desktop disappears");
-        NSUInteger homeBefore = sends; homeTap.state = UIGestureRecognizerStateEnded; DXStatusBarHomeScreenWillDisappear(homeWindow); [homeHandler recognized:homeTap];
-        check(sends == homeBefore && ![homeHandler available], @"desktop disappearance cancels old session even if window remains key");
-        DXStatusBarHomeScreenDidAppear(homeWindow);
-        check([homeHandler gestureRecognizer:homeTap shouldReceiveTouch:homeTouch], @"start before desktop hit view detaches");
-        homeContent.window = nil; [homeHandler recognized:homeTap];
-        check(sends == homeBefore, @"detached desktop touch view cancels old session"); homeContent.window = homeWindow;
-        check([homeHandler gestureRecognizer:homeTap shouldReceiveTouch:homeTouch], @"start before display bar replacement");
-        UIStatusBar *newDesktopBar = [UIStatusBar new]; newDesktopBar.bounds = desktopBar.bounds; [displayWindow addSubview:newDesktopBar];
-        desktopBar.hidden = YES; DXInstallStatusGestures(newDesktopBar); [homeHandler recognized:homeTap];
-        check(sends == homeBefore, @"display bar replacement cancels old receiver session");
-        check([homeHandler gestureRecognizer:homeTap shouldReceiveTouch:homeTouch], @"new desktop touch resolves replacement display bar"); [homeHandler recognized:homeTap];
-        check(sends == homeBefore + 1, @"replacement display bar continues dispatching through desktop receiver");
-        NSMutableDictionary *desktopSingleOnly = [baseline mutableCopy]; desktopSingleOnly[kDXStatusBarBindings] = @{@"left.tap": bindings[@"left.tap"]}; manager.prefs = desktopSingleOnly; [homeHandler refresh];
-        homeTouch.point = CGPointMake(300, 12);
-        check(![homeHandler gestureRecognizer:homeTap shouldReceiveTouch:homeTouch], @"unconfigured desktop region keeps native touches"); manager.prefs = baseline; [homeHandler refresh]; homeTouch.point = CGPointMake(10, 12);
-        UIStatusBar *inlineBar = [UIStatusBar new]; inlineBar.bounds = desktopBar.bounds; [homeWindow addSubview:inlineBar]; DXInstallStatusGestures(inlineBar);
-        check(![homeHandler gestureRecognizer:homeTap shouldReceiveTouch:homeTouch], @"desktop fallback does not compete with same-window status handler");
-        DXStatusGestureHandler *inlineHandler = objc_getAssociatedObject(inlineBar, &DXStatusHandlerKey);
-        UIGestureRecognizer *inlineTap = gestureFor(inlineHandler, @"tap");
-        check([inlineHandler gestureRecognizer:inlineTap shouldReceiveTouch:touchFor(inlineBar, 10)], @"normal same-window desktop status bar remains usable");
-        homeBefore = sends; inlineTap.state = UIGestureRecognizerStateEnded; [inlineHandler recognized:inlineTap];
-        check(sends == homeBefore + 1, @"same-window desktop path dispatches once"); inlineBar.window = nil; DXInstallStatusGestures(inlineBar);
-        check(homeWindow.gestureRecognizers.count == 4 && [homeHandler gestureRecognizer:homeTap shouldReceiveTouch:homeTouch], @"fallback recovers after inline status bar detaches");
-        // Real UIKit keeps a UIWindow's own window property nil; earlier
-        // fixtures assigned window.window manually and masked that semantics.
-        SBHomeScreenWindow *deviceLikeHome = [SBHomeScreenWindow new]; deviceLikeHome.bounds = window.bounds; deviceLikeHome.keyWindow = YES;
-        deviceLikeHome.screen = mainScreen;
-        DXScanStatusViews(deviceLikeHome);
-        DXStatusGestureHandler *deviceLikeHandler;
-        for (DXStatusGestureHandler *entry in DXStatusHandlers.allObjects) if (entry.window == deviceLikeHome) deviceLikeHandler = entry;
-        check(deviceLikeHandler && deviceLikeHome.gestureRecognizers.count == 4, @"desktop installs with UIWindow.window left nil as on device");
-        DXStatusBarHomeScreenDidAppear(deviceLikeHome);
-        check([deviceLikeHandler available], @"nil-window desktop model activates after appearance");
-        UITouch *deviceLikeTouch = touchFor(desktopBar, 10); deviceLikeTouch.view = deviceLikeHome; deviceLikeTouch.window = deviceLikeHome;
-        check([deviceLikeHandler gestureRecognizer:gestureFor(deviceLikeHandler, @"tap") shouldReceiveTouch:deviceLikeTouch], @"nil-window desktop model accepts configured touch");
-        NSProcessInfo.processInfo.processName = @"MobileSafari";
-        check(!DXIsHomeScreenWindow(homeWindow), @"desktop fallback never activates in an app process");
-        SBHomeScreenWindow *appHomeLookalike = [SBHomeScreenWindow new]; appHomeLookalike.window = appHomeLookalike; DXInstallStatusGestures(appHomeLookalike);
-        check(appHomeLookalike.gestureRecognizers.count == 0, @"app lookalike cannot install desktop recognizers");
+        UIStatusBar *desktopBar = [UIStatusBar new]; desktopBar.bounds = CGRectMake(0, 0, 390, 54); [displayWindow addSubview:desktopBar];
+        DXInstallStatusGestures(desktopBar);
+        DXStatusGestureHandler *desktopHandler = objc_getAssociatedObject(desktopBar, &DXStatusHandlerKey);
+        check(desktopHandler && desktopBar.gestureRecognizers.count == 4 && displayWindow.gestureRecognizers.count == 0,
+              @"desktop bar owns its recognizer set on the view, not on either window");
+        check([desktopHandler available], @"desktop bar availability needs no desktop visibility bookkeeping");
+        UIGestureRecognizer *desktopTap = gestureFor(desktopHandler, @"tap");
+        check([desktopHandler gestureRecognizer:desktopTap shouldReceiveTouch:touchFor(desktopBar, 10)], @"desktop bar accepts a configured touch");
+        NSUInteger desktopBefore = sends; desktopTap.state = UIGestureRecognizerStateEnded; [desktopHandler recognized:desktopTap];
+        check(sends == desktopBefore + 1 && [sentSlot isEqual:@"left.tap"], @"desktop bar dispatches its slot");
+        DXInstallStatusGestures(desktopBar); DXInstallStatusGestures(desktopBar);
+        check(desktopBar.gestureRecognizers.count == 4, @"repeated scans never stack desktop recognizers");
+        check([desktopHandler gestureRecognizer:desktopTap shouldReceiveTouch:touchFor(desktopBar, 10)], @"start a desktop session before the instance swap");
+        UIStatusBar *replacementBar = [UIStatusBar new]; replacementBar.bounds = desktopBar.bounds; [displayWindow addSubview:replacementBar];
+        DXInstallStatusGestures(replacementBar);
+        desktopBar.hidden = YES;
+        desktopTap.state = UIGestureRecognizerStateEnded; [desktopHandler recognized:desktopTap];
+        check(sends == desktopBefore + 1, @"replaced desktop bar cannot dispatch its stale session");
+        DXStatusGestureHandler *replacementHandler = objc_getAssociatedObject(replacementBar, &DXStatusHandlerKey);
+        check(replacementHandler && replacementBar.gestureRecognizers.count == 4, @"replacement desktop bar installs its own view-owned set");
+        UIGestureRecognizer *replacementTap = gestureFor(replacementHandler, @"tap");
+        check([replacementHandler gestureRecognizer:replacementTap shouldReceiveTouch:touchFor(replacementBar, 10)], @"replacement accepts the next touch without any scan");
+        replacementTap.state = UIGestureRecognizerStateEnded; [replacementHandler recognized:replacementTap];
+        check(sends == desktopBefore + 2 && [sentSlot isEqual:@"left.tap"], @"replacement desktop bar dispatches in the same window");
+        desktopBar.hidden = NO;
+        testUnlocked = NO; check(![desktopHandler available], @"locked springboard blocks desktop status gestures"); testUnlocked = YES;
+        testPanelVisible = YES; check(![desktopHandler available], @"open global panel blocks desktop status gestures"); testPanelVisible = NO;
         NSProcessInfo.processInfo.processName = originalProcess; UIApplication.sharedApplication.windows = @[];
         printf("PASS: %lu production status-bar handler checks with UIKit doubles\n", (unsigned long)checks);
     }
