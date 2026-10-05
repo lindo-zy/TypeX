@@ -53,4 +53,15 @@
 
 ## 交付验证
 
-待集成后执行 `./build.sh`、核验两套 DEB、由脚本自动推进版本，再本地提交、归档 iCloud、校验 SHA-256 并运行 `python3 webdav-sync.py TypeX`。设备核心功能、冷/热启动、安装/卸载均未验证。
+源码提交 `7cdc376` 已从隔离分支快进合入 `dev`。随后在集成目录运行唯一入口 `./build.sh`，两目标均成功，版本由脚本从 4.3.2 推进到 4.3.3，Bark 完成通知已发送。构建只有工具链既有的 `-multiply_defined is obsolete` 警告，没有新增编译错误。
+
+两套 DEB 的元数据均为 `com.lindo.typex / 4.3.3 / iphoneos-arm64e`，TypeX.dylib 同时包含 arm64 与 arm64e；已核对 SpringBoard/UIKit 注入过滤、设置 bundle、新构造 hook 日志符号、postinst/postrm 存在且可执行及 shell 语法。安装/卸载仅作包内静态检查，没有设备执行。
+
+两包均已 cp 到 iCloud 的 `Downloads/TypeX/ios16`、`ios17`，源/归档 SHA-256 一致；旧版本保留。执行 `python3 webdav-sync.py TypeX` 退出 0：上传 2 个，一致跳过 147 个，最终对账全部一致。
+
+源码分析：核心构造/Wrapper 接管差异已确认，实际设备唯一故障根因未确认。编译：已确认。包结构：已确认。核心功能：未验证。已知限制：没有目标设备触摸证据，桌面命中、冷/热启动、安装/卸载、系统手势及第三方插件兼容仍需按上述清单验收。
+
+| 目标 | DEB | SHA-256 |
+| --- | --- | --- |
+| ios16 | `com.lindo.typex_4.3.3_ios16_iphoneos-arm64e.deb` | `14951ef9b26a288ad5d7f61962f19758e389a1b7423c70fde2427fefe925df22` |
+| ios17 | `com.lindo.typex_4.3.3_ios17_iphoneos-arm64e.deb` | `2849828bf8603d6cc009e8c7a56d38aed4c301d102aa3ec8f59b18f0f8ce800b` |
