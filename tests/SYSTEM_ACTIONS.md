@@ -31,8 +31,17 @@ capture request accepted、request ignored、task cancelled 和 output completed
 源码审查结果：git diff --check 与中英文 strings 语法通过；141 项系统/面板检查、
 38 项录屏检查、79 项全局面板检查、22 项 Dock 触摸策略和 4508 项设置搜索/布局检查
 通过。PixPin 发送测试替换 notify_post 并使用临时安装文件，不调用设备截图接口。
-源码分析：已确认；编译/包结构：待集成后验证；核心功能：未验证；冷/热启动、
+源码分析：已确认；编译/包结构：已确认；核心功能：未验证；冷/热启动、
 实际注入、选择页显示、截图输出与取消流程需设备验收。
+
+构建结果（4.3.1）：集成起点 dev / ba29c5f，codex/pixpin-system-actions 提交
+43ee944 已快进合入 dev，用户未跟踪的 .zcodeignore 保留。仅执行 ./build.sh，
+两套包成功，版本自动 4.3.0 → 4.3.1，Bark 构建完成通知已发送。DEB 均为
+com.lindo.typex / iphoneos-arm64e，TypeX 与 TypeXPrefs 二进制均含 arm64、arm64e；
+七项 PixPin 原生通知、安装检测路径、分组/动作/提示的中英文资源均存在于成品。
+安装/卸载脚本语法通过，实际安装/卸载未验证。firmware >= 15.0 沿用现有打包依赖，
+ios16 目标为 SDK 16.5 / deployment 16.0，ios17 目标为 SDK 16.5 / deployment 15.0；
+这不证明 PixPin 或 TypeX 的 iOS 15 设备支持。没有新增调试观察者、重试或键盘恢复逻辑。
 
 入口：自定义动作管理页「选择动作」分组点「系统动作」，或任意选择动作页
 添加流程的类型菜单选「系统动作」，选择系统动作后保存。类型清单两处共用
