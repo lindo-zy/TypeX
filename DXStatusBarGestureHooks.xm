@@ -9,7 +9,7 @@
 #import <objc/runtime.h>
 #import <notify.h>
 
-static char DXStatusHandlerKey, DXStatusApertureHandlerKey, DXStatusHomeHandlerKey, DXStatusKindKey, DXStatusSessionKey;
+static char DXStatusHandlerKey, DXStatusApertureHandlerKey, DXStatusKindKey, DXStatusSessionKey;
 static NSHashTable *DXStatusHandlers;
 static void DXTryStatusHooks(void);
 static void DXInstallStatusGestures(UIView *view);
@@ -29,11 +29,6 @@ static BOOL DXIsApertureView(UIView *view) {
     Class cls = NSClassFromString(@"SBSystemApertureContainerView");
     return cls && [cls isSubclassOfClass:UIView.class] && [view isKindOfClass:cls];
 }
-static BOOL DXIsHomeScreenWindow(UIView *view) {
-    if (![NSProcessInfo.processInfo.processName isEqual:@"SpringBoard"]) return NO;
-    Class cls = NSClassFromString(@"SBHomeScreenWindow");
-    return cls && [cls isSubclassOfClass:UIWindow.class] && [view isKindOfClass:cls];
-}
 static BOOL DXIsStatusActionRecognizer(UIGestureRecognizer *gesture) {
     for (NSString *name in @[@"_UIStatusBarActionGestureRecognizer", @"STUIStatusBarActionGestureRecognizer"]) {
         Class cls = NSClassFromString(name);
@@ -49,6 +44,11 @@ static BOOL DXStatusReceiverVisible(UIView *view, UIWindow *window) {
     return !CGRectIsEmpty(frame) && !CGRectIsEmpty(CGRectIntersection(frame, window.bounds));
 }
 
+// Recognizers ride the status-bar view itself, so the bar instance owns their
+// whole lifetime: replacement re-runs the system construction path, re-parent
+// moves the set along, and nothing but the per-touch gates survives a touch.
+// Only the island keeps its window-hosted set, because its install-time
+// container may be released while the window still serves touches.
 @interface DXStatusGestureSession : NSObject
 @property(nonatomic, weak) UIWindow *window;
 @property(nonatomic, weak) UIView *receiver;
@@ -65,12 +65,10 @@ static BOOL DXStatusReceiverVisible(UIView *view, UIWindow *window) {
 @property(nonatomic, weak) UIView *anchor;
 @property(nonatomic, weak) UIWindow *window;
 @property(nonatomic) BOOL aperture;
-@property(nonatomic) BOOL homeScreen;
-@property(nonatomic) BOOL homeAppearanceKnown;
-@property(nonatomic) BOOL homeVisible;
 @property(nonatomic, strong) NSArray<UIGestureRecognizer *> *recognizers;
 @property(nonatomic, copy) NSString *lastRejection;
 @property(nonatomic, copy) NSString *lastConfiguration;
+- (UIWindow *)touchWindow;
 - (void)refresh;
 - (void)invalidate;
 - (BOOL)available;
@@ -80,26 +78,13 @@ static BOOL DXStatusReceiverVisible(UIView *view, UIWindow *window) {
 - (void)recognized:(UIGestureRecognizer *)gesture;
 @end
 
-static UIView *DXHomeStatusAnchor(UIWindow *homeWindow) {
-    UIView *selected;
-    // Resolve the displayed bar for every new touch; a desktop window is only
-    // the touch receiver, never a substitute for status-bar geometry.
-    for (DXStatusGestureHandler *handler in DXStatusHandlers.allObjects) {
-        UIView *anchor = handler.anchor;
-        UIWindow *displayWindow = anchor.window;
-        if (handler.aperture || handler.homeScreen || !displayWindow || displayWindow.screen != homeWindow.screen ||
-            !DXStatusReceiverVisible(anchor, displayWindow)) continue;
-        // A bar already hosted by this window has its normal gesture set.
-        // Installing the fallback as well must not dispatch the same touch.
-        if (displayWindow == homeWindow) return nil;
-        CGRect frame = [anchor convertRect:anchor.bounds toView:homeWindow];
-        if (CGRectIsEmpty(CGRectIntersection(frame, homeWindow.bounds))) continue;
-        if (!selected || displayWindow.windowLevel > selected.window.windowLevel) selected = anchor;
-    }
-    return selected;
-}
-
 @implementation DXStatusGestureHandler
+- (UIWindow *)touchWindow {
+    // The island is gated by its install-time window; a detached container
+    // must not retire a set the window still serves. Bars resolve everything
+    // through their current window instead.
+    return self.aperture ? self.window : self.anchor.window;
+}
 - (BOOL)reject:(NSString *)reason {
     if (![self.lastRejection isEqual:reason])
         NSLog(@"[TypeX][StatusBarGesture] rejected host=%@ gate=%@", NSProcessInfo.processInfo.processName, reason);
@@ -107,54 +92,44 @@ static UIView *DXHomeStatusAnchor(UIWindow *homeWindow) {
     return NO;
 }
 - (void)dealloc {
-    UIWindow *window = _window;
     NSArray *recognizers = _recognizers;
-    if (NSThread.isMainThread) { for (UIGestureRecognizer *gesture in recognizers) { gesture.enabled = NO; [window removeGestureRecognizer:gesture]; } }
-    else dispatch_async(dispatch_get_main_queue(), ^{ for (UIGestureRecognizer *gesture in recognizers) { gesture.enabled = NO; [window removeGestureRecognizer:gesture]; } });
+    if (NSThread.isMainThread) { for (UIGestureRecognizer *gesture in recognizers) gesture.enabled = NO; }
+    else dispatch_async(dispatch_get_main_queue(), ^{ for (UIGestureRecognizer *gesture in recognizers) gesture.enabled = NO; });
 }
 - (void)invalidate {
     if (!NSThread.isMainThread) return;
+    UIView *anchor = self.anchor;
     for (UIGestureRecognizer *gesture in self.recognizers) {
         gesture.enabled = NO;
         gesture.delegate = nil;
         objc_setAssociatedObject(gesture, &DXStatusSessionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [self.window removeGestureRecognizer:gesture];
+        [anchor removeGestureRecognizer:gesture];
     }
     self.recognizers = @[];
     self.window = nil;
 }
 - (BOOL)available {
     if (!NSThread.isMainThread) return NO;
-    if (!self.window || self.window.hidden) return [self reject:@"window"];
-    if (self.homeScreen) {
-        // Appearance is authoritative once observed. SpringBoard's display
-        // and touch windows need not share UIKit's key-window role.
-        if (!DXIsHomeScreenWindow(self.window) ||
-            (self.homeAppearanceKnown ? !self.homeVisible : !self.window.isKeyWindow)) return [self reject:@"home-inactive-window"];
-        self.anchor = DXHomeStatusAnchor(self.window);
-        if (!self.anchor) return [self reject:@"home-statusbar"];
-    }
-    // The island anchor is only the install-time container; touch-time
-    // resolution owns the receiver, so a swapped or released instance and its
-    // geometry must not gate the window-level gesture.
-    if (!self.aperture && !self.homeScreen && (!self.anchor || self.anchor.window != self.window)) return [self reject:@"window"];
+    UIWindow *window = self.touchWindow;
+    if (!window || window.hidden) return [self reject:@"window"];
     BOOL springBoard = [NSProcessInfo.processInfo.processName isEqual:@"SpringBoard"];
     if (springBoard) {
         if (![DXGlobalPanel deviceUnlocked] || [DXGlobalPanel.sharedInstance isVisible]) return [self reject:@"lock/panel"];
     } else if (UIApplication.sharedApplication.applicationState != UIApplicationStateActive) return [self reject:@"inactive-app"];
-    if (!self.aperture) for (UIView *view = self.anchor; view; view = view.superview) if (view.hidden || view.alpha < 0.01) return [self reject:@"hidden-anchor"];
-    UIWindowScene *scene = self.window.windowScene;
+    if (!self.aperture)
+        for (UIView *view = self.anchor; view; view = view.superview) if (view.hidden || view.alpha < 0.01) return [self reject:@"hidden-anchor"];
+    UIWindowScene *scene = window.windowScene;
     if (scene && scene.activationState != UISceneActivationStateForegroundActive) return [self reject:@"inactive-scene"];
     DXPrefsManager *manager = DXPrefsManager.sharedInstance;
     if (!manager.preferencesAvailable) [manager reload];
     if (!manager.preferencesAvailable || !DXKeyboardPanelBool(manager.prefs, kEnabledkey, YES) || !DXStatusBarFlag(manager.prefs[kDXStatusBarEnabled])) return [self reject:@"preferences/enabled"];
-    UIInterfaceOrientation orientation = self.window.windowScene.interfaceOrientation;
+    UIInterfaceOrientation orientation = window.windowScene.interfaceOrientation;
     BOOL landscape = UIInterfaceOrientationIsLandscape(orientation) ||
-        (orientation == UIInterfaceOrientationUnknown && self.window.bounds.size.width > self.window.bounds.size.height);
+        (orientation == UIInterfaceOrientationUnknown && window.bounds.size.width > window.bounds.size.height);
     if (landscape && !DXStatusBarFlag(manager.prefs[kDXStatusBarLandscape])) return [self reject:@"landscape-disabled"];
     if (!self.aperture) {
-        CGRect frame = [self.anchor convertRect:self.anchor.bounds toView:self.window];
-        if (CGRectIsEmpty(frame) || CGRectIsEmpty(CGRectIntersection(frame, self.window.bounds))) return [self reject:@"geometry"];
+        CGRect frame = [self.anchor convertRect:self.anchor.bounds toView:window];
+        if (CGRectIsEmpty(frame) || CGRectIsEmpty(CGRectIntersection(frame, window.bounds))) return [self reject:@"geometry"];
     }
     return YES;
 }
@@ -202,7 +177,8 @@ static UIView *DXHomeStatusAnchor(UIWindow *homeWindow) {
     DXStatusGestureSession *previous = objc_getAssociatedObject(gesture, &DXStatusSessionKey);
     objc_setAssociatedObject(gesture, &DXStatusSessionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (![self available]) return NO;
-    if (touch.window != self.window) return [self reject:@"window-mismatch"];
+    UIWindow *host = self.touchWindow;
+    if (touch.window != host) return [self reject:@"window-mismatch"];
     NSString *kind = objc_getAssociatedObject(gesture, &DXStatusKindKey);
     // SpringBoard swaps island container instances between presentation modes.
     // The receiver is resolved per touch; binding to the install-time anchor
@@ -210,18 +186,14 @@ static UIView *DXHomeStatusAnchor(UIWindow *homeWindow) {
     UIView *receiver = self.anchor;
     BOOL apertureTap = NO;
     if (self.aperture && [kind isEqual:@"tap"])
-        for (UIView *view = touch.view; view && view != self.window; view = view.superview)
+        for (UIView *view = touch.view; view && view != host; view = view.superview)
             if (DXIsApertureView(view)) { apertureTap = YES; receiver = view; }
     if (self.aperture && !apertureTap) return [self reject:@"aperture-container"];
-    if (!DXStatusReceiverVisible(receiver, self.homeScreen ? receiver.window : self.window)) return [self reject:@"hidden-receiver"];
-    // Only an explicitly configured island tap can replace its native action.
-    // The ordinary status-bar handler must not dispatch the same island touch.
-    for (UIView *view = touch.view; view && view != self.window; view = view.superview) {
+    if (!DXStatusReceiverVisible(receiver, self.aperture ? host : receiver.window)) return [self reject:@"hidden-receiver"];
+    // Only a control strictly below the bar defers to its own native action;
+    // a view-hosted set never sees touches outside the bar in the first place.
+    for (UIView *view = touch.view; view && view != receiver; view = view.superview) {
         if (!apertureTap && ([view isKindOfClass:UIControl.class] || [NSStringFromClass(view.class) containsString:@"Aperture"])) return [self reject:@"native-control"];
-        if (self.homeScreen) {
-            Class icon = NSClassFromString(@"SBIconView");
-            if (icon && [icon isSubclassOfClass:UIView.class] && [view isKindOfClass:icon]) return [self reject:@"home-icon"];
-        }
     }
     NSString *region;
     if (self.aperture) {
@@ -240,22 +212,24 @@ static UIView *DXHomeStatusAnchor(UIWindow *homeWindow) {
     if ([kind isEqual:@"doubletap"] && touch.tapCount > 1 && previous &&
         (![previous.region isEqual:region] || ![previous.preferences isEqual:preferences])) return NO;
     DXStatusGestureSession *session = [DXStatusGestureSession new];
-    session.region = region; session.window = self.window; session.receiver = receiver; session.touchView = touch.view; session.preferences = [preferences copy];
-    session.frame = self.aperture ? touch.window.bounds : [self.anchor convertRect:self.anchor.bounds toView:self.window];
+    session.region = region; session.window = host; session.receiver = receiver; session.touchView = touch.view; session.preferences = [preferences copy];
+    session.frame = self.aperture ? touch.window.bounds : [self.anchor convertRect:self.anchor.bounds toView:host];
     objc_setAssociatedObject(gesture, &DXStatusSessionKey, session, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    NSLog(@"[TypeX][StatusBarGesture] touch host=%@ slot=%@ view=%@ receiver=%@ window=%@ display=%@", NSProcessInfo.processInfo.processName,
+    NSLog(@"[TypeX][StatusBarGesture] touch host=%@ slot=%@ view=%@ receiver=%@ window=%@", NSProcessInfo.processInfo.processName,
         DXStatusBarSlot(region, kind) ?: [region stringByAppendingString:@".horizontal"], NSStringFromClass(touch.view.class),
-        NSStringFromClass(receiver.class), NSStringFromClass(touch.window.class), NSStringFromClass(receiver.window.class));
+        NSStringFromClass(receiver.class), NSStringFromClass(touch.window.class));
     return YES;
 }
 - (BOOL)sessionIsCurrent:(DXStatusGestureSession *)session {
-    return session && !session.dispatched && [self available] && session.window == self.window &&
-        DXStatusReceiverVisible(session.receiver, self.homeScreen ? session.receiver.window : self.window) &&
-        (!self.homeScreen || (session.receiver == self.anchor && session.touchView.window == self.window)) &&
+    if (!session || session.dispatched) return NO;
+    UIWindow *host = self.touchWindow;
+    return [self available] && session.window == host &&
+        DXStatusReceiverVisible(session.receiver, self.aperture ? host : session.receiver.window) &&
+        session.touchView.window == session.receiver.window &&
         [session.preferences isEqual:DXPrefsManager.sharedInstance.prefs] &&
         // A new touch resolves the current island container. An in-flight
         // touch must keep its receiver attached, without pinning its frame.
-        (self.aperture || CGRectEqualToRect(session.frame, [self.anchor convertRect:self.anchor.bounds toView:self.window]));
+        (self.aperture || CGRectEqualToRect(session.frame, [self.anchor convertRect:self.anchor.bounds toView:host]));
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldRequireFailureOfGestureRecognizer:(UIGestureRecognizer *)other {
     NSString *kind = objc_getAssociatedObject(gesture, &DXStatusKindKey);
@@ -276,9 +250,9 @@ static UIView *DXHomeStatusAnchor(UIWindow *homeWindow) {
     DXStatusGestureSession *session = objc_getAssociatedObject(gesture, &DXStatusSessionKey);
     if (![self sessionIsCurrent:session]) return NO;
     UIView *view = other.view;
-    UIView *touchReceiver = self.homeScreen ? session.touchView : session.receiver;
-    if (!view || (view != self.window && view.window != self.window) ||
-        !(view == self.window || [view isDescendantOfView:touchReceiver] || [touchReceiver isDescendantOfView:view])) return NO;
+    UIView *touchReceiver = session.receiver;
+    if (!view || !(view == self.touchWindow || view.window == self.touchWindow) ||
+        !(view == touchReceiver || [view isDescendantOfView:touchReceiver] || [touchReceiver isDescendantOfView:view])) return NO;
     BOOL configured = [kind isEqual:@"horizontal"] ?
         ([self hasAction:@"leftswipe" region:session.region preferences:session.preferences] ||
          [self hasAction:@"rightswipe" region:session.region preferences:session.preferences]) :
@@ -294,7 +268,7 @@ static UIView *DXHomeStatusAnchor(UIWindow *homeWindow) {
     if (![self available]) return NO;
     if (![gesture isKindOfClass:UIPanGestureRecognizer.class]) return YES;
     DXStatusGestureSession *session = objc_getAssociatedObject(gesture, &DXStatusSessionKey);
-    CGPoint delta = [(UIPanGestureRecognizer *)gesture translationInView:self.window];
+    CGPoint delta = [(UIPanGestureRecognizer *)gesture translationInView:self.touchWindow];
     if (!isfinite(delta.x) || !isfinite(delta.y) || fabs(delta.x) < fabs(delta.y) * 1.5 || delta.x == 0) return NO;
     NSString *direction = delta.x < 0 ? @"leftswipe" : @"rightswipe";
     if (!session || ![self hasAction:direction region:session.region preferences:session.preferences]) return NO;
@@ -305,7 +279,7 @@ static UIView *DXHomeStatusAnchor(UIWindow *homeWindow) {
     if (![objc_getAssociatedObject(gesture, &DXStatusKindKey) isEqual:@"horizontal"] ||
         objc_getAssociatedObject(other, &DXStatusKindKey) || ![other isKindOfClass:UIPanGestureRecognizer.class]) return NO;
     DXStatusGestureSession *session = objc_getAssociatedObject(gesture, &DXStatusSessionKey);
-    CGPoint delta = [(UIPanGestureRecognizer *)gesture translationInView:self.window];
+    CGPoint delta = [(UIPanGestureRecognizer *)gesture translationInView:self.touchWindow];
     return session && [self available] && isfinite(delta.x) && isfinite(delta.y) && delta.x != 0 &&
         fabs(delta.x) >= fabs(delta.y) * 1.5 && [self hasAction:delta.x < 0 ? @"leftswipe" : @"rightswipe"
             region:session.region preferences:session.preferences];
@@ -316,7 +290,7 @@ static UIView *DXHomeStatusAnchor(UIWindow *homeWindow) {
     DXStatusGestureSession *session = objc_getAssociatedObject(gesture, &DXStatusSessionKey);
     if (![self sessionIsCurrent:session]) return;
     if ([kind isEqual:@"horizontal"]) {
-        CGPoint delta = [(UIPanGestureRecognizer *)gesture translationInView:self.window];
+        CGPoint delta = [(UIPanGestureRecognizer *)gesture translationInView:self.touchWindow];
         if (!isfinite(delta.x) || !isfinite(delta.y) || fabs(delta.x) < 28 || fabs(delta.x) < fabs(delta.y) * 1.5) return;
         kind = delta.x < 0 ? @"leftswipe" : @"rightswipe";
         if (![session.horizontalDirection isEqual:kind]) return;
@@ -330,9 +304,10 @@ static UIView *DXHomeStatusAnchor(UIWindow *homeWindow) {
         UIImpactFeedbackGenerator *feedback = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
         [feedback impactOccurred];
     }
-    UIInterfaceOrientation orientation = self.window.windowScene.interfaceOrientation;
+    UIWindow *window = self.touchWindow;
+    UIInterfaceOrientation orientation = window.windowScene.interfaceOrientation;
     BOOL landscape = UIInterfaceOrientationIsLandscape(orientation) ||
-        (orientation == UIInterfaceOrientationUnknown && self.window.bounds.size.width > self.window.bounds.size.height);
+        (orientation == UIInterfaceOrientationUnknown && window.bounds.size.width > window.bounds.size.height);
     DXRequestStatusBarGesture(slot, selector, landscape, ^(DXSystemOpenResult result) {
         NSLog(@"[TypeX][StatusBarGesture] result host=%@ slot=%@ status=%llu", NSProcessInfo.processInfo.processName, slot, (unsigned long long)result);
     });
@@ -340,39 +315,30 @@ static UIView *DXHomeStatusAnchor(UIWindow *homeWindow) {
 @end
 
 static void DXInstallStatusGestures(UIView *view) {
-    if (!NSThread.isMainThread || (!DXIsStatusView(view) && !DXIsApertureView(view) && !DXIsHomeScreenWindow(view))) return;
+    if (!NSThread.isMainThread || (!DXIsStatusView(view) && !DXIsApertureView(view))) return;
     if (!DXStatusHandlers) DXStatusHandlers = [NSHashTable weakObjectsHashTable];
     BOOL aperture = DXIsApertureView(view);
-    BOOL homeScreen = DXIsHomeScreenWindow(view);
     UIView *anchor = view;
     for (UIView *parent = view.superview; parent; parent = parent.superview)
         if (aperture ? DXIsApertureView(parent) : DXIsStatusView(parent)) anchor = parent;
-    // Island and desktop receivers are owned by their windows. Displayed
-    // status-bar/container instances can be replaced independently of them.
-    // UIKit's UIView.window reads an ivar that stays nil for a UIWindow
-    // itself, and the desktop receiver is that window, so its host must not
-    // be recovered through the property.
-    UIWindow *hostWindow = anchor.window;
-    if (homeScreen && !hostWindow) hostWindow = (UIWindow *)anchor;
-    if ((aperture || homeScreen) && !hostWindow) return;
-    id owner = (aperture || homeScreen) ? (id)hostWindow : (id)anchor;
-    const void *key = homeScreen ? &DXStatusHomeHandlerKey : (aperture ? &DXStatusApertureHandlerKey : &DXStatusHandlerKey);
-    DXStatusGestureHandler *handler = objc_getAssociatedObject(owner, key);
+    if (!anchor.window) return;
     // A core can enter the window before its wrapper. Retire its earlier set
     // when the enclosing wrapper arrives, regardless of hook/scan order.
-    if (!aperture && !homeScreen && anchor.window) for (DXStatusGestureHandler *existing in DXStatusHandlers.allObjects) {
+    if (!aperture) for (DXStatusGestureHandler *existing in DXStatusHandlers.allObjects) {
         UIView *oldAnchor = existing.anchor;
-        if (!existing.aperture && !existing.homeScreen && oldAnchor != anchor && [oldAnchor isDescendantOfView:anchor]) {
+        if (!existing.aperture && oldAnchor != anchor && [oldAnchor isDescendantOfView:anchor]) {
             [existing invalidate];
             objc_setAssociatedObject(oldAnchor, &DXStatusHandlerKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
     }
-    if (handler && handler.window == hostWindow) return;
-    [handler invalidate];
-    objc_setAssociatedObject(owner, key, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    if (!hostWindow) return;
-    handler = [DXStatusGestureHandler new]; handler.anchor = anchor; handler.window = hostWindow; handler.aperture = aperture;
-    handler.homeScreen = homeScreen;
+    id owner = aperture ? (id)anchor.window : (id)anchor;
+    const void *key = aperture ? &DXStatusApertureHandlerKey : &DXStatusHandlerKey;
+    DXStatusGestureHandler *handler = objc_getAssociatedObject(owner, key);
+    // Bars bind recognizers to the view itself, so an existing handler already
+    // survived every window move; only a first install creates the set.
+    if (handler) { [handler refresh]; return; }
+    handler = [DXStatusGestureHandler new]; handler.anchor = anchor; handler.window = anchor.window;
+    handler.aperture = aperture;
     NSMutableArray *recognizers = [NSMutableArray array];
     for (NSString *kind in aperture ? @[@"tap"] : @[@"tap", @"doubletap", @"longpress", @"horizontal"]) {
         UIGestureRecognizer *gesture;
@@ -396,14 +362,15 @@ static void DXInstallStatusGestures(UIView *view) {
     handler.recognizers = recognizers;
     objc_setAssociatedObject(owner, key, handler, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [DXStatusHandlers addObject:handler];
-    for (UIGestureRecognizer *gesture in recognizers) [hostWindow addGestureRecognizer:gesture];
+    UIView *gestureHost = aperture ? (UIView *)anchor.window : anchor;
+    for (UIGestureRecognizer *gesture in recognizers) [gestureHost addGestureRecognizer:gesture];
     [handler refresh];
     NSLog(@"[TypeX][StatusBarGesture] installed host=%@ view=%@ window=%@", NSProcessInfo.processInfo.processName,
-        NSStringFromClass(anchor.class), NSStringFromClass(hostWindow.class));
+        NSStringFromClass(anchor.class), NSStringFromClass(anchor.window.class));
 }
 
 static void DXScanStatusViews(UIView *view) {
-    if (DXIsStatusView(view) || DXIsApertureView(view) || DXIsHomeScreenWindow(view)) DXInstallStatusGestures(view);
+    if (DXIsStatusView(view) || DXIsApertureView(view)) DXInstallStatusGestures(view);
     for (UIView *child in view.subviews) DXScanStatusViews(child);
 }
 
@@ -493,30 +460,6 @@ static void DXTryStatusHooks(void) {
     }
 }
 
-void DXStatusBarHomeScreenDidAppear(UIWindow *window) {
-    if (!NSThread.isMainThread || !DXIsHomeScreenWindow(window)) return;
-    DXTryStatusHooks();
-    DXScanStatusViews(window);
-    DXStatusGestureHandler *handler = objc_getAssociatedObject(window, &DXStatusHomeHandlerKey);
-    if (!handler) return;
-    if (!handler.homeAppearanceKnown || !handler.homeVisible)
-        NSLog(@"[TypeX][StatusBarGesture] desktop visible=1 window=%@", NSStringFromClass(window.class));
-    handler.homeAppearanceKnown = YES;
-    handler.homeVisible = YES;
-    [handler refresh];
-}
-
-void DXStatusBarHomeScreenWillDisappear(UIWindow *window) {
-    if (!NSThread.isMainThread || !DXIsHomeScreenWindow(window)) return;
-    DXStatusGestureHandler *handler = objc_getAssociatedObject(window, &DXStatusHomeHandlerKey);
-    if (!handler) return;
-    if (!handler.homeAppearanceKnown || handler.homeVisible)
-        NSLog(@"[TypeX][StatusBarGesture] desktop visible=0 window=%@", NSStringFromClass(window.class));
-    handler.homeAppearanceKnown = YES;
-    handler.homeVisible = NO;
-    [handler refresh];
-}
-
 void DXStartStatusBarGestures(void) {
     if (!DXStatusBarHostAllowed(NSProcessInfo.processInfo.processName, NSBundle.mainBundle.bundleURL.pathExtension)) return;
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -526,8 +469,8 @@ void DXStartStatusBarGestures(void) {
             NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
             for (NSString *name in @[UIWindowDidBecomeVisibleNotification, UIWindowDidBecomeKeyNotification]) {
                 [center addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
-                    // System bars may load late; the desktop can also regain
-                    // key status without its window becoming visible again.
+                    // System bars may load late or re-parent between windows;
+                    // scans recover instances the didMoveToWindow hooks missed.
                     DXTryStatusHooks();
                     if ([note.object isKindOfClass:UIWindow.class]) DXScanStatusViews(note.object);
                 }];
