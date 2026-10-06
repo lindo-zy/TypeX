@@ -47,6 +47,7 @@
 @property(nonatomic, assign) CGFloat scale;
 @property(nonatomic, assign) NSInteger columns;
 @property(nonatomic, assign) BOOL topAnchored;
+@property(nonatomic, assign) BOOL dockPresentation;
 @property(nonatomic, assign) NSTimeInterval lastOpen;
 - (void)layout;
 - (void)showMessage:(NSString *)message;
@@ -144,12 +145,25 @@ static BOOL DXGlobalPanelHasForegroundApplication(BOOL *known) {
         [self layout];
         return;
     }
+    if (self.dockPresentation &&
+        ([name isEqual:UIApplicationWillResignActiveNotification] ||
+         [name isEqual:UISceneWillDeactivateNotification] || [name isEqual:@"switcher-transition"])) {
+        NSLog(@"[TypeX][GlobalPanel] keep origin=dockgesture reason=%@", name);
+        return;
+    }
     [self dismissForReason:name ?: @"interruption"];
 }
 - (void)systemStateChanged:(NSString *)name {
     if (!NSThread.isMainThread || ![self isVisible]) return;
     if ([name isEqual:@"com.apple.springboard.lockstate"] && [DXGlobalPanel deviceUnlocked]) return;
     if ([name isEqual:@"com.apple.springboard.frontmostapplicationchanged"]) {
+        // Dock presentations are explicitly dismissed by the user, not by
+        // delayed/ambiguous Home or app-transition signals. No private query
+        // result (including unavailable/throwing APIs) may revoke this policy.
+        if (self.dockPresentation) {
+            NSLog(@"[TypeX][GlobalPanel] keep origin=dockgesture reason=%@", name);
+            return;
+        }
         BOOL known = NO;
         BOOL foreground = DXGlobalPanelHasForegroundApplication(&known);
         // A delayed return-to-Home notification must not dismiss a panel just
@@ -157,6 +171,17 @@ static BOOL DXGlobalPanelHasForegroundApplication(BOOL *known) {
         if (known && !foreground) return;
     }
     [self dismissForReason:name];
+}
+- (void)systemTransitionBegan {
+    [self interrupted:[NSNotification notificationWithName:@"switcher-transition" object:nil]];
+}
+- (void)preparePresentationForOrigin:(NSString *)origin {
+    // A panel-to-panel action inherits the initiating gesture's policy.
+    BOOL dock = [origin isEqual:@"dockgesture"] ||
+        ([origin isEqual:@"panel-action"] && self.dockPresentation);
+    if (![origin isEqual:@"panel-action"]) self.topAnchored = [origin isEqual:@"statusbar"];
+    [self dismiss];
+    self.dockPresentation = dock;
 }
 - (NSDictionary *)definition:(NSString *)selector {
     NSDictionary *panel = DXPanelDisplayDefinition(DXPrefsManager.sharedInstance.prefs, selector);
@@ -182,8 +207,7 @@ static BOOL DXGlobalPanelHasForegroundApplication(BOOL *known) {
     self.lastOpen = now;
     // Status-bar gestures pull the panel toward the touch at the top edge;
     // in-panel switches keep the current anchor, dock stays bottom.
-    if (![origin isEqual:@"panel-action"]) self.topAnchored = [origin isEqual:@"statusbar"];
-    [self dismiss];
+    [self preparePresentationForOrigin:origin];
     [[DXKeyboardPanel sharedInstance] dismiss];
     NSDictionary *preferences = manager.prefs;
     self.snapshot = [preferences copy];
@@ -407,6 +431,7 @@ static BOOL DXGlobalPanelHasForegroundApplication(BOOL *known) {
     self.window.hidden = YES;
     self.window.rootViewController = nil; self.window = nil;
     self.panel = nil; self.scroll = nil; self.items = nil; self.snapshot = nil;
+    self.dockPresentation = NO;
     self.title = nil; self.message = nil; self.closeButton = nil; self.header = nil; self.blank = nil;
 }
 @end

@@ -5,6 +5,8 @@
 + (BOOL)deviceUnlocked;
 - (BOOL)isVisible;
 - (void)presentPanelSelector:(NSString *)selector fromWindow:(UIWindow *)window origin:(NSString *)origin;
+// System transitions may cancel pending gestures, but do not own Dock panel dismissal.
+- (void)systemTransitionBegan;
 - (void)dismiss;
 @end
 

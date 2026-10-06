@@ -240,8 +240,7 @@ static void DXInstallDockPanelGesture(UIView *dock) {
 %hook SBMainSwitcherControllerCoordinator
 - (void)layoutStateTransitionCoordinator:(id)coordinator transitionDidBeginWithTransitionContext:(id)context {
     for (DXDockPanelGestureHandler *handler in DXDockGestureHandlers.allObjects) [handler invalidated:nil];
-    if ([DXGlobalPanel.sharedInstance isVisible]) NSLog(@"[TypeX][GlobalPanel] interrupted reason=switcher-transition");
-    [[DXGlobalPanel sharedInstance] dismiss];
+    [[DXGlobalPanel sharedInstance] systemTransitionBegan];
     %orig;
 }
 %end
