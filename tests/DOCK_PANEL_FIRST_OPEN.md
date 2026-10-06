@@ -38,3 +38,12 @@
 诊断只写 syslog：`trigger request=…`、`presentation cancelled request=…`、`open … origin=dockgesture`、`interrupted reason=switcher-transition`、`close reason=… age=…`。本次不读取设备日志，真机核心功能、冷／热启动和真实仲裁均未验证。
 
 源码审查：限定上述范围，`git diff --check` 通过。自动检查：50 项 Dock 策略、110 项生产 handler 替身检查；85 项全局策略／几何、22 项生产触摸过滤、17 项生产生命周期通知检查；状态栏、面板注册表、系统控件与设置回归均通过。所有替身与 macOS 检查均不代表真实设备仲裁或冷／热启动已验证。
+
+4.3.4 发布前静态核验：源码提交 `38b23c3` 已从隔离分支合回 `dev`，在此基础上运行 `./build.sh`，两目标成功，Bark 通知成功。两个 DEB 均为 `com.lindo.typex`／`4.3.4`／`iphoneos-arm64e`，依赖 firmware >=15.0；tweak 与设置二进制均含 arm64／arm64e，注入过滤器、设置资源、postinst／postrm 权限与 shell 语法通过。安装卸载只作静态审查，未实机执行。
+
+SHA256：
+
+- ios16：`118463d13cc631599a9b986f7c68e3be081f44cba0fa5b44df458be57720c420`
+- ios17：`79e38c753a50187daf62a35558b4cc105a2f8485d49d3dec0ca36c347528d390`
+
+源码分析：上述代码路径已确认，设备唯一根因未确认。编译：已确认。包结构：已确认。核心功能、实际安装卸载与冷／热启动：未验证。已知限制：私有前台查询不可用时仍采用保守关闭；真实手势仲裁需要设备验收。
