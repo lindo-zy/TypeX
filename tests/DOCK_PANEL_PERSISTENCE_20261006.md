@@ -23,3 +23,10 @@
 诊断仅使用 syslog：`keep origin=dockgesture reason=...` 表示忽略的系统通知；`close reason=... age=...` 表示实际关闭。无设备日志文件。
 
 源码分析：上述关闭路径和修复策略已确认；设备触发路径未确认。核心功能、冷/热启动、真实安装卸载：未验证。
+
+发布前核验：源码提交 `939c646` 已合入 `dev`；随后唯一入口 `./build.sh` 双目标成功，版本自动推进 4.3.4 → 4.3.5，Bark 通知成功。`git diff --check` 通过。状态栏 174 项策略、795 项生产 handler 与 22 项 broker/sender 检查通过。两包均为 com.lindo.typex / 4.3.5 / iphoneos-arm64e，依赖 firmware >=15.0；tweak 与设置二进制含 arm64/arm64e，过滤器/设置资源存在，postinst/postrm 执行权限与语法通过。安装/升级/卸载路径仅静态审查，未实机执行。编译仅有既有链接器 `-multiply_defined is obsolete` 警告。
+
+- ios16 SHA256：`651b37b737854cc9aa6ec90d78a4f872f4ff77d6c8a6ac2418c78f4ec275fee5`
+- ios17 SHA256：`aa7f904b914eaa95d742a91ddda53acb98f9efa8de56c84f00e7e7db644f2bf1`
+
+编译：已确认。包结构：已确认。核心功能、冷/热启动：未验证；需要执行上述设备验收。
