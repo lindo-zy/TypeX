@@ -40,6 +40,13 @@ int main(void) {
         check([DXGlobalPanelNormalizedPayload(@"com.apple.mobilenotes") isEqual:@"com.apple.mobilenotes"]);
         check([DXGlobalPanelNormalizedPayload(NSNull.null) isEqual:@""]);
         check([DXGlobalPanelString(@42) isEqual:@""]);
+        CGRect fullWindow = CGRectMake(0, 0, 390, 844);
+        check(CGRectEqualToRect(DXGlobalPanelLayoutBounds(CGRectZero, fullWindow), fullWindow));
+        check(CGRectEqualToRect(DXGlobalPanelLayoutBounds(CGRectNull, fullWindow), fullWindow));
+        check(CGRectEqualToRect(DXGlobalPanelLayoutBounds(CGRectMake(0, 0, NAN, 844), fullWindow), fullWindow));
+        check(CGRectEqualToRect(DXGlobalPanelLayoutBounds(fullWindow, CGRectZero), fullWindow));
+        check(CGRectIsNull(DXGlobalPanelLayoutBounds(CGRectZero, CGRectMake(0, 0, INFINITY, 844))));
+        check(CGRectIsNull(DXGlobalPanelLayoutBounds(CGRectZero, CGRectZero)));
         // Fits content, bottom-anchored: available = 844-47-34-20 = 743.
         CGRect portrait = DXGlobalPanelFrame(CGRectMake(0, 0, 390, 844), 47, 34, 200, NO);
         check(CGRectEqualToRect(portrait, CGRectMake(10, 600, 370, 200)));

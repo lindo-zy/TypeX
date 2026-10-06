@@ -2,6 +2,20 @@
 #import <CoreGraphics/CoreGraphics.h>
 #include <math.h>
 
+// A new controller may receive a layout callback before UIKit has assigned
+// its root bounds. Its owned window already has the presentation geometry.
+static inline CGRect DXGlobalPanelLayoutBounds(CGRect root, CGRect window) {
+    if (!CGRectIsNull(root) && !CGRectIsInfinite(root) && !CGRectIsEmpty(root) &&
+        isfinite(root.origin.x) && isfinite(root.origin.y) && isfinite(root.size.width) && isfinite(root.size.height)) return root;
+    if (!CGRectIsNull(window) && !CGRectIsInfinite(window) && !CGRectIsEmpty(window) &&
+        isfinite(window.origin.x) && isfinite(window.origin.y) && isfinite(window.size.width) && isfinite(window.size.height)) return window;
+    return CGRectNull;
+}
+
+static inline CGRect DXGlobalPanelLabelFrame(CGFloat slot, CGFloat circle, CGFloat scale, CGFloat textHeight) {
+    return CGRectMake(3, 4 + circle + 2 * scale, MAX(0, slot - 6), MIN(MAX(0, textHeight), 30 * scale));
+}
+
 // contentHeight is the panel's natural content height (header + message +
 // controls + action grid). The panel fits it, stretched to a 100pt floor and
 // clamped to the on-screen space; overflow scrolls inside the panel.

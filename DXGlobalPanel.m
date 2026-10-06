@@ -47,20 +47,43 @@
 @property(nonatomic, assign) CGFloat scale;
 @property(nonatomic, assign) NSInteger columns;
 @property(nonatomic, assign) BOOL topAnchored;
+@property(nonatomic, assign) BOOL dockPresentation;
 @property(nonatomic, assign) NSTimeInterval lastOpen;
 - (void)layout;
 - (void)showMessage:(NSString *)message;
+- (void)systemStateChanged:(NSString *)name;
+- (void)dismissForReason:(NSString *)reason;
 @end
 
 @interface DXGlobalPanelController : UIViewController
 @property(nonatomic, weak) DXGlobalPanel *owner;
 @end
 @implementation DXGlobalPanelController
-- (void)viewDidLayoutSubviews { [super viewDidLayoutSubviews]; [self.owner layout]; }
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    // An old controller's trailing layout must not touch a newer panel.
+    if (self.owner.window.rootViewController == self) [self.owner layout];
+}
 @end
 
 static NSString *DXGlobalLocalized(NSString *key) {
     return [[NSBundle bundleWithPath:bundlePath] localizedStringForKey:key value:key table:nil];
+}
+
+// The same frontmost-app query is used by the local PullOver-X project.
+// nil means Home Screen; an unavailable/changed ABI is reported separately.
+static BOOL DXGlobalPanelHasForegroundApplication(BOOL *known) {
+    *known = NO;
+    id application = UIApplication.sharedApplication;
+    SEL selector = NSSelectorFromString(@"_accessibilityFrontMostApplication");
+    if (![application respondsToSelector:selector]) return NO;
+    NSMethodSignature *signature = [application methodSignatureForSelector:selector];
+    if (signature.numberOfArguments != 2 || strcmp(signature.methodReturnType, "@")) return NO;
+    @try {
+        id frontmost = ((id (*)(id, SEL))objc_msgSend)(application, selector);
+        *known = YES;
+        return frontmost != nil;
+    } @catch (__unused NSException *exception) { return NO; }
 }
 
 @implementation DXGlobalPanel
@@ -104,7 +127,62 @@ static NSString *DXGlobalLocalized(NSString *key) {
         manager.preferencesAvailable && DXKeyboardPanelBool(manager.prefs, kEnabledkey, YES) &&
         DXKeyboardPanelBool(manager.prefs, kDXPanelGlobalEnabled, YES) && [manager.prefs isEqual:self.snapshot];
 }
-- (void)interrupted:(NSNotification *)notification { (void)notification; [self dismiss]; }
+- (void)interrupted:(NSNotification *)notification {
+    if (!NSThread.isMainThread) {
+        __weak DXGlobalPanelWindow *window = self.window;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (window && self.window == window) [self interrupted:notification];
+        });
+        return;
+    }
+    if (![self isVisible]) return;
+    NSString *name = notification.name;
+    if ([name isEqual:UISceneWillDeactivateNotification] && notification.object != self.window.windowScene) return;
+    // Physical orientation/tint updates do not mean the current scene has
+    // gone away. Relayout in place; a changed preference snapshot still closes.
+    if ([name isEqual:UIDeviceOrientationDidChangeNotification] ||
+        ([name isEqual:@"typeXLayoutChanged"] && [self.snapshot isEqual:DXPrefsManager.sharedInstance.prefs])) {
+        [self layout];
+        return;
+    }
+    if (self.dockPresentation &&
+        ([name isEqual:UIApplicationWillResignActiveNotification] ||
+         [name isEqual:UISceneWillDeactivateNotification] || [name isEqual:@"switcher-transition"])) {
+        NSLog(@"[TypeX][GlobalPanel] keep origin=dockgesture reason=%@", name);
+        return;
+    }
+    [self dismissForReason:name ?: @"interruption"];
+}
+- (void)systemStateChanged:(NSString *)name {
+    if (!NSThread.isMainThread || ![self isVisible]) return;
+    if ([name isEqual:@"com.apple.springboard.lockstate"] && [DXGlobalPanel deviceUnlocked]) return;
+    if ([name isEqual:@"com.apple.springboard.frontmostapplicationchanged"]) {
+        // Dock presentations are explicitly dismissed by the user, not by
+        // delayed/ambiguous Home or app-transition signals. No private query
+        // result (including unavailable/throwing APIs) may revoke this policy.
+        if (self.dockPresentation) {
+            NSLog(@"[TypeX][GlobalPanel] keep origin=dockgesture reason=%@", name);
+            return;
+        }
+        BOOL known = NO;
+        BOOL foreground = DXGlobalPanelHasForegroundApplication(&known);
+        // A delayed return-to-Home notification must not dismiss a panel just
+        // opened there. Actual app activation and unknown state still close.
+        if (known && !foreground) return;
+    }
+    [self dismissForReason:name];
+}
+- (void)systemTransitionBegan {
+    [self interrupted:[NSNotification notificationWithName:@"switcher-transition" object:nil]];
+}
+- (void)preparePresentationForOrigin:(NSString *)origin {
+    // A panel-to-panel action inherits the initiating gesture's policy.
+    BOOL dock = [origin isEqual:@"dockgesture"] ||
+        ([origin isEqual:@"panel-action"] && self.dockPresentation);
+    if (![origin isEqual:@"panel-action"]) self.topAnchored = [origin isEqual:@"statusbar"];
+    [self dismiss];
+    self.dockPresentation = dock;
+}
 - (NSDictionary *)definition:(NSString *)selector {
     NSDictionary *panel = DXPanelDisplayDefinition(DXPrefsManager.sharedInstance.prefs, selector);
     if (panel && [panel[@"kind"] isEqual:DXPanelGestureKind]) return panel;
@@ -129,8 +207,7 @@ static NSString *DXGlobalLocalized(NSString *key) {
     self.lastOpen = now;
     // Status-bar gestures pull the panel toward the touch at the top edge;
     // in-panel switches keep the current anchor, dock stays bottom.
-    if (![origin isEqual:@"panel-action"]) self.topAnchored = [origin isEqual:@"statusbar"];
-    [self dismiss];
+    [self preparePresentationForOrigin:origin];
     [[DXKeyboardPanel sharedInstance] dismiss];
     NSDictionary *preferences = manager.prefs;
     self.snapshot = [preferences copy];
@@ -162,6 +239,8 @@ static NSString *DXGlobalLocalized(NSString *key) {
     DXGlobalPanelController *controller = [DXGlobalPanelController new];
     controller.owner = self;
     self.window.rootViewController = controller;
+    controller.view.frame = self.window.bounds;
+    controller.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     UIControl *outside = [[UIControl alloc] initWithFrame:controller.view.bounds];
     outside.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     outside.backgroundColor = [UIColor colorWithWhite:0 alpha:0.15];
@@ -266,7 +345,7 @@ static NSString *DXGlobalLocalized(NSString *key) {
 - (void)layout {
     if (!self.window || !self.panel) return;
     UIView *root = self.window.rootViewController.view;
-    CGRect bounds = root.bounds;
+    CGRect bounds = DXGlobalPanelLayoutBounds(root.bounds, self.window.bounds);
     CGFloat width = MIN(500, MAX(0, bounds.size.width - 20));
     CGFloat contentWidth = MAX(0, width - 16);
     CGFloat messageHeight = self.message.text.length ? 44 : 0;
@@ -276,7 +355,9 @@ static NSString *DXGlobalLocalized(NSString *key) {
     CGFloat contentHeight = 46 + messageHeight + controlsHeight + gridHeight + 8;
     CGRect frame = DXGlobalPanelFrame(bounds, MAX(self.window.safeAreaInsets.top, root.safeAreaInsets.top),
         MAX(self.window.safeAreaInsets.bottom, root.safeAreaInsets.bottom), contentHeight, self.topAnchored);
-    if (CGRectIsNull(frame)) { [self dismiss]; return; }
+    // Initial/transitional geometry can be empty. Let UIKit's next layout
+    // finish this same presentation instead of destroying its window.
+    if (CGRectIsNull(frame)) return;
     self.panel.frame = frame;
     CGFloat height = frame.size.height;
     self.header.frame = CGRectMake(0, 0, width, 46);
@@ -296,7 +377,8 @@ static NSString *DXGlobalLocalized(NSString *key) {
         button.circle.layer.cornerRadius = circle / 2;
         CGFloat icon = circle * 0.52;
         button.icon.frame = CGRectMake((slot - icon) / 2, 4 + (circle - icon) / 2, icon, icon);
-        button.name.frame = CGRectMake(3, circle + 9, slot - 6, 30 * self.scale);
+        CGSize labelSize = [button.name sizeThatFits:CGSizeMake(MAX(0, slot - 6), 30 * self.scale)];
+        button.name.frame = DXGlobalPanelLabelFrame(slot, circle, self.scale, labelSize.height);
     }
     CGFloat total = MAX(self.scroll.bounds.size.height, controlsHeight + gridHeight);
     self.scroll.contentSize = CGSizeMake(contentWidth, total);
@@ -333,12 +415,23 @@ static NSString *DXGlobalLocalized(NSString *key) {
     [self layout];
 }
 - (void)dismiss {
-    if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ [self dismiss]; }); return; }
+    [self dismissForReason:@"explicit"];
+}
+- (void)dismissForReason:(NSString *)reason {
+    if (!NSThread.isMainThread) {
+        __weak DXGlobalPanelWindow *window = self.window;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (window && self.window == window) [self dismissForReason:reason];
+        });
+        return;
+    }
+    if ([self isVisible]) NSLog(@"[TypeX][GlobalPanel] close reason=%@ age=%.3f", reason, NSProcessInfo.processInfo.systemUptime - self.lastOpen);
     [self.controlSession invalidate]; self.controlSession = nil;
     self.controls.actionHandler = nil; self.controls = nil;
     self.window.hidden = YES;
     self.window.rootViewController = nil; self.window = nil;
     self.panel = nil; self.scroll = nil; self.items = nil; self.snapshot = nil;
+    self.dockPresentation = NO;
     self.title = nil; self.message = nil; self.closeButton = nil; self.header = nil; self.blank = nil;
 }
 @end
@@ -351,7 +444,7 @@ void DXStartGlobalPanel(void) {
             int token = NOTIFY_TOKEN_INVALID;
             notify_register_dispatch(name.UTF8String, &token, dispatch_get_main_queue(), ^(int deliveredToken) {
                 (void)deliveredToken;
-                [[DXGlobalPanel sharedInstance] dismiss];
+                [[DXGlobalPanel sharedInstance] systemStateChanged:name];
             });
         }
     });

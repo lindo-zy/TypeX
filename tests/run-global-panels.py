@@ -22,3 +22,13 @@ with tempfile.TemporaryDirectory(prefix="typex-global-panel-tests-") as tmp:
                     "-framework", "Foundation", "-framework", "CoreGraphics", "-I", str(tmp), "-I", str(root),
                     str(root / "tests/DXDockPanelTouchTests.m"), "-o", str(touch_binary)], check=True)
     subprocess.run([str(touch_binary)], check=True, timeout=15)
+    (tmp / "UIKit/UIKit.h").write_bytes((root / "tests/UIKitDockGestureStub.h").read_bytes())
+    panel = (root / "DXGlobalPanel.m").read_text()
+    (tmp / "GlobalForeground.inc").write_text(panel[panel.index("static BOOL DXGlobalPanelHasForegroundApplication"):panel.index("@implementation DXGlobalPanel\n")])
+    (tmp / "GlobalInterruptions.inc").write_text(panel[panel.index("- (void)interrupted:"):panel.index("- (NSDictionary *)definition:")])
+    lifecycle = tmp / "global-panel-lifecycle"
+    subprocess.run(["xcrun", "clang", "-fobjc-arc", "-fblocks", "-Wall", "-Wextra", "-Werror",
+                    "-Wno-incomplete-implementation", "-framework", "Foundation", "-framework", "CoreGraphics",
+                    "-I", str(tmp), "-I", str(root), "-I", str(root / "tests"),
+                    str(root / "tests/DXGlobalPanelLifecycleTests.m"), "-o", str(lifecycle)], check=True)
+    subprocess.run([str(lifecycle)], check=True, timeout=15)

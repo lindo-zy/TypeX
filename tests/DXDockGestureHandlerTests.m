@@ -111,6 +111,14 @@ static void send(DXDockPanelGestureHandler *handler, UIGestureRecognizerState st
     handler.pan.state = state; handler.pan.delta = delta; [handler dockPan:handler.pan];
     if (state == UIGestureRecognizerStateEnded || state == UIGestureRecognizerStateCancelled) handler.pan.numberOfTouches = 0;
 }
+static void drainMainQueue(void) {
+    __block BOOL finished = NO;
+    dispatch_async(dispatch_get_main_queue(), ^{ finished = YES; });
+    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:1];
+    while (!finished && deadline.timeIntervalSinceNow > 0)
+        [NSRunLoop.mainRunLoop runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+    check(finished, @"main queue drained");
+}
 int main(void) {
     @autoreleasepool {
         UIWindow *window = [UIWindow new]; window.window = window; window.bounds = CGRectMake(0, 0, 300, 650);
@@ -121,14 +129,23 @@ int main(void) {
         DXInstallDockPanelGesture(dock);
         check(window.gestureRecognizers.count == 1 && handler.pan.maximumNumberOfTouches == 1, @"idempotent single-finger installation");
         start(handler, CGPointMake(0, -10)); send(handler, UIGestureRecognizerStateChanged, CGPointMake(0, -60));
-        check(panelCount == 1 && [lastPanel isEqual:@"__typex_panel_test-common"], @"legacy up opens common before release");
-        send(handler, UIGestureRecognizerStateEnded, CGPointMake(0, -80)); check(panelCount == 1, @"up does not repeat on release");
+        check(panelCount == 0, @"up never creates dismiss controls during the opening touch");
+        UIPanGestureRecognizer *upNative = [UIPanGestureRecognizer new];
+        check([handler gestureRecognizer:handler.pan shouldBeRequiredToFailByGestureRecognizer:upNative], @"configured up receives background-pan precedence");
+        check(![handler gestureRecognizer:handler.pan shouldRecognizeSimultaneouslyWithGestureRecognizer:upNative], @"up does not also start a SpringBoard transition");
+        send(handler, UIGestureRecognizerStateEnded, CGPointMake(0, -80));
+        check(panelCount == 0, @"up waits until UIKit finishes release delivery");
+        drainMainQueue();
+        check(panelCount == 1 && [lastPanel isEqual:@"__typex_panel_test-common"], @"up opens common after release");
+        send(handler, UIGestureRecognizerStateEnded, CGPointMake(0, -80)); drainMainQueue();
+        check(panelCount == 1, @"up does not repeat on duplicate release");
         panelVisible = NO;
         manager.prefs = @{kDXPanels: DXTestGesturePanels(), kDXPanelDockSwipeEnabled: @NO, kDXDockRightSwipeEnabled: @YES,
             kDXDockGestureBindings: @{@"right": @"__typex_panel_test-right"}};
         start(handler, CGPointMake(10, 0)); send(handler, UIGestureRecognizerStateChanged, CGPointMake(60, 0));
         check(panelCount == 1, @"right panel waits for release");
         send(handler, UIGestureRecognizerStateEnded, CGPointMake(60, 0));
+        drainMainQueue();
         check(panelCount == 2 && [lastPanel isEqual:@"__typex_panel_test-right"], @"right swipe opens right profile");
         panelVisible = NO;
         NSDictionary *action = @{@"selector": @"__typex_link_action_app", @"type": @"openapp", @"link": @"com.apple.mobilenotes"};
@@ -173,6 +190,32 @@ int main(void) {
         check([handler gestureRecognizer:handler.pan shouldReceiveTouch:touchFor(dock)], @"configured left touch tracked");
         handler.pan.delta = CGPointMake(10, 0);
         check(![handler gestureRecognizerShouldBegin:handler.pan], @"unassigned right relinquishes recognition");
+        manager.prefs = @{kDXPanels: DXTestGesturePanels(), kDXDockGestureBindings: @{@"up": @"__typex_panel_test-common"}};
+        NSDictionary *panelPreferences = manager.prefs;
+        start(handler, CGPointMake(0, -10)); send(handler, UIGestureRecognizerStateChanged, CGPointMake(0, -60));
+        send(handler, UIGestureRecognizerStateCancelled, CGPointMake(0, -60)); drainMainQueue();
+        check(panelCount == 2, @"cancelled up cannot leave a visible panel");
+        for (NSUInteger mutation = 0; mutation < 8; mutation++) {
+            start(handler, CGPointMake(0, -10)); send(handler, UIGestureRecognizerStateEnded, CGPointMake(0, -60));
+            switch (mutation) {
+                case 0: [handler invalidated:nil]; break;
+                case 1: manager.prefs = @{}; break;
+                case 2: dock.originInWindow = CGPointMake(1, 500); break;
+                case 3: window.bounds = CGRectMake(0, 0, 301, 650); break;
+                case 4: unlocked = NO; break;
+                case 5: panelVisible = YES; break;
+                case 6: dock.hidden = YES; break;
+                case 7: // A newer eligible touch replaces the queued request.
+                    check([handler gestureRecognizer:handler.pan shouldReceiveTouch:touchFor(dock)], @"new touch replaces queued presentation");
+                    break;
+            }
+            drainMainQueue(); check(panelCount == 2, @"stale queued presentation cancelled");
+            manager.prefs = panelPreferences; dock.originInWindow = CGPointMake(0, 500);
+            window.bounds = CGRectMake(0, 0, 300, 650); unlocked = YES; panelVisible = NO; dock.hidden = NO;
+        }
+        start(handler, CGPointMake(0, -10)); send(handler, UIGestureRecognizerStateEnded, CGPointMake(0, -60)); drainMainQueue();
+        check(panelCount == 3, @"fresh gesture works after every cancellation path"); panelVisible = NO;
+        manager.prefs = baseline;
         start(handler, CGPointMake(-10, 0)); dock.window = nil; DXInstallDockPanelGesture(dock);
         check(window.gestureRecognizers.count == 0 && !handler.sourceWindow, @"detach removes recognizer and session");
         check(!objc_getAssociatedObject(dock, &DXDockPanelHandlerKey), @"detach removes owner association");
