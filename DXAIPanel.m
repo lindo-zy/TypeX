@@ -370,6 +370,14 @@ static CGRect DXAIProbeKeyboardFrame(void) {
 // 焦点落进输入框（textViewDidBeginEditing）即解除；聚焦没落成时由 0.80s
 // 兜底解除。
 @property (nonatomic, assign) BOOL openingFocusTransition;
+// 相册/文件选择器呈现中标志：presentModalController 为给选择器让路会主动
+// resign 面板输入框，这次收键盘同样是自导的——空会话面板若照常执行"键盘
+// 收起即关闭"，会在 presentViewController 之前把自己销毁，选择器落在已脱离
+// 窗口层级的控制器上被 UIKit 静默拒绝，表现为"点相册/文件没反应"。呈现前
+// 置位，选择器回调收尾（四个 delegate 全覆盖：PHPicker 取消走 didFinishPicking
+// 空结果、UIDocumentPicker 取消走 wasCancelled）即解除；用户重新聚焦输入框
+// 时全屏模态必然已不在，textViewDidBeginEditing 兜底清除防陈旧标志。
+@property (nonatomic, assign) BOOL presentingAttachmentPicker;
 
 - (void)applySeedText;
 - (void)refreshModelButton;
@@ -833,6 +841,7 @@ static CGRect DXAIProbeKeyboardFrame(void) {
 - (void)textViewDidBeginEditing:(UITextView *)textView {
     if (textView != self.inputField) return;
     self.openingFocusTransition = NO;
+    self.presentingAttachmentPicker = NO; // 能重新聚焦输入框，全屏选择器必然已不在
 }
 
 - (void)inputFieldTextChanged {
@@ -898,6 +907,7 @@ static CGRect DXAIProbeKeyboardFrame(void) {
 // 消息）时置钉扎，卡片保持在键盘上方原位，不随键盘下坠重定位。
 - (void)hideIfEmptyOnKeyboardHide {
     if (self.openingFocusTransition) return; // 抢焦点自导的键盘 hide，非用户收起
+    if (self.presentingAttachmentPicker) return; // 选择器呈现中收键盘是呈现准备，非用户收起
     if (self.messages.count > 0 || self.streaming) {
         self.pinnedAfterKeyboardHide = YES;
         return;
@@ -1425,6 +1435,9 @@ static CGRect DXAIProbeKeyboardFrame(void) {
 - (void)presentModalController:(UIViewController *)controller {
     if (!self.view.window) return;
     [self dismissPopover];
+    // 先置自导过渡标志再收键盘：WillHide 在 resign 内同步到达，空会话面板
+    // 若不豁免会抢在呈现前销毁窗口，选择器永远弹不出来。
+    self.presentingAttachmentPicker = YES;
     [self.view.window makeKeyWindow];
     if (self.inputField.isFirstResponder) [self.inputField resignFirstResponder];
     [self presentViewController:controller animated:YES completion:nil];
@@ -1457,6 +1470,7 @@ static CGRect DXAIProbeKeyboardFrame(void) {
 }
 
 - (void)picker:(PHPickerViewController *)picker didFinishPicking:(NSArray<PHPickerResult *> *)results {
+    self.presentingAttachmentPicker = NO; // 取消（下滑）也走这里：空 results 视为结束
     [picker dismissViewControllerAnimated:YES completion:nil];
     PHPickerResult *result = results.firstObject;
     if (!result.itemProvider) return;
@@ -1473,16 +1487,19 @@ static CGRect DXAIProbeKeyboardFrame(void) {
 }
 
 - (void)imagePickerController:(UIImagePickerController *)picker didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> *)info {
+    self.presentingAttachmentPicker = NO;
     UIImage *image = info[UIImagePickerControllerOriginalImage];
     [picker dismissViewControllerAnimated:YES completion:nil];
     if (image) [self updateAttachedImage:image];
 }
 
 - (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
+    self.presentingAttachmentPicker = NO;
     [picker dismissViewControllerAnimated:YES completion:nil];
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+    self.presentingAttachmentPicker = NO;
     [controller dismissViewControllerAnimated:YES completion:nil];
     NSURL *url = urls.firstObject;
     if (!url) return;
@@ -1508,6 +1525,7 @@ static CGRect DXAIProbeKeyboardFrame(void) {
 }
 
 - (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller {
+    self.presentingAttachmentPicker = NO;
     [controller dismissViewControllerAnimated:YES completion:nil];
 }
 
@@ -1596,6 +1614,10 @@ static void DXAIInstallKeyboardFrameTracking(void) {
             // resign 后键盘为面板重绑，期间的 frame 变化不驱动重定位——卡片
             // 保持在既有位置，焦点落定后的重弹/兜底重定位自然收口。
             if (controller.openingFocusTransition) return;
+
+            // 选择器呈现中同理：resign 引发的 hide 方向 frame 变化不驱动
+            // 重定位，避免卡片在转场画面后面坠向悬空位再被选择器盖住。
+            if (controller.presentingAttachmentPicker) return;
 
             // 本次 frame 变化是"键盘收起"且会话有输出：钉在键盘上方原位，
             // 不做随键盘下坠的动画重定位（有输出空判关闭走 WillHide 观察者）。
