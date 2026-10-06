@@ -1,6 +1,7 @@
 #import "DXPKeyboardPanelPreviewView.h"
 #import "../DXKeyboardPanelPreferences.h"
 #import "../DXKeyboardPanelLayout.h"
+#import "../DXGlobalPanelGeometry.h"
 #import "../DXPanelSystemControlsView.h"
 #import "../DXHelper.h"
 #import "../common.h"
@@ -13,6 +14,7 @@
 @property(nonatomic, copy) NSArray<UIView *> *items;
 @property(nonatomic) NSInteger columns;
 @property(nonatomic) CGFloat scale;
+@property(nonatomic) BOOL gesturePanel;
 @end
 @implementation DXPKeyboardPanelPreviewView
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -33,6 +35,7 @@
 - (void)configureWithPreferences:(NSDictionary *)preferences panelSelector:(NSString *)selector {
     if (!NSThread.isMainThread) return;
     NSDictionary *panel = DXPanelDefinition(preferences, selector);
+    self.gesturePanel = [panel[@"kind"] isEqual:DXPanelGestureKind];
     preferences = DXPanelPreferences(preferences, selector);
     self.titleLabel.text = DXPanelString(panel[@"name"]);
     BOOL dark = DXKeyboardPanelBool(preferences, kDXPanelDark, YES);
@@ -99,7 +102,10 @@
         circle.layer.cornerRadius = circleSize / 2;
         CGFloat iconSize = circleSize * 0.52;
         [item viewWithTag:2].frame = CGRectMake((itemWidth - iconSize) / 2, 4 + (circleSize - iconSize) / 2, iconSize, iconSize);
-        [item viewWithTag:3].frame = CGRectMake(3, circleSize + 9, MAX(0, itemWidth - 6), 30 * self.scale);
+        UILabel *label = (UILabel *)[item viewWithTag:3];
+        CGSize labelSize = [label sizeThatFits:CGSizeMake(MAX(0, itemWidth - 6), 30 * self.scale)];
+        label.frame = self.gesturePanel ? DXGlobalPanelLabelFrame(itemWidth, circleSize, self.scale, labelSize.height)
+            : CGRectMake(3, circleSize + 9, MAX(0, itemWidth - 6), 30 * self.scale);
     }];
     CGFloat gridHeight = self.items.count ? DXKeyboardPanelContentHeight(self.items.count, contentWidth, self.columns, self.scale) : 0;
     self.scroll.contentSize = CGSizeMake(contentWidth, MAX(self.scroll.bounds.size.height, controlsHeight + gridHeight));
