@@ -5,6 +5,7 @@
 #import "../DXHelper.h"
 #import "../DXShortcutsGenerator.h"
 #import "../DXSettingsSearch.h"
+#import "../DXPixPinIntegration.h"
 
 static NSBundle *tweakBundle;
 
@@ -20,7 +21,12 @@ static NSBundle *tweakBundle;
 - (NSArray *)specifiers {
     if (!_specifiers) {
         NSMutableArray *loadedSpecifiers = [[self loadSpecifiersFromPlistName:@"Root" target:self] mutableCopy];
-        if ([DXShortcutsGenerator isShellXScreenshotAvailable]) {
+        // The hide-keyboard-before-screenshot toggle serves both the ShellX
+        // screenshot button and the PixPin capture actions, so it stays visible
+        // whenever either optional tweak is installed.
+        BOOL screenshotActionsInstalled = [DXShortcutsGenerator isShellXScreenshotAvailable] ||
+            DXPixPinInstalledAtPath(DX_ROOT_PATH_NS(DXPixPinDylibPath));
+        if (screenshotActionsInstalled) {
             _specifiers = loadedSpecifiers;
         } else {
             NSMutableArray *filteredSpecifiers = [NSMutableArray arrayWithCapacity:loadedSpecifiers.count];

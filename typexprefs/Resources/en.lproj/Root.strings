@@ -30,7 +30,7 @@
 
 // Screenshot
 "SHELLX_SCREENSHOT_HIDE_KEYBOARD" = "Hide Keyboard During Screenshot";
-"SHELLX_SCREENSHOT_HIDE_KEYBOARD_FOOTER" = "Off by default. When enabled, the ShellX screenshot action hides the keyboard before capturing. The keyboard is not restored afterward.";
+"SHELLX_SCREENSHOT_HIDE_KEYBOARD_FOOTER" = "Off by default. When enabled, ShellX and PixPin screenshot actions hide the keyboard before capturing. The keyboard is not restored afterward.";
 
 // Configuration backup
 "BACKUP_SECTION" = "Configuration Backup";
