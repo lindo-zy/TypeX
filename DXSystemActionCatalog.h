@@ -73,6 +73,14 @@ static inline NSDictionary *DXSystemActionDefinition(id action) {
     return nil;
 }
 
+// PixPin capture actions take a screenshot of the visible screen; cancel only
+// retracts the current task and never captures, so it skips the pre-capture
+// keyboard dismissal.
+static inline BOOL DXSystemActionIsPixPinCapture(NSString *action) {
+    NSDictionary *entry = DXSystemActionDefinition(action);
+    return entry != nil && entry[@"pixpinNotification"] != nil && ![action isEqual:@"pixpin-cancel"];
+}
+
 // A request must refer to an action actually saved in the authoritative
 // custom definitions. Never accept selectors or command strings from clients.
 static inline BOOL DXSystemActionIsConfigured(id definitions, NSString *identifier, NSString *prefix) {

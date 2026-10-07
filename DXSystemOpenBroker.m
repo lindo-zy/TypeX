@@ -12,7 +12,9 @@
 #import "DXGlobalActionExecutor.h"
 #import <notify.h>
 #import "common.h"
+#import "DXShared.h"
 #import <objc/message.h>
+#import <objc/runtime.h>
 #import <dlfcn.h>
 
 BOOL DXIsSensitiveOpenScheme(NSString *scheme) {
@@ -186,8 +188,6 @@ static void DXPerformSystemOpen(NSDictionary *request, DXSystemOpenReply reply) 
         NSDate *deadline = [NSDate dateWithTimeIntervalSince1970:created.doubleValue + DXSystemOpenRequestTTL];
         DXExecuteSensitiveURL(url, deadline, DXBeginSystemOpenOperation(), ^BOOL(NSURL *sensitiveURL) {
             return openSensitive((__bridge CFURLRef)sensitiveURL, 0);
-        }, ^DXSystemOpenResult(NSString *bundleIdentifier) {
-            return DXActivateSystemApplication(bundleIdentifier);
         }, reply);
         return;
     }
@@ -240,6 +240,25 @@ void DXRunSystemAction(NSString *identifier, DXSystemOpenReply reply) {
     if (!DXSystemActionDefinition(identifier)) {
         if (reply) dispatch_async(dispatch_get_main_queue(), ^{ reply(DXSystemOpenInvalid); });
         return;
+    }
+    // PixPin capture actions share the toolbar ShellX screenshot button timing:
+    // with the toggle on, dismiss the keyboard and let the collapse animation
+    // finish before dispatching; the keyboard is not restored. Only the keyboard
+    // process can dismiss it — SpringBoard and non-main callers dispatch straight
+    // away, and a missing active keyboard means there is nothing to hide.
+    if (DXSystemActionIsPixPinCapture(identifier) && preferencesBool(kShellXScreenshotHideKeyboardKey, NO) &&
+        !DXIsSystemOpenServerProcess() && NSThread.isMainThread) {
+        Class keyboardClass = objc_getClass("UIKeyboardImpl");
+        id activeInstance = [keyboardClass respondsToSelector:@selector(activeInstance)] ? [keyboardClass activeInstance] : nil;
+        if (activeInstance) {
+            [activeInstance dismissKeyboard];
+            NSLog(@"[TypeX][PixPin] hide-keyboard dismiss id=%@, request follows in 0.35s", identifier);
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                DXSubmitSystemOpen(@"system-action", identifier, reply);
+            });
+            return;
+        }
     }
     DXSubmitSystemOpen(@"system-action", identifier, reply);
 }
