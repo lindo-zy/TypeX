@@ -188,8 +188,6 @@ static void DXPerformSystemOpen(NSDictionary *request, DXSystemOpenReply reply) 
         NSDate *deadline = [NSDate dateWithTimeIntervalSince1970:created.doubleValue + DXSystemOpenRequestTTL];
         DXExecuteSensitiveURL(url, deadline, DXBeginSystemOpenOperation(), ^BOOL(NSURL *sensitiveURL) {
             return openSensitive((__bridge CFURLRef)sensitiveURL, 0);
-        }, ^DXSystemOpenResult(NSString *bundleIdentifier) {
-            return DXActivateSystemApplication(bundleIdentifier);
         }, reply);
         return;
     }
