@@ -1051,14 +1051,30 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 // 删除光标前一个词：tokenizer 取光标前方的词范围后走系统删除路径；取不到
-// 词边界（行首/空输入）时退化为删除一个字符。词尾紧邻字符是标点/符号时
-// 只删一个字符——tokenizer 会把整段符号当词块整块删，逐个删更符合直觉。
+// 词边界（行首/空输入）时退化为删除一个字符。光标紧邻标点/符号时只删一个
+// 字符：tokenizer 的 backward 词范围会整段跳过符号串直接返回前面的词（如
+// "hello-" 会取到 "hello"），必须先看光标前一个字符再取词，否则符号永远轮不到删。
 -(void)deleteWordAction:(UIButton*)sender{
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     BOOL deleted = NO;
     if ([delegate respondsToSelector:@selector(selectedTextRange)]) {
         UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
-        UITextRange *range = [self selectedWordTextRangeWithDelegate:delegate direction:UITextStorageDirectionBackward];
+        UITextPosition *caret = tempDelegate.selectedTextRange.start;
+        UITextPosition *prevStart = caret ? [tempDelegate positionFromPosition:caret
+                                                                  inDirection:UITextLayoutDirectionLeft offset:1] : nil;
+        NSString *prevChar = prevStart ? [tempDelegate textInRange:
+            [tempDelegate textRangeFromPosition:prevStart toPosition:caret]] : nil;
+        BOOL prevIsSymbol = prevChar.length > 0 &&
+            ![[NSCharacterSet alphanumericCharacterSet]
+                characterIsMember:[prevChar characterAtIndex:prevChar.length - 1]] &&
+            ![[NSCharacterSet whitespaceAndNewlineCharacterSet]
+                characterIsMember:[prevChar characterAtIndex:prevChar.length - 1]];
+        if (prevIsSymbol) {
+            [kbImpl deleteBackward];
+            deleted = YES;
+        }
+        UITextRange *range = prevIsSymbol ? nil :
+            [self selectedWordTextRangeWithDelegate:delegate direction:UITextStorageDirectionBackward];
         if (range && range.start && range.end && [[tempDelegate textInRange:range] length] > 0) {
             UITextPosition *lastCharStart = [tempDelegate positionFromPosition:range.start
                                                                    inDirection:UITextLayoutDirectionRight offset:1];
