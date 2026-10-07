@@ -131,36 +131,14 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
     if (self.category) {
         [self setupSymbolCollection];
     } else {
-        self.table = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
-        self.table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        self.table.dataSource = self;
-        self.table.delegate = self;
-        self.table.rowHeight = 56;
-        self.view = self.table;
+        [self setupLibraryPage];
     }
     [self refreshBackground];
     NSLog(@"[TypeX][SFSymbol] picker open category=%@ rows=%lu", self.category.identifier ?: @"library",
           (unsigned long)(self.category ? self.symbols.count : self.categories.count));
 }
 
-- (void)setupSymbolCollection {
-    self.view.backgroundColor = UIColor.systemBackgroundColor;
-    self.columnCount = DXPPreferredSymbolColumns;
-    self.searchBar = [[UISearchBar alloc] init];
-    self.searchBar.translatesAutoresizingMaskIntoConstraints = NO;
-    self.searchBar.searchBarStyle = UISearchBarStyleMinimal;
-    self.searchBar.placeholder = LOCALIZED(@"SF_SYMBOL_SEARCH");
-    self.searchBar.delegate = self;
-    self.searchBar.autocorrectionType = UITextAutocorrectionTypeNo;
-    self.searchBar.autocapitalizationType = UITextAutocapitalizationTypeNone;
-    [self.view addSubview:self.searchBar];
-    self.columnControl = [[UISegmentedControl alloc] initWithItems:@[
-        LOCALIZED(@"SF_SYMBOL_COLUMNS_ONE"), LOCALIZED(@"SF_SYMBOL_COLUMNS_TWO"),
-        LOCALIZED(@"SF_SYMBOL_COLUMNS_THREE"), LOCALIZED(@"SF_SYMBOL_COLUMNS_FOUR")]];
-    self.columnControl.translatesAutoresizingMaskIntoConstraints = NO;
-    self.columnControl.selectedSegmentIndex = self.columnCount - 1;
-    [self.columnControl addTarget:self action:@selector(columnsChanged:) forControlEvents:UIControlEventValueChanged];
-    [self.view addSubview:self.columnControl];
+- (void)setupSymbolGrid {
     UICollectionViewFlowLayout *layout = [[UICollectionViewFlowLayout alloc] init];
     self.collection = [[UICollectionView alloc] initWithFrame:CGRectZero collectionViewLayout:layout];
     self.collection.translatesAutoresizingMaskIntoConstraints = NO;
@@ -171,6 +149,74 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
     self.collection.dataSource = self;
     self.collection.delegate = self;
     [self.collection registerClass:DXPSFSymbolCell.class forCellWithReuseIdentifier:@"DXPSFSymbolCell"];
+}
+
+- (UISearchBar *)newSearchBar {
+    UISearchBar *searchBar = [[UISearchBar alloc] init];
+    searchBar.translatesAutoresizingMaskIntoConstraints = NO;
+    searchBar.searchBarStyle = UISearchBarStyleMinimal;
+    searchBar.placeholder = LOCALIZED(@"SF_SYMBOL_SEARCH");
+    searchBar.delegate = self;
+    searchBar.autocorrectionType = UITextAutocorrectionTypeNo;
+    searchBar.autocapitalizationType = UITextAutocapitalizationTypeNone;
+    return searchBar;
+}
+
+// Library home: search on the whole catalog in place — a non-empty query swaps
+// the category list for a full-library result grid, clearing restores the list.
+- (void)setupLibraryPage {
+    self.view.backgroundColor = UIColor.systemBackgroundColor;
+    self.columnCount = DXPPreferredSymbolColumns;
+    self.searchBar = [self newSearchBar];
+    [self.view addSubview:self.searchBar];
+    self.table = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
+    self.table.translatesAutoresizingMaskIntoConstraints = NO;
+    self.table.dataSource = self;
+    self.table.delegate = self;
+    self.table.rowHeight = 56;
+    self.table.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+    self.table.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
+    [self.view addSubview:self.table];
+    [self setupSymbolGrid];
+    self.collection.hidden = YES;
+    [self.view addSubview:self.collection];
+    UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
+    // Let UIKit track docked/search keyboards without notification ownership.
+    NSLayoutConstraint *tableBottom = [self.table.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor];
+    NSLayoutConstraint *gridBottom = [self.collection.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor];
+    tableBottom.priority = UILayoutPriorityDefaultHigh;
+    gridBottom.priority = UILayoutPriorityDefaultHigh;
+    [NSLayoutConstraint activateConstraints:@[
+        [self.searchBar.topAnchor constraintEqualToAnchor:safe.topAnchor],
+        [self.searchBar.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:8],
+        [self.searchBar.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-8],
+        [self.searchBar.heightAnchor constraintEqualToConstant:56],
+        [self.table.topAnchor constraintEqualToAnchor:self.searchBar.bottomAnchor constant:8],
+        [self.table.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
+        [self.table.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
+        tableBottom,
+        [self.collection.topAnchor constraintEqualToAnchor:self.searchBar.bottomAnchor constant:12],
+        [self.collection.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
+        [self.collection.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
+        gridBottom,
+        [self.table.bottomAnchor constraintLessThanOrEqualToAnchor:self.view.keyboardLayoutGuide.topAnchor],
+        [self.collection.bottomAnchor constraintLessThanOrEqualToAnchor:self.view.keyboardLayoutGuide.topAnchor],
+    ]];
+}
+
+- (void)setupSymbolCollection {
+    self.view.backgroundColor = UIColor.systemBackgroundColor;
+    self.columnCount = DXPPreferredSymbolColumns;
+    self.searchBar = [self newSearchBar];
+    [self.view addSubview:self.searchBar];
+    self.columnControl = [[UISegmentedControl alloc] initWithItems:@[
+        LOCALIZED(@"SF_SYMBOL_COLUMNS_ONE"), LOCALIZED(@"SF_SYMBOL_COLUMNS_TWO"),
+        LOCALIZED(@"SF_SYMBOL_COLUMNS_THREE"), LOCALIZED(@"SF_SYMBOL_COLUMNS_FOUR")]];
+    self.columnControl.translatesAutoresizingMaskIntoConstraints = NO;
+    self.columnControl.selectedSegmentIndex = self.columnCount - 1;
+    [self.columnControl addTarget:self action:@selector(columnsChanged:) forControlEvents:UIControlEventValueChanged];
+    [self.view addSubview:self.columnControl];
+    [self setupSymbolGrid];
     [self.view addSubview:self.collection];
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     // Let UIKit track docked/search keyboards without notification ownership.
@@ -232,6 +278,12 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
     [super viewWillAppear:animated];
     self.selectionFinished = NO;
     self.pushingCategory = NO;
+    // The home grid has no column control of its own; follow switches made in
+    // a category page so a kept-alive search shows the chosen density.
+    if (!self.category && self.columnCount != DXPPreferredSymbolColumns) {
+        self.columnCount = DXPPreferredSymbolColumns;
+        if (!self.collection.hidden) [self.collection reloadData];
+    }
     if (!self.category && !self.categories.count && !self.loading) [self loadSymbolCatalog];
     else [self refreshBackground];
 }
@@ -300,6 +352,8 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
                     // failed category read for the lifetime of Preferences.
                     DXPAvailableSymbolCategories = categories.count > 1 ? categories : nil;
                     [owner.table reloadData];
+                    // A home search may be waiting on the catalog results.
+                    [owner.collection reloadData];
                     [owner refreshBackground];
                     NSLog(@"[TypeX][SFSymbol] catalog ready available=%lu candidates=%lu categories=%lu sources=%@ elapsed=%.3f",
                           (unsigned long)validNames.count, (unsigned long)candidates.count,
@@ -316,18 +370,25 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
     });
 }
 
+// Home is in search mode while the hidden-state flag on the grid is lifted;
+// the flag is the single source of truth for empty-state placement too.
+- (BOOL)librarySearchActive {
+    return !self.category && self.collection && !self.collection.hidden;
+}
+
 - (void)refreshBackground {
     if (!self.category) {
         self.navigationItem.rightBarButtonItem = (!self.loading && self.allSymbols.count && self.categories.count == 1)
             ? [[UIBarButtonItem alloc] initWithTitle:LOCALIZED(@"SF_SYMBOL_RETRY") style:UIBarButtonItemStylePlain
                 target:self action:@selector(loadSymbolCatalog)] : nil;
     }
-    if (self.category ? self.symbols.count : self.categories.count) {
+    BOOL searching = self.librarySearchActive;
+    if (self.category ? self.symbols.count : (searching ? self.symbols.count : self.categories.count)) {
         self.table.backgroundView = nil;
         self.collection.backgroundView = nil;
         return;
     }
-    UIView *background = [[UIView alloc] initWithFrame:(self.category ? self.collection.bounds : self.table.bounds)];
+    UIView *background = [[UIView alloc] initWithFrame:(self.category || searching) ? self.collection.bounds : self.table.bounds];
     UIStackView *stack = [[UIStackView alloc] init];
     stack.axis = UILayoutConstraintAxisVertical;
     stack.alignment = UIStackViewAlignmentCenter;
@@ -350,7 +411,7 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
     message.textAlignment = NSTextAlignmentCenter;
     message.numberOfLines = 0;
     message.text = self.loading ? LOCALIZED(@"SF_SYMBOL_LOADING") :
-        (self.category ? LOCALIZED(@"SF_SYMBOL_NO_RESULTS") : LOCALIZED(@"SF_SYMBOL_LOAD_FAILED"));
+        ((self.category || searching) ? LOCALIZED(@"SF_SYMBOL_NO_RESULTS") : LOCALIZED(@"SF_SYMBOL_LOAD_FAILED"));
     [stack addArrangedSubview:message];
     if (!self.category && !self.loading && !self.allSymbols.count) {
         UIButton *retry = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -358,19 +419,32 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
         [retry addTarget:self action:@selector(loadSymbolCatalog) forControlEvents:UIControlEventTouchUpInside];
         [stack addArrangedSubview:retry];
     }
-    if (self.category) self.collection.backgroundView = background;
+    if (self.category || searching) self.collection.backgroundView = background;
     else self.table.backgroundView = background;
 }
 
 - (void)filterWithQuery:(NSString *)query {
     query = [query stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    self.symbols = query.length
-        ? [self.allSymbols filteredArrayUsingPredicate:
-              [NSPredicate predicateWithFormat:@"self CONTAINS[cd] %@", query]]
-        : self.allSymbols;
+    NSPredicate *matcher = [NSPredicate predicateWithFormat:@"self CONTAINS[cd] %@", query];
+    if (self.category) {
+        self.symbols = query.length ? [self.allSymbols filteredArrayUsingPredicate:matcher] : self.allSymbols;
+        [self.collection reloadData];
+        [self.collection setContentOffset:CGPointZero animated:NO];
+        [self refreshBackground];
+        return;
+    }
+    // Library home: a non-empty query swaps the category list for the
+    // whole-catalog result grid; clearing restores the list.
+    BOOL searching = query.length > 0;
+    self.symbols = searching ? [self.allSymbols filteredArrayUsingPredicate:matcher] : @[];
+    self.table.hidden = searching;
+    self.collection.hidden = !searching;
+    self.table.backgroundView = nil;
     [self.collection reloadData];
     [self.collection setContentOffset:CGPointZero animated:NO];
     [self refreshBackground];
+    NSLog(@"[TypeX][SFSymbol] library search length=%lu results=%lu",
+          (unsigned long)query.length, (unsigned long)self.symbols.count);
 }
 
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {
@@ -470,18 +544,25 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
 - (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath {
     [collectionView deselectItemAtIndexPath:indexPath animated:YES];
     if (indexPath.item < 0 || indexPath.item >= (NSInteger)self.symbols.count) return;
-    DXPSFSymbolPickerController *library = self.libraryController;
+    // A category child hands the callback to the library level; on the home
+    // page the picker itself is the library and closes in one pop.
+    DXPSFSymbolPickerController *library = self.category ? self.libraryController : self;
     if (!library || self.selectionFinished || library.selectionFinished) return;
     NSString *name = self.symbols[indexPath.item];
     // Cached names can outlive an external symbol hook's configuration.
     if (![UIImage systemImageNamed:name]) {
         DXPAvailableSymbolCategories = nil;
         library.categories = @[];
-        library.allSymbols = @[];
+        // Dropping the library's own cache is the child's job; on home it
+        // would wipe allSymbols before the removal below can copy from it.
+        if (library != self) library.allSymbols = @[];
         NSMutableArray *remaining = [self.allSymbols mutableCopy];
         [remaining removeObject:name];
         self.allSymbols = remaining;
         [self filterWithQuery:self.searchBar.text ?: @""];
+        // Home has no parent to fall back on: rebuild catalog and categories
+        // right away so clearing the query cannot strand an empty list.
+        if (!self.category && !self.loading) [self loadSymbolCatalog];
         NSLog(@"[TypeX][SFSymbol] selection unavailable name=%@", name);
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:self.title
             message:LOCALIZED(@"SF_SYMBOL_UNAVAILABLE") preferredStyle:UIAlertControllerStyleAlert];
