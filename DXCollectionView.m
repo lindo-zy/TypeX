@@ -1061,7 +1061,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         UITextRange *range = [self selectedWordTextRangeWithDelegate:delegate direction:UITextStorageDirectionBackward];
         if (range && range.start && range.end && [[tempDelegate textInRange:range] length] > 0) {
             UITextPosition *lastCharStart = [tempDelegate positionFromPosition:range.start
-                                                                   inDirection:UITextStorageDirectionForward offset:1];
+                                                                   inDirection:UITextLayoutDirectionRight offset:1];
             NSString *lastChar = lastCharStart ? [tempDelegate textInRange:
                 [tempDelegate textRangeFromPosition:lastCharStart toPosition:range.end]] : nil;
             BOOL trailingIsSymbol = lastChar.length > 0 &&
