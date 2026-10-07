@@ -1051,7 +1051,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 }
 
 // 删除光标前一个词：tokenizer 取光标前方的词范围后走系统删除路径；取不到
-// 词边界（行首/空输入）时退化为删除一个字符。
+// 词边界（行首/空输入）时退化为删除一个字符。词尾紧邻字符是标点/符号时
+// 只删一个字符——tokenizer 会把整段符号当词块整块删，逐个删更符合直觉。
 -(void)deleteWordAction:(UIButton*)sender{
     [self beginImpactAnimationAndUpdateDelegateWithSender:sender];
     BOOL deleted = NO;
@@ -1059,8 +1060,19 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         UIResponder <UITextInput> *tempDelegate = (UIResponder <UITextInput> *)delegate;
         UITextRange *range = [self selectedWordTextRangeWithDelegate:delegate direction:UITextStorageDirectionBackward];
         if (range && range.start && range.end && [[tempDelegate textInRange:range] length] > 0) {
-            tempDelegate.selectedTextRange = range;
-            [kbImpl deleteFromInput];
+            UITextPosition *lastCharStart = [tempDelegate positionFromPosition:range.start
+                                                                   inDirection:UITextStorageDirectionForward offset:1];
+            NSString *lastChar = lastCharStart ? [tempDelegate textInRange:
+                [tempDelegate textRangeFromPosition:lastCharStart toPosition:range.end]] : nil;
+            BOOL trailingIsSymbol = lastChar.length > 0 &&
+                ![[NSCharacterSet alphanumericCharacterSet]
+                    characterIsMember:[lastChar characterAtIndex:lastChar.length - 1]];
+            if (trailingIsSymbol) {
+                [kbImpl deleteBackward];
+            } else {
+                tempDelegate.selectedTextRange = range;
+                [kbImpl deleteFromInput];
+            }
             deleted = YES;
         }
     }
