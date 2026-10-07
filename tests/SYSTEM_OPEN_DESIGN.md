@@ -5,7 +5,7 @@
 | Action | Execution |
 | --- | --- |
 | Ordinary scheme or external HTTP(S) URL | One `UIApplication openURL:options:completionHandler:` call in the original host. No timeout, fallback, handler lookup, or automatic retry. |
-| `prefs:`, `app-prefs:` (case insensitive) | Send the full expanded URL to SpringBoard; call `SBSOpenSensitiveURLAndUnlock` once on a serial worker, then activate `com.apple.Preferences` on the main queue after successful delivery. |
+| `prefs:`, `app-prefs:` (case insensitive) | Send the full expanded URL to SpringBoard; call `SBSOpenSensitiveURLAndUnlock` once on a serial worker. Delivery is the entire operation: the system URL dispatch foregrounds Settings, or an intercepting tweak (ShellX full-screen routes) consumes the URL. No synthetic application launch follows. |
 | `itms-services:` (case insensitive) | Use the same worker for the sensitive URL RPC; do not assume a foreground application for the system installation flow. |
 | App shortcut | Send JSON containing `bundleID` and `shortcutType` through the same transport. SpringBoard resolves the current static/dynamic item and calls `+[SBIconView activateShortcut:withBundleIdentifier:forIconView:]` once on its main queue. |
 | Native Bundle ID action | Send the identifier to SpringBoard; call its `launchApplicationWithIdentifier:suspended:NO` once. Check selector availability and the actual BOOL return ABI. |
@@ -34,13 +34,13 @@ local precedent in PullOver-X's `POExternalActivationCoordinator.m` and
 3. The server reconstructs the packet, checks size, digest, ID, field types and
    age, and deduplicates the ID before queueing execution on the main thread.
    Check the eight-second lifetime again immediately before execution.
-   Sensitive requests keep that same deadline on the worker and before any
-   follow-up foreground activation. A newer valid system action cancels the
-   earlier request's pending foreground step.
+   Sensitive requests keep that same deadline on the worker and again before
+   the reply. A newer valid system action cancels the earlier request's
+   pending reply.
 4. The executor accepts only the three action kinds and validated payloads. Its
-   result goes into a per-ID notification state and notification. For Settings,
-   successful URL delivery is followed by one native foreground activation;
-   this step does not resend the URL. No URL retry is performed.
+   result goes into a per-ID notification state and notification. Successful
+   URL delivery is the final step: the URL is never resent and no application
+   is launched for it. No URL retry is performed.
 5. The sender completes once and cancels all registrations. At ten seconds it
    reads reply state again before reporting an unknown outcome: a suspended
    host or a delayed notification must not overwrite an existing success.
@@ -65,15 +65,20 @@ as the entire operation. That call can hold up UI/activation processing while
 waiting for the system service; its success does not establish foreground state.
 The exact internal wait was not traced on a device.
 
-The executor now keeps the potentially blocking client RPC off the main thread.
-UIKit/native activation still runs on the main thread, using the same native
-Bundle ID activation route that the user confirmed working. Settings activation
-occurs only after successful URL delivery, so the original deep link is preserved
-and is not delivered twice. Failed delivery does not open a plain Settings page.
-Cancelled/expired work is rejected before the RPC and again before activation.
-An RPC already entered cannot be cancelled; a late result cannot trigger the
-additional foreground step. Ordinary URLs and native app-only dispatch retain
-their existing paths.
+3.6.1 fixed the switcher-only symptom by moving the potentially blocking client
+RPC off the main thread, freeing the queue that processes the requested launch.
+It additionally foregrounded `com.apple.Preferences` with
+`launchApplicationWithIdentifier:suspended:NO` after successful delivery. That
+synthetic launch bypasses URL dispatch, so a `prefs` URL consumed by an
+intercepting tweak still opened the Settings app on top: ShellX's full-screen
+mark route `prefs://root=shellx_mark` reached ShellX through the sensitive
+delivery (the same system dispatch as PixPin's SpringBoard `openURL`), and the
+follow-up launch then raised Settings over the mark UI. 4.3.9 removes the
+follow-up launch: delivery is the whole sensitive-URL operation. Failed delivery
+does not open a plain Settings page. Cancelled/expired work is rejected before
+the RPC and again before the reply; an RPC already entered cannot be cancelled
+and a late result cannot trigger a launch. Ordinary URLs and native app-only
+dispatch retain their existing paths.
 
 Apple documents the state and cancellation APIs in
 [Darwin notify](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man3/notify_register_signal.3.html).
@@ -90,11 +95,11 @@ expiry while the main queue is blocked, a reply with no delivered notification,
 and cancellation of pending registrations.
 
 Run `python3 tests/run-sensitive-url-executor.py` for the production sensitive
-executor with controlled delivery/activation blocks. A blocking RPC stand-in
+executor with controlled delivery blocks. A blocking RPC stand-in
 waits for the main queue, proving the main loop can run while delivery is pending.
-Checks cover unchanged URL data, delivery-before-activation order, main-thread
-activation/reply, failure and exception paths, cancellation before/during delivery,
-expiry before/during delivery, and `itms-services:` without Settings activation.
+Checks cover unchanged URL data, main-thread reply, failure and exception paths,
+cancellation before/during delivery, expiry before/during delivery, and the
+absence of any follow-up launch after successful delivery.
 These tests verify scheduling and lifecycle logic, not Apple's private API behavior.
 
 Run `./build.sh` for the project's two RootHide artifacts. Tests
@@ -119,8 +124,8 @@ Execution preserves the current real item's runtime payload. Missing/deleted
 items fail without launching the plain application. A success reply indicates
 that the void system activation entry was invoked, not that the target app has
 completed its action. Quick-action requests share existing replay, expiry and
-one-reply rules. A newer shortcut request cancels an older sensitive URL's pending
-foreground step.
+one-reply rules. A newer shortcut request cancels an older sensitive URL's
+pending reply.
 
 Host transport coverage includes a quick-action JSON payload containing Unicode
 and quotes, plus replay and duplicate-reply suppression. It does not exercise
