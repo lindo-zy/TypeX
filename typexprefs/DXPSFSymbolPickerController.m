@@ -98,7 +98,7 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
 @interface DXPSFSymbolPickerController () <UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate,
     UICollectionViewDataSource, UICollectionViewDelegateFlowLayout>
 @property (nonatomic, strong) UITableView *table;
-@property (nonatomic, strong) UISearchBar *searchBar;
+@property (nonatomic, strong) UISearchController *searchController;
 @property (nonatomic, strong) UISegmentedControl *columnControl;
 @property (nonatomic, strong) UICollectionView *collection;
 @property (nonatomic, assign) NSInteger columnCount;
@@ -133,6 +133,7 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
     } else {
         [self setupLibraryPage];
     }
+    [self setupSearchController];
     [self refreshBackground];
     NSLog(@"[TypeX][SFSymbol] picker open category=%@ rows=%lu", self.category.identifier ?: @"library",
           (unsigned long)(self.category ? self.symbols.count : self.categories.count));
@@ -151,15 +152,22 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
     [self.collection registerClass:DXPSFSymbolCell.class forCellWithReuseIdentifier:@"DXPSFSymbolCell"];
 }
 
-- (UISearchBar *)newSearchBar {
-    UISearchBar *searchBar = [[UISearchBar alloc] init];
-    searchBar.translatesAutoresizingMaskIntoConstraints = NO;
-    searchBar.searchBarStyle = UISearchBarStyleMinimal;
-    searchBar.placeholder = LOCALIZED(@"SF_SYMBOL_SEARCH");
-    searchBar.delegate = self;
-    searchBar.autocorrectionType = UITextAutocorrectionTypeNo;
-    searchBar.autocapitalizationType = UITextAutocapitalizationTypeNone;
-    return searchBar;
+// 搜索框内嵌导航栏（与 TypeX 首页同款挂载，同导航栈设备长期验证）：裸
+// UISearchBar 直接挂 PSViewController.view 在设置进程不响应点击（4.0.7 起两页
+// 皆然），文本回调仍走 UISearchBarDelegate，不引入 resultsUpdater。
+- (void)setupSearchController {
+    UISearchController *search = [[UISearchController alloc] initWithSearchResultsController:nil];
+    search.searchBar.delegate = self;
+    search.searchBar.placeholder = LOCALIZED(@"SF_SYMBOL_SEARCH");
+    search.searchBar.autocorrectionType = UITextAutocorrectionTypeNo;
+    search.searchBar.autocapitalizationType = UITextAutocapitalizationTypeNone;
+    search.obscuresBackgroundDuringPresentation = NO;
+    search.hidesNavigationBarDuringPresentation = NO;
+    search.definesPresentationContext = YES;
+    self.definesPresentationContext = YES;
+    self.navigationItem.searchController = search;
+    self.navigationItem.hidesSearchBarWhenScrolling = NO;
+    self.searchController = search;
 }
 
 // Library home: search on the whole catalog in place — a non-empty query swaps
@@ -167,8 +175,6 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
 - (void)setupLibraryPage {
     self.view.backgroundColor = UIColor.systemBackgroundColor;
     self.columnCount = DXPPreferredSymbolColumns;
-    self.searchBar = [self newSearchBar];
-    [self.view addSubview:self.searchBar];
     self.table = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     self.table.translatesAutoresizingMaskIntoConstraints = NO;
     self.table.dataSource = self;
@@ -187,15 +193,11 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
     tableBottom.priority = UILayoutPriorityDefaultHigh;
     gridBottom.priority = UILayoutPriorityDefaultHigh;
     [NSLayoutConstraint activateConstraints:@[
-        [self.searchBar.topAnchor constraintEqualToAnchor:safe.topAnchor],
-        [self.searchBar.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:8],
-        [self.searchBar.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-8],
-        [self.searchBar.heightAnchor constraintEqualToConstant:56],
-        [self.table.topAnchor constraintEqualToAnchor:self.searchBar.bottomAnchor constant:8],
+        [self.table.topAnchor constraintEqualToAnchor:safe.topAnchor constant:8],
         [self.table.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
         [self.table.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
         tableBottom,
-        [self.collection.topAnchor constraintEqualToAnchor:self.searchBar.bottomAnchor constant:12],
+        [self.collection.topAnchor constraintEqualToAnchor:safe.topAnchor constant:12],
         [self.collection.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
         [self.collection.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
         gridBottom,
@@ -207,8 +209,6 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
 - (void)setupSymbolCollection {
     self.view.backgroundColor = UIColor.systemBackgroundColor;
     self.columnCount = DXPPreferredSymbolColumns;
-    self.searchBar = [self newSearchBar];
-    [self.view addSubview:self.searchBar];
     self.columnControl = [[UISegmentedControl alloc] initWithItems:@[
         LOCALIZED(@"SF_SYMBOL_COLUMNS_ONE"), LOCALIZED(@"SF_SYMBOL_COLUMNS_TWO"),
         LOCALIZED(@"SF_SYMBOL_COLUMNS_THREE"), LOCALIZED(@"SF_SYMBOL_COLUMNS_FOUR")]];
@@ -223,11 +223,7 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
     NSLayoutConstraint *bottom = [self.collection.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor];
     bottom.priority = UILayoutPriorityDefaultHigh;
     [NSLayoutConstraint activateConstraints:@[
-        [self.searchBar.topAnchor constraintEqualToAnchor:safe.topAnchor],
-        [self.searchBar.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:8],
-        [self.searchBar.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-8],
-        [self.searchBar.heightAnchor constraintEqualToConstant:56],
-        [self.columnControl.topAnchor constraintEqualToAnchor:self.searchBar.bottomAnchor constant:8],
+        [self.columnControl.topAnchor constraintEqualToAnchor:safe.topAnchor constant:8],
         [self.columnControl.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:16],
         [self.columnControl.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-16],
         [self.columnControl.heightAnchor constraintEqualToConstant:32],
@@ -290,7 +286,7 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
 
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
-    [self.searchBar resignFirstResponder];
+    self.searchController.active = NO;
     self.loadGeneration++;
     self.loading = NO;
 }
@@ -455,6 +451,12 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
     [searchBar resignFirstResponder];
 }
 
+// 取消/失活后按最终文本重算一次：恢复分类列表或保留查询，不依赖系统在
+// 取消时是否清空文本的行为差异。
+- (void)didDismissSearchController:(UISearchController *)searchController {
+    [self filterWithQuery:searchController.searchBar.text ?: @""];
+}
+
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     (void)tableView; (void)section;
     return self.categories.count;
@@ -559,7 +561,7 @@ static NSString *DXPSymbolCategoryTitle(DXPSFSymbolCategory *category) {
         NSMutableArray *remaining = [self.allSymbols mutableCopy];
         [remaining removeObject:name];
         self.allSymbols = remaining;
-        [self filterWithQuery:self.searchBar.text ?: @""];
+        [self filterWithQuery:self.searchController.searchBar.text ?: @""];
         // Home has no parent to fall back on: rebuild catalog and categories
         // right away so clearing the query cannot strand an empty list.
         if (!self.category && !self.loading) [self loadSymbolCatalog];
