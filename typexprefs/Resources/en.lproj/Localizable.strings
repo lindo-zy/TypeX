@@ -103,7 +103,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 //Button settings (per toolbar)
 "BUTTON_SETTINGS" = "Button Settings";
 "FOOTER_BUTTON_SETTINGS" = "These settings apply only to this toolbar; the top and bottom toolbars are styled independently. The border color adapts to light and dark mode. Button Size is the percentage of the cell width each button fills.";
-"FOOTER_BUTTON_SETTINGS_TOP" = "These settings apply only to this toolbar; the top and bottom toolbars are styled independently. The border color adapts to light and dark mode. Button Size is the percentage of the cell width each button fills. While multi-row mode is off, Buttons per Row also sets how many buttons each page shows; swipe sideways for the rest.";
+"FOOTER_BUTTON_SETTINGS_TOP" = "These settings apply only to this toolbar; the top and bottom toolbars are styled independently. The border color adapts to light and dark mode. Button Size is the percentage of the cell width each button fills. The top toolbar always wraps by Buttons per Row, with at most two rows.";
 "BORDER_ENABLED" = "Show Border";
 "BORDER_WIDTH" = "Border Thickness";
 "BUTTON_WIDTH" = "Button Size";
@@ -112,10 +112,9 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "PANEL_SIZE" = "Panel Size";
 "FOOTER_PANEL_SETTINGS" = "Adjust the size of the sub-action panel opened from this toolbar. Top and bottom settings are independent.";
 "MULTILINE_SETTINGS" = "Multi-Row Layout";
-"MULTI_ROW_MODE" = "Multi-Row Mode";
 "BUTTONS_PER_ROW" = "Buttons per Row";
 "BUTTON_ROW_SPACING" = "Button Row Spacing";
-"FOOTER_MULTILINE" = "When enabled, the first row hugs the keyboard and the second stacks above it, with at most two rows. The enabled limit is twice the per-row count, up to 16 buttons (adjust Buttons per Row under Button Settings). Row spacing is adjustable from 0–20 in 0.1 increments. When disabled, buttons page horizontally by the per-row count; swipe sideways for the rest.";
+"FOOTER_MULTILINE" = "The top toolbar always uses multi-row layout. The first row hugs the keyboard and the second stacks above it, with at most two rows. The enabled limit is twice the per-row count, up to 16 buttons (adjust Buttons per Row under Button Settings). Row spacing is adjustable from 0–20 in 0.1 increments.";
 "MULTI_ROW_LIMIT_MESSAGE" = "With %2$d buttons per row, multi-row mode supports at most two rows and %1$d enabled buttons. Disable extra buttons or increase the per-row count first.";
 "ENABLED_BUTTON_LIMIT_MESSAGE" = "The top toolbar can have at most %d enabled buttons. Disable an enabled button before turning on another one.";
 //Offsets

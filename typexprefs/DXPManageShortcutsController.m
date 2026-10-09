@@ -107,11 +107,9 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
 
 #pragma mark - Table view: configured buttons only
 
-// Section 0 lists buttons, section 1 controls button appearance — the top page
-// keeps the per-row count here because it also pages the single-row layout —
-// and section 2 controls the sub-action panel. Section 3 is scoped per page:
-// the top page carries the multi-row layout controls, the bottom page the
-// toolbar height.
+// Section 0 lists buttons, section 1 controls button appearance (including the
+// top column count), and section 2 controls the sub-action panel. Section 3
+// carries the top row spacing or the bottom toolbar height.
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
     return 4;
 }
@@ -576,11 +574,8 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     self.panelRows = @[panelScaleRow];
 
     if (self.topConfiguration) {
-        // 面板设置分组下方的多行布局：开关与按钮行距。每行个数已迁入上方按钮
-        // 设置分组（它同时决定单行模式的分页页长），容量校验仍读同一个键。
+        // 顶部固定多行布局，此分组只调整按钮行距；每行个数在按钮设置中调整。
         self.multiRowRows = @[
-            [DXSettingsRow switchRowWithKey:[self scopedAppearanceKey:kMultiRowEnabledKey]
-                                      label:LOCALIZED(@"MULTI_ROW_MODE") defaultValue:NO],
             [DXSettingsRow sliderRowWithKey:[self scopedAppearanceKey:kMultiRowSpacingKey]
                                       label:LOCALIZED(@"BUTTON_ROW_SPACING") minValue:0 maxValue:20 step:0.1
                                   defaultValue:multiRowSpacingDefault],
@@ -731,10 +726,6 @@ static NSString *DXFormatSettingsValue(float value, float step, NSString *suffix
 - (void)settingsSwitchChanged:(UISwitch *)sender {
     DXSettingsRow *row = objc_getAssociatedObject(sender, @selector(key));
     [[DXPrefsManager sharedInstance] setValue:@(sender.isOn) forKey:row.key];
-    if ([row.key isEqualToString:DXScopedPreferenceKey(kMultiRowEnabledKey, @"top")]) {
-        [self updateOrder:NO];
-        [self.tableView reloadData];
-    }
     [self refreshToolbarPreview];
 }
 

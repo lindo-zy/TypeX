@@ -112,7 +112,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 @property (nonatomic, assign) BOOL dxPreviewMode;
 @property (nonatomic, copy) NSDictionary *dxPreviewPreferences;
 @property (nonatomic, assign, readwrite) CGFloat bottomSpacing;
-@property (nonatomic, assign, readwrite) BOOL multiRowEnabled;
 @property (nonatomic, assign, readwrite) NSInteger buttonsPerRow;
 @property (nonatomic, assign, readwrite) CGFloat rowSpacing;
 @property (nonatomic, strong) UIControl *subActionPanelOverlay;
@@ -251,7 +250,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 // 多行模式（仅顶部）：单节承载全部按钮，由 DXMultiRowTopLayout 负责换行；
 // 不再走"节=分页"的横滑模型。
 - (BOOL)multiRowActive {
-    return self.multiRowEnabled && [self.configuration isEqualToString:@"top"];
+    return [self.configuration isEqualToString:@"top"];
 }
 
 // Button chrome is per toolbar: every value lives under the configuration-
@@ -271,9 +270,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     self.borderWidth = [self dxChromeFloat:kCellBorderWidthkey fallback:buttonBorderWidthDefault];
     self.widthScale = MIN(100, MAX(30, [self dxChromeFloat:kButtonWidthScalekey fallback:buttonWidthScaleDefault]));
     self.useShortLabel = [self dxChromeBool:kShortLabelEnabledKey fallback:NO];
-    // 多行模式与每行个数只对顶部工具栏生效；每行个数夹在 [1, 8] 防御 plist
+    // 顶部固定使用多行布局；每行个数夹在 [1, 8] 防御 plist
     // 手改出的越界值（设置页滑动条本身已限范围）。
-    self.multiRowEnabled = isTop && [self dxChromeBool:kMultiRowEnabledKey fallback:NO];
     float storedPerRow = [self dxChromeFloat:kButtonsPerRowKey fallback:buttonsPerRowDefault];
     self.buttonsPerRow = MIN(8, MAX(1, (NSInteger)storedPerRow));
     self.rowSpacing = MIN(20.0, MAX(0.0,
@@ -336,28 +334,16 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 - (CGFloat)preferredToolbarHeight {
     if (![self.configuration isEqualToString:@"top"]) return 0.0;
-    if (!self.multiRowEnabled) return 41.5 + self.bottomSpacing;
     NSInteger rows = [self multiRowCountOfRows];
     return 8.0 + rows * self.buttonHeight + (rows - 1) * self.rowSpacing
          + self.bottomSpacing;
 }
 
-// 多行开关切换布局实例：自绘双行布局 ↔ 固定单行布局。放在 reloadShortcutConfiguration
-// 里执行，偏好恢复竞态（init 时快照未就绪）也会在下一次重载时纠正。
+// 顶部始终使用同一套多行布局，设置页预览也经过这个入口。
 - (void)dxApplyLayoutForConfiguration {
     if (![self.configuration isEqualToString:@"top"]) return;
-    if (self.multiRowEnabled) {
-        if (![self.collectionViewLayout isKindOfClass:[DXMultiRowTopLayout class]]) {
-            [self setCollectionViewLayout:[[DXMultiRowTopLayout alloc] init] animated:NO];
-        }
-        return;
-    }
-    if (![self.collectionViewLayout isKindOfClass:[DXTopShortcutFlowLayout class]]) {
-        UICollectionViewFlowLayout *flowLayout = [[DXTopShortcutFlowLayout alloc] init];
-        flowLayout.scrollDirection = UICollectionViewScrollDirectionHorizontal;
-        flowLayout.minimumLineSpacing = 0;
-        flowLayout.minimumInteritemSpacing = [self buttonChromeActive] ? self.buttonSpacing : 0;
-        [self setCollectionViewLayout:flowLayout animated:NO];
+    if (![self.collectionViewLayout isKindOfClass:[DXMultiRowTopLayout class]]) {
+        [self setCollectionViewLayout:[[DXMultiRowTopLayout alloc] init] animated:NO];
     }
 }
 
