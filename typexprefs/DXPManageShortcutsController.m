@@ -2,10 +2,19 @@
 #import "DXPGesturePickerController.h"
 #import "../DXShortcutsGenerator.h"
 #import "../DXHelper.h"
+#import "../DXCollectionView.h"
 #import "../common.h"
 #import <objc/runtime.h>
 
 static NSBundle *tweakBundle;
+
+@interface DXPManageShortcutsController ()
+@property (nonatomic, strong) UIView *toolbarPreviewHeader;
+@property (nonatomic, strong) UILabel *toolbarPreviewCaption;
+@property (nonatomic, strong) UILabel *toolbarPreviewStatus;
+@property (nonatomic, strong) DXCollectionView *toolbarPreview;
+@property (nonatomic, copy) NSDictionary *toolbarPreviewPreferences;
+@end
 
 // Height of the section header hosting the test field above the
 // button-settings rows: field title + field + section title + padding.
@@ -300,6 +309,90 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     }
 }
 
+#pragma mark - Toolbar preview
+
+// Resolve the injected renderer dynamically: the preferences bundle does not
+// link a second copy of the keyboard/action implementation into Settings.
+- (void)installToolbarPreview {
+    if (!self.topConfiguration || self.toolbarPreviewHeader) return;
+    self.toolbarPreviewHeader = [[UIView alloc] initWithFrame:CGRectMake(0, 0, CGRectGetWidth(self.tableView.bounds), 94)];
+    self.toolbarPreviewHeader.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    self.toolbarPreviewCaption = [UILabel new];
+    self.toolbarPreviewCaption.text = LOCALIZED(@"TOOLBAR_PREVIEW");
+    self.toolbarPreviewCaption.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
+    self.toolbarPreviewCaption.textColor = UIColor.secondaryLabelColor;
+    [self.toolbarPreviewHeader addSubview:self.toolbarPreviewCaption];
+
+    self.toolbarPreviewStatus = [UILabel new];
+    self.toolbarPreviewStatus.font = [UIFont systemFontOfSize:14];
+    self.toolbarPreviewStatus.textColor = UIColor.secondaryLabelColor;
+    self.toolbarPreviewStatus.textAlignment = NSTextAlignmentCenter;
+    self.toolbarPreviewStatus.numberOfLines = 0;
+    [self.toolbarPreviewHeader addSubview:self.toolbarPreviewStatus];
+
+    Class renderer = NSClassFromString(@"DXCollectionView");
+    if ([renderer isSubclassOfClass:UICollectionView.class] &&
+        [renderer instancesRespondToSelector:@selector(initWithConfiguration:preview:)] &&
+        [renderer instancesRespondToSelector:@selector(configurePreviewWithPreferences:)]) {
+        self.toolbarPreview = [(DXCollectionView *)[renderer alloc] initWithConfiguration:@"top" preview:YES];
+        self.toolbarPreview.backgroundColor = UIColor.secondarySystemGroupedBackgroundColor;
+        [self.toolbarPreviewHeader addSubview:self.toolbarPreview];
+    } else {
+        NSLog(@"[TypeX][ToolbarPreview] unavailable renderer in Settings");
+    }
+    self.tableView.tableHeaderView = self.toolbarPreviewHeader;
+}
+
+- (void)refreshToolbarPreview {
+    if (!self.toolbarPreviewHeader) return;
+    self.toolbarPreviewPreferences = [[DXPrefsManager sharedInstance] readPrefs];
+    [self applyToolbarPreviewPreferences:self.toolbarPreviewPreferences];
+}
+
+- (void)applyToolbarPreviewPreferences:(NSDictionary *)preferences {
+    if (!self.toolbarPreviewHeader) return;
+    [self.toolbarPreview configurePreviewWithPreferences:preferences];
+    BOOL hasButtons = [self.toolbarPreview.shortcuts[kselectors] count] > 0;
+    self.toolbarPreviewStatus.text = LOCALIZED(self.toolbarPreview ? @"TOOLBAR_PREVIEW_EMPTY" : @"TOOLBAR_PREVIEW_UNAVAILABLE");
+    self.toolbarPreviewStatus.hidden = hasButtons;
+    self.toolbarPreview.hidden = !hasButtons;
+    [self layoutToolbarPreviewHeader];
+}
+
+- (void)layoutToolbarPreviewHeader {
+    if (!self.toolbarPreviewHeader) return;
+    CGFloat width = CGRectGetWidth(self.tableView.bounds);
+    CGFloat toolbarHeight = MAX(41.5, [self.toolbarPreview preferredToolbarHeight]);
+    CGFloat leading = self.tableView.safeAreaInsets.left;
+    CGFloat trailing = self.tableView.safeAreaInsets.right;
+    CGFloat contentWidth = MAX(0, width - leading - trailing);
+    self.toolbarPreviewCaption.frame = CGRectMake(leading + 16, 12, MAX(0, contentWidth - 32), 20);
+    BOOL widthChanged = CGRectGetWidth(self.toolbarPreview.bounds) != contentWidth;
+    self.toolbarPreview.frame = CGRectMake(leading, 36, contentWidth, toolbarHeight);
+    self.toolbarPreviewStatus.frame = CGRectMake(leading + 16, 36, MAX(0, contentWidth - 32), toolbarHeight);
+    if (widthChanged) {
+        [self.toolbarPreview.collectionViewLayout invalidateLayout];
+        [self.toolbarPreview reloadData];
+    }
+    CGRect headerFrame = CGRectMake(0, 0, width, 36 + toolbarHeight + 16);
+    if (!CGRectEqualToRect(self.toolbarPreviewHeader.frame, headerFrame)) {
+        self.toolbarPreviewHeader.frame = headerFrame;
+        self.tableView.tableHeaderView = self.toolbarPreviewHeader;
+    }
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    [self layoutToolbarPreviewHeader];
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+    [super traitCollectionDidChange:previousTraitCollection];
+    if ([self.traitCollection hasDifferentColorAppearanceComparedToTraitCollection:previousTraitCollection]) {
+        [self refreshToolbarPreview];
+    }
+}
+
 #pragma mark - Test input field
 
 // The test field is the header of the button-settings section, i.e. the middle
@@ -561,6 +654,8 @@ static NSString *DXFormatSettingsValue(float value, float step, NSString *suffix
         slider.translatesAutoresizingMaskIntoConstraints = NO;
         [slider addTarget:self action:@selector(settingsSliderChanged:) forControlEvents:UIControlEventValueChanged];
         [slider addTarget:self action:@selector(settingsSliderReleased:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside];
+        if (self.topConfiguration)
+            [slider addTarget:self action:@selector(settingsSliderCancelled:) forControlEvents:UIControlEventTouchCancel];
         [cell.contentView addSubview:slider];
 
         [NSLayoutConstraint activateConstraints:@[
@@ -640,11 +735,13 @@ static NSString *DXFormatSettingsValue(float value, float step, NSString *suffix
         [self updateOrder:NO];
         [self.tableView reloadData];
     }
+    [self refreshToolbarPreview];
 }
 
 - (void)settingsSegmentChanged:(UISegmentedControl *)sender {
     DXSettingsRow *row = objc_getAssociatedObject(sender, @selector(key));
     [[DXPrefsManager sharedInstance] setValue:@(sender.selectedSegmentIndex) forKey:row.key];
+    [self refreshToolbarPreview];
 }
 
 - (void)settingsSliderChanged:(UISlider *)sender {
@@ -653,6 +750,14 @@ static NSString *DXFormatSettingsValue(float value, float step, NSString *suffix
     UILabel *valueLabel = (UILabel *)[(UIView *)sender.superview viewWithTag:2];
     DXSettingsRow *row = objc_getAssociatedObject(sender, @selector(key));
     valueLabel.text = DXFormatSettingsValue(sender.value, row.step, row.valueSuffix);
+    // Preview the snapped value while dragging without writing preferences or
+    // reloading the live keyboard until the existing touch-up save happens.
+    if (self.toolbarPreviewPreferences && row.key) {
+        NSMutableDictionary *snapshot = [self.toolbarPreviewPreferences mutableCopy];
+        float stepped = row.minValue + roundf((sender.value - row.minValue) / row.step) * row.step;
+        snapshot[row.key] = @(MIN(row.maxValue, MAX(row.minValue, stepped)));
+        [self applyToolbarPreviewPreferences:snapshot];
+    }
 }
 
 - (void)settingsSliderReleased:(UISlider *)sender {
@@ -668,6 +773,15 @@ static NSString *DXFormatSettingsValue(float value, float step, NSString *suffix
         [self updateOrder:NO];
         [self.tableView reloadData];
     }
+    [self refreshToolbarPreview];
+}
+
+- (void)settingsSliderCancelled:(UISlider *)sender {
+    DXSettingsRow *row = objc_getAssociatedObject(sender, @selector(key));
+    sender.value = [self storedFloatForRow:row];
+    UILabel *valueLabel = (UILabel *)[sender.superview viewWithTag:2];
+    valueLabel.text = DXFormatSettingsValue(sender.value, row.step, row.valueSuffix);
+    [self refreshToolbarPreview];
 }
 
 #pragma mark - Add button
@@ -690,6 +804,7 @@ static NSString *DXFormatSettingsValue(float value, float step, NSString *suffix
 
 - (void)writeToFile{
     [[DXPrefsManager sharedInstance] setValue:self.currentOrder forKey:self.shortcutsPreferenceKey ?: kShortcutskey];
+    [self refreshToolbarPreview];
 }
 
 // Removes the per-gesture custom actions and the ordered sub-actions recorded
@@ -811,6 +926,7 @@ static NSString *DXFormatSettingsValue(float value, float step, NSString *suffix
     [super viewWillAppear:animated];
     [self updateOrder:NO];
     [self.tableView reloadData];
+    [self refreshToolbarPreview];
 }
 
 - (void)viewDidLoad {
@@ -842,6 +958,7 @@ static NSString *DXFormatSettingsValue(float value, float step, NSString *suffix
 
     ((UIViewController *)self).title = self.topConfiguration ? @"顶部设置" : @"底部设置";
     self.view = self.tableView;
+    [self installToolbarPreview];
 
     self.addBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addButtonTapped)];
     self.navigationItem.rightBarButtonItem = self.addBtn;
