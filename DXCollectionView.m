@@ -9,6 +9,7 @@
 #import "DXToolbarHorizontalGesture.h"
 #import "DXSystemOpenBroker.h"
 #import "DXJavaScriptHost.h"
+#import "DXPixPinIntegration.h"
 
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -118,6 +119,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 @property (nonatomic, strong) UIButton *subActionPanelSourceButton;
 @property (nonatomic, weak) id textPanelInput;
 @property (nonatomic, weak) UIWindow *textPanelSourceWindow;
+@property (nonatomic, assign) BOOL pixpinScreenshotPending;
+@property (nonatomic, assign) NSUInteger pixpinScreenshotGeneration;
 - (CGFloat)dxChromeFloat:(NSString *)key fallback:(CGFloat)fallback;
 - (BOOL)dxChromeBool:(NSString *)key fallback:(BOOL)fallback;
 - (UIColor *)dxButtonBackgroundTintColor;
@@ -1202,6 +1205,47 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         notify_post("com.iosdump.screenshotshell/AssistiveScreenshot");
     }
 
+}
+
+// PixPin's native area-capture notification is shared with the system action.
+// Posting succeeds independently of PixPin's enabled/busy state; never retry.
+-(void)pixpinScreenshotAction:(UIButton*)sender{
+    if (!NSThread.isMainThread || !self.window || self.hidden || self.pixpinScreenshotPending ||
+        ![DXShortcutsGenerator isPixPinScreenshotAvailable]) return;
+    [self triggerImpactAndAnimationWithButton:sender];
+
+    Class keyboardClass = objc_getClass("UIKeyboardImpl");
+    id keyboard = preferencesBool(kShellXScreenshotHideKeyboardKey, NO) &&
+        [keyboardClass respondsToSelector:@selector(activeInstance)] ? [keyboardClass activeInstance] : nil;
+    if (![keyboard respondsToSelector:@selector(dismissKeyboard)]) {
+        DXPostPixPinSystemAction(@"pixpin-area", DX_ROOT_PATH_NS(DXPixPinDylibPath));
+        return;
+    }
+
+    self.pixpinScreenshotPending = YES;
+    NSUInteger generation = ++self.pixpinScreenshotGeneration;
+    __weak DXCollectionView *weakSelf = self;
+    __weak UIWindow *sourceWindow = self.window;
+    __weak UIWindowScene *sourceScene = sourceWindow.windowScene;
+    BOOL hadScene = sourceScene != nil;
+    [keyboard dismissKeyboard];
+    NSLog(@"[TypeX][PixPin] basic-area hide-keyboard request=%lu delay=0.35s", (unsigned long)generation);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        DXCollectionView *toolbar = weakSelf;
+        if (!toolbar || toolbar.pixpinScreenshotGeneration != generation) return;
+        toolbar.pixpinScreenshotPending = NO;
+        // Keyboard collapse may detach the toolbar. A different window or a
+        // background/disconnected source scene invalidates this request.
+        UIWindowScene *scene = sourceScene;
+        if ((toolbar.window && toolbar.window != sourceWindow) ||
+            (hadScene && (!scene || scene.activationState == UISceneActivationStateBackground ||
+                          scene.activationState == UISceneActivationStateUnattached))) {
+            NSLog(@"[TypeX][PixPin] basic-area cancelled request=%lu reason=host-changed", (unsigned long)generation);
+            return;
+        }
+        DXPostPixPinSystemAction(@"pixpin-area", DX_ROOT_PATH_NS(DXPixPinDylibPath));
+    });
 }
 
 // 剪贴板按钮：Kayoko/KayokoX 只在自己注入的进程里挂 Darwin 观察者，键盘进程内

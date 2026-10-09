@@ -83,6 +83,7 @@ typedef NS_ENUM(NSInteger, direction) {
 -(IBAction)deleteAction:(UIButton*)sender;
 -(IBAction)deleteAllAction:(UIButton*)sender;
 -(IBAction)dismissKeyboardAction:(UIButton*)sender;
+-(void)pixpinScreenshotAction:(UIButton*)sender;
 -(void)moveCursorLeftAction:(UIButton*)sender;
 -(void)moveCursorRightAction:(UIButton*)sender;
 -(void)moveCursorUpAction:(UIButton*)sender;
