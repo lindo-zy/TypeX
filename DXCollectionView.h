@@ -11,6 +11,9 @@ typedef NS_ENUM(NSInteger, direction) {
 
 @interface DXCollectionView : UICollectionView <UICollectionViewDataSource, UICollectionViewDelegate>
 - (instancetype)initWithConfiguration:(NSString *)configuration;
+// Settings uses the real renderer with input routing and keyboard observers disabled.
+- (instancetype)initWithConfiguration:(NSString *)configuration preview:(BOOL)preview;
+- (void)configurePreviewWithPreferences:(NSDictionary *)preferences;
 @property (nonatomic, copy) NSString *configuration;
 @property (nonatomic, assign, readonly) BOOL shortcutConfigurationAvailable;
 @property (strong, nonatomic) NSArray *shortcuts;

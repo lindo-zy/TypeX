@@ -109,6 +109,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 @property (nonatomic, assign, readwrite) BOOL shortcutConfigurationAvailable;
 // 上次成功应用的偏好快照引用：键盘出现路径的整表重载门控依据（顺序闪变修复）。
 @property (nonatomic, strong) NSDictionary *dxAppliedPrefsSnapshot;
+@property (nonatomic, assign) BOOL dxPreviewMode;
+@property (nonatomic, copy) NSDictionary *dxPreviewPreferences;
 @property (nonatomic, assign, readwrite) CGFloat bottomSpacing;
 @property (nonatomic, assign, readwrite) BOOL multiRowEnabled;
 @property (nonatomic, assign, readwrite) NSInteger buttonsPerRow;
@@ -117,6 +119,10 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 @property (nonatomic, strong) UIButton *subActionPanelSourceButton;
 @property (nonatomic, weak) id textPanelInput;
 @property (nonatomic, weak) UIWindow *textPanelSourceWindow;
+- (CGFloat)dxChromeFloat:(NSString *)key fallback:(CGFloat)fallback;
+- (BOOL)dxChromeBool:(NSString *)key fallback:(BOOL)fallback;
+- (UIColor *)dxButtonBackgroundTintColor;
+- (UIColor *)dxButtonTintColor;
 - (void)presentActionChooserForButton:(UIButton *)button selectors:(NSArray<NSString *> *)selectors
                          textRecords:(NSArray<NSString *> *)textRecords;
 @end
@@ -255,23 +261,62 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 -(void)reloadButtonChrome {
     BOOL isTop = [self.configuration isEqualToString:@"top"];
     CGFloat heightFallback = isTop ? 33.33
-        : (currentBackgroundTintColor ? cellsHeightDefault + 5 : cellsHeightDefault);
-    self.buttonHeight = preferencesFloat([self scopedPreferenceKey:kCellHeightkey], heightFallback);
-    self.buttonRadius = preferencesFloat([self scopedPreferenceKey:kCellRadiuskey], cellsRadiusDefault);
-    self.buttonSpacing = preferencesFloat([self scopedPreferenceKey:kCellSpacingkey], spacingBetweenCellsDefault);
+        : ([self dxButtonBackgroundTintColor] ? cellsHeightDefault + 5 : cellsHeightDefault);
+    self.buttonHeight = [self dxChromeFloat:kCellHeightkey fallback:heightFallback];
+    self.buttonRadius = [self dxChromeFloat:kCellRadiuskey fallback:cellsRadiusDefault];
+    self.buttonSpacing = [self dxChromeFloat:kCellSpacingkey fallback:spacingBetweenCellsDefault];
     self.bottomSpacing = isTop ? MIN(20.0, MAX(0.0,
-        preferencesFloat([self scopedPreferenceKey:kBottomSpacingKey], topBottomSpacingDefault))) : 0.0;
-    self.borderEnabled = preferencesBool([self scopedPreferenceKey:kCellBorderEnabledkey], NO);
-    self.borderWidth = preferencesFloat([self scopedPreferenceKey:kCellBorderWidthkey], buttonBorderWidthDefault);
-    self.widthScale = MIN(100, MAX(30, preferencesFloat([self scopedPreferenceKey:kButtonWidthScalekey], buttonWidthScaleDefault)));
-    self.useShortLabel = preferencesBool([self scopedPreferenceKey:kShortLabelEnabledKey], NO);
+        [self dxChromeFloat:kBottomSpacingKey fallback:topBottomSpacingDefault])) : 0.0;
+    self.borderEnabled = [self dxChromeBool:kCellBorderEnabledkey fallback:NO];
+    self.borderWidth = [self dxChromeFloat:kCellBorderWidthkey fallback:buttonBorderWidthDefault];
+    self.widthScale = MIN(100, MAX(30, [self dxChromeFloat:kButtonWidthScalekey fallback:buttonWidthScaleDefault]));
+    self.useShortLabel = [self dxChromeBool:kShortLabelEnabledKey fallback:NO];
     // 多行模式与每行个数只对顶部工具栏生效；每行个数夹在 [1, 8] 防御 plist
     // 手改出的越界值（设置页滑动条本身已限范围）。
-    self.multiRowEnabled = isTop && preferencesBool([self scopedPreferenceKey:kMultiRowEnabledKey], NO);
-    float storedPerRow = preferencesFloat([self scopedPreferenceKey:kButtonsPerRowKey], buttonsPerRowDefault);
+    self.multiRowEnabled = isTop && [self dxChromeBool:kMultiRowEnabledKey fallback:NO];
+    float storedPerRow = [self dxChromeFloat:kButtonsPerRowKey fallback:buttonsPerRowDefault];
     self.buttonsPerRow = MIN(8, MAX(1, (NSInteger)storedPerRow));
     self.rowSpacing = MIN(20.0, MAX(0.0,
-        preferencesFloat([self scopedPreferenceKey:kMultiRowSpacingKey], multiRowSpacingDefault)));
+        [self dxChromeFloat:kMultiRowSpacingKey fallback:multiRowSpacingDefault]));
+}
+
+- (CGFloat)dxChromeFloat:(NSString *)key fallback:(CGFloat)fallback {
+    NSString *scopedKey = [self scopedPreferenceKey:key];
+    if (!self.dxPreviewMode) return preferencesFloat(scopedKey, fallback);
+    id value = self.dxPreviewPreferences[scopedKey];
+    return [value respondsToSelector:@selector(floatValue)] ? [value floatValue] : fallback;
+}
+
+- (BOOL)dxChromeBool:(NSString *)key fallback:(BOOL)fallback {
+    NSString *scopedKey = [self scopedPreferenceKey:key];
+    if (!self.dxPreviewMode) return preferencesBool(scopedKey, fallback);
+    id value = self.dxPreviewPreferences[scopedKey];
+    return [value respondsToSelector:@selector(boolValue)] ? [value boolValue] : fallback;
+}
+
+- (UIColor *)dxButtonBackgroundTintColor {
+    if (!self.dxPreviewMode) return currentBackgroundTintColor;
+    NSDictionary *snapshot = self.dxPreviewPreferences;
+    if (![snapshot[kColorEnabledkey] boolValue]) return nil;
+    id enabled = snapshot[kShortcutsBackgroundTintEnabled];
+    if (enabled && ![enabled boolValue]) return nil;
+    return DXColorFromHex(snapshot[@"shortcutsbackgroundtint"], @"#5B5B5B");
+}
+
+- (UIColor *)dxButtonTintColor {
+    if (!self.dxPreviewMode) return currentTintColor;
+    NSDictionary *snapshot = self.dxPreviewPreferences;
+    return [snapshot[kShortcutsTintEnabled] boolValue]
+        ? DXColorFromHex(snapshot[@"shortcutstint"], @"#ff0000")
+        : UIColor.secondaryLabelColor;
+}
+
+- (void)configurePreviewWithPreferences:(NSDictionary *)preferences {
+    if (!self.dxPreviewMode || ![preferences isKindOfClass:[NSDictionary class]]) return;
+    self.dxPreviewPreferences = preferences;
+    [self reloadShortcutConfiguration];
+    [self.collectionViewLayout invalidateLayout];
+    [self reloadData];
 }
 
 // 多行模式最多两行；超量旧配置由数据源先裁到当前两行容量。
@@ -319,10 +364,14 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 // Buttons get visible chrome (per-button spacing, corner radius, spacing-aware
 // insets) when either the shared background tint or this toolbar's border is on.
 - (BOOL)buttonChromeActive {
-    return currentBackgroundTintColor != nil || self.borderEnabled;
+    return [self dxButtonBackgroundTintColor] != nil || self.borderEnabled;
 }
 
 - (instancetype)initWithConfiguration:(NSString *)configuration{
+    return [self initWithConfiguration:configuration preview:NO];
+}
+
+- (instancetype)initWithConfiguration:(NSString *)configuration preview:(BOOL)preview {
 
     // Both toolbars get the non-flipping flow layout: the dock toolbar joins
     // the same rebuilt keyboard hierarchy as the top accessory, so an unpinned
@@ -340,6 +389,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         // positions (the reversed-first-frame flash).
         self.semanticContentAttribute = UISemanticContentAttributeForceLeftToRight;
         self.configuration = configuration ?: @"bottom";
+        self.dxPreviewMode = preview;
+        if (preview) self.dxPreviewPreferences = [DXPrefsManager sharedInstance].prefs;
         self.shortcutsGenerator = [DXShortcutsGenerator sharedInstance];
         // Build the data source exactly once, directly from the complete
         // preference snapshot.  There is no default/cache view that is later
@@ -361,12 +412,17 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         self.showsHorizontalScrollIndicator = NO;
         self.pagingEnabled = NO;
         self.scrollEnabled = NO;
+        [self registerClass:NSClassFromString(@"DXCell") forCellWithReuseIdentifier:@"kTypeXCellID"];
+        // A page preview never joins the live keyboard/panel lifecycle or routes actions.
+        if (preview) {
+            self.userInteractionEnabled = NO;
+            return self;
+        }
         DXToolbarHorizontalGesture *horizontal = [[DXToolbarHorizontalGesture alloc] initWithTarget:self action:@selector(toolbarHorizontalEnded:)];
         horizontal.cancelsTouchesInView = YES;
         horizontal.delaysTouchesBegan = NO;
         [self addGestureRecognizer:horizontal];
         [[DXKeyboardPanel sharedInstance] registerToolbar:self];
-        [self registerClass:NSClassFromString(@"DXCell") forCellWithReuseIdentifier:@"kTypeXCellID"];
         dispatch_async(dispatch_get_main_queue(), ^{
             [self keyboardRotated:nil];
         });
@@ -394,6 +450,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 - (void)didMoveToWindow {
     [super didMoveToWindow];
+    if (self.dxPreviewMode) return;
     if (!self.window) {
         [self dismissSubActionPanelAnimated:NO completion:nil];
         [[DXKeyboardPanel sharedInstance] toolbarDetached:self];
@@ -557,11 +614,12 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 -(BOOL)reloadShortcutConfiguration{
     DXPrefsManager *manager = [DXPrefsManager sharedInstance];
-    NSDictionary *freshPrefs = manager.preferencesAvailable ? manager.prefs : nil;
+    NSDictionary *freshPrefs = self.dxPreviewMode ? self.dxPreviewPreferences
+        : (manager.preferencesAvailable ? manager.prefs : nil);
     NSDictionary *previousPrefs = self.dxAppliedPrefsSnapshot;
     self.shortcutConfigurationAvailable = [freshPrefs isKindOfClass:[NSDictionary class]];
     NSDictionary *currentPrefs = self.shortcutConfigurationAvailable ? freshPrefs : @{};
-    prefs = [currentPrefs mutableCopy];
+    if (!self.dxPreviewMode) prefs = [currentPrefs mutableCopy];
     NSMutableArray *defaultImages12 = [[self.shortcutsGenerator imageNameArrayForiOS:0] mutableCopy];
     NSMutableArray *defaultImages13 = [[self.shortcutsGenerator imageNameArrayForiOS:1] mutableCopy];
     NSMutableArray *defaultSelectors = [[self.shortcutsGenerator selectorNames] mutableCopy];
@@ -1717,7 +1775,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 -(NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section {
     (void)collectionView;
     return section == 0 ? MIN(((NSArray *)self.shortcuts[kselectors]).count,
-        DXToolbarCapacityForPreferences([DXPrefsManager sharedInstance].prefs, self.configuration)) : 0;
+        DXToolbarCapacityForPreferences(self.dxPreviewMode ? self.dxPreviewPreferences
+            : [DXPrefsManager sharedInstance].prefs, self.configuration)) : 0;
 }
 
 // All six gestures share the same behavior: one action runs directly;
@@ -2686,11 +2745,12 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
     // with no gesture-recognizer window, so taps can be repeated as fast as the
     // user likes. No tap recognizer is mounted; one would delay every touch-up
     // until it fails.
-    [cell.btn addTarget:self action:@selector(cellButtonTouchUpInside:) forControlEvents:UIControlEventTouchUpInside];
+    if (!self.dxPreviewMode)
+        [cell.btn addTarget:self action:@selector(cellButtonTouchUpInside:) forControlEvents:UIControlEventTouchUpInside];
 
     // Mount recognizers only for gestures with executable actions.
     NSMutableArray<UIGestureRecognizer *> *recognizers = [NSMutableArray array];
-    if ([preferencesGestureActionSelectors(cell.btn.accessibilityIdentifier, DXShortcutGestureLongPress, self.configuration) count] > 0) {
+    if (!self.dxPreviewMode && [preferencesGestureActionSelectors(cell.btn.accessibilityIdentifier, DXShortcutGestureLongPress, self.configuration) count] > 0) {
         UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(activateLPActions:)];
         longPress.minimumPressDuration = 0.5;
         [recognizers addObject:longPress];
@@ -2698,6 +2758,7 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
 
     // Horizontal gestures are routed once by the toolbar; only vertical swipes stay on buttons.
     for (NSInteger gesture = DXShortcutGestureSwipeUp; gesture <= DXShortcutGestureSwipeDown; gesture++) {
+        if (self.dxPreviewMode) break;
         if ([preferencesGestureActionSelectors(cell.btn.accessibilityIdentifier, (int)gesture, self.configuration) count] == 0) continue;
 
         UISwipeGestureRecognizer *swipe = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(activateSwipeActions:)];
@@ -2726,10 +2787,11 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
     cell.btn.layer.borderWidth = self.borderEnabled ? self.borderWidth : 0;
     cell.btn.layer.borderColor = self.borderEnabled ? [UIColor labelColor].CGColor : NULL;
     [cell applyButtonWidthMultiplier:self.widthScale / buttonWidthScaleDefault];
-    cell.btn.backgroundColor = currentBackgroundTintColor ? : [UIColor clearColor];
-    cell.btn.tintColor = currentTintColor;
-    [cell.btn setTitleColor:currentTintColor forState:UIControlStateNormal];
-    cell.btn.hidden = isLandscape||isDictating?YES:NO;
+    cell.btn.backgroundColor = [self dxButtonBackgroundTintColor] ?: [UIColor clearColor];
+    UIColor *buttonTint = [self dxButtonTintColor];
+    cell.btn.tintColor = buttonTint;
+    [cell.btn setTitleColor:buttonTint forState:UIControlStateNormal];
+    cell.btn.hidden = !self.dxPreviewMode && (isLandscape || isDictating);
     //cell.btn.backgroundColor = [UIColor colorWithWhite:0.5 alpha:0.7];
     return cell;
     

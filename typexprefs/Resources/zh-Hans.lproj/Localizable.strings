@@ -239,6 +239,9 @@
 "DEFAULT_BUTTON_NAME" = "动作";
 "TEST_INPUT_FIELD" = "测试输入框（点击弹出键盘试试按钮）";
 "TEST_INPUT_FIELD_PLACEHOLDER" = "输入文本试试工具栏按钮…";
+"TOOLBAR_PREVIEW" = "工具栏预览";
+"TOOLBAR_PREVIEW_EMPTY" = "暂无已开启的按钮";
+"TOOLBAR_PREVIEW_UNAVAILABLE" = "预览暂不可用，请安装 TypeX 后重新打开设置。";
 
 "LONG_SHELLX_SCREENSHOT" = "ShellX 截图";
 "SHORT_SHELLX_SCREENSHOT" = "截图";

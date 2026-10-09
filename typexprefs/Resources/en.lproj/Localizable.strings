@@ -240,6 +240,9 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "DEFAULT_BUTTON_NAME" = "Action";
 "TEST_INPUT_FIELD" = "Test Field (tap to try the toolbar buttons)";
 "TEST_INPUT_FIELD_PLACEHOLDER" = "Type here to test the toolbar…";
+"TOOLBAR_PREVIEW" = "Toolbar Preview";
+"TOOLBAR_PREVIEW_EMPTY" = "No enabled buttons";
+"TOOLBAR_PREVIEW_UNAVAILABLE" = "Preview unavailable. Restart Settings after installing TypeX.";
 
 "LONG_SHELLX_SCREENSHOT" = "ShellX Screenshot";
 "SHORT_SHELLX_SCREENSHOT" = "Shot";
