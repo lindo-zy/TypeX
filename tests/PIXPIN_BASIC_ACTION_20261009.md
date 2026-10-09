@@ -38,6 +38,17 @@ TypeX 开发基线 dev/ebfe25e，工作区干净，隔离分支 codex/pixpin-bas
 - run-settings-ui.py：4508 项设置搜索/布局检查通过；中英文 Localizable.strings 的 plutil 检查通过。
 - 这些检查不验证真实 iOS Window/Scene、隐藏键盘时机、框选界面或安装/卸载。
 
+## 双包审查
+
+- 本地合并至 dev/f4b0208 后运行唯一入口 ./build.sh，双平台成功，control 自动从 4.4.7 推进至 4.4.8。
+- com.lindo.typex，iphoneos-arm64e；两包的 TypeX 和 TypeXPrefs 均包含 arm64/arm64e。
+- 两套产物沿用脚本的 iPhoneOS16.5 SDK；ios16 部署目标 16.0，ios17 部署目标 15.0。
+- 解包确认新动作选择器、区域通知名、两种语言名称、UIKit/SpringBoard 注入配置。
+- postinst/postrm 与源码一致且具有可执行权限；设备安装和卸载行为未验证。
+- ios16 SHA-256：4b9763d0a77d1bd21048d2c0283995b60191ae43677e8596f6a645b8558c943f。
+- ios17 SHA-256：4295b407ca24d7ed4a7a3703d6f62e2fb591cbace918d5ae7758bac7a401952e。
+- 构建退出码 0；Bark 已发送 typex-4.4.8-构建完成。
+
 ## 设备验收（尚未执行）
 
 1. iOS 16/17、arm64/arm64e 安装相应 TypeX 包并重新加载 SpringBoard；冷启动目标 App 弹出键盘。
