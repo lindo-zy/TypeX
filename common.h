@@ -123,6 +123,11 @@
 
 
 #define heightOffsetDefault 60.0f
+// Bottom dock geometry shared by the live toolbar and its Settings preview.
+#define DXBottomToolbarLeadingInset 69.0f
+#define DXBottomToolbarTrailingInset 60.0f
+#define DXBottomToolbarBottomInset 22.0f
+#define DXBottomToolbarCellTopInset 22.0f
 
 #define searchedCountEaster 100
 

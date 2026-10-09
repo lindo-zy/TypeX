@@ -5,6 +5,7 @@
 #import "../DXCollectionView.h"
 #import "../common.h"
 #import <objc/runtime.h>
+#include <math.h>
 
 static NSBundle *tweakBundle;
 
@@ -14,6 +15,10 @@ static NSBundle *tweakBundle;
 @property (nonatomic, strong) UILabel *toolbarPreviewStatus;
 @property (nonatomic, strong) DXCollectionView *toolbarPreview;
 @property (nonatomic, copy) NSDictionary *toolbarPreviewPreferences;
+@property (nonatomic, strong) UIView *toolbarPreviewDock;
+@property (nonatomic, strong) UIImageView *toolbarPreviewGlobe;
+@property (nonatomic, strong) UIImageView *toolbarPreviewDictation;
+@property (nonatomic, assign) CGFloat toolbarPreviewDockHeight;
 @end
 
 // Height of the section header hosting the test field above the
@@ -312,7 +317,7 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
 // Resolve the injected renderer dynamically: the preferences bundle does not
 // link a second copy of the keyboard/action implementation into Settings.
 - (void)installToolbarPreview {
-    if (!self.topConfiguration || self.toolbarPreviewHeader) return;
+    if (self.toolbarPreviewHeader) return;
     self.toolbarPreviewHeader = [[UIView alloc] initWithFrame:CGRectMake(0, 0, CGRectGetWidth(self.tableView.bounds), 94)];
     self.toolbarPreviewHeader.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     self.toolbarPreviewCaption = [UILabel new];
@@ -328,16 +333,44 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
     self.toolbarPreviewStatus.numberOfLines = 0;
     [self.toolbarPreviewHeader addSubview:self.toolbarPreviewStatus];
 
+    UIView *previewHost = self.toolbarPreviewHeader;
+    if (!self.topConfiguration) {
+        self.toolbarPreviewDockHeight = heightOffsetDefault;
+        self.toolbarPreviewDock = [UIView new];
+        self.toolbarPreviewDock.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *traits) {
+            return traits.userInterfaceStyle == UIUserInterfaceStyleDark
+                ? [UIColor colorWithWhite:0.16 alpha:1.0]
+                : [UIColor colorWithRed:0.82 green:0.83 blue:0.85 alpha:1.0];
+        }];
+        self.toolbarPreviewDock.layer.cornerRadius = 12;
+        self.toolbarPreviewDock.clipsToBounds = YES;
+        self.toolbarPreviewDock.userInteractionEnabled = NO;
+        [self.toolbarPreviewHeader addSubview:self.toolbarPreviewDock];
+        // Stock dock controls provide visual context; only the shortcut strip
+        // is rendered by TypeX, and no keyboard controls are activated here.
+        UIImageSymbolConfiguration *symbol = [UIImageSymbolConfiguration configurationWithPointSize:26 weight:UIImageSymbolWeightRegular];
+        self.toolbarPreviewGlobe = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"globe" withConfiguration:symbol]];
+        self.toolbarPreviewDictation = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"mic" withConfiguration:symbol]];
+        for (UIImageView *imageView in @[self.toolbarPreviewGlobe, self.toolbarPreviewDictation]) {
+            imageView.contentMode = UIViewContentModeScaleAspectFit;
+            imageView.tintColor = UIColor.secondaryLabelColor;
+            [self.toolbarPreviewDock addSubview:imageView];
+        }
+        previewHost = self.toolbarPreviewDock;
+    }
+
+    NSString *configuration = self.topConfiguration ? @"top" : @"bottom";
     Class renderer = NSClassFromString(@"DXCollectionView");
     if ([renderer isSubclassOfClass:UICollectionView.class] &&
         [renderer instancesRespondToSelector:@selector(initWithConfiguration:preview:)] &&
         [renderer instancesRespondToSelector:@selector(configurePreviewWithPreferences:)]) {
-        self.toolbarPreview = [(DXCollectionView *)[renderer alloc] initWithConfiguration:@"top" preview:YES];
-        self.toolbarPreview.backgroundColor = UIColor.secondarySystemGroupedBackgroundColor;
-        [self.toolbarPreviewHeader addSubview:self.toolbarPreview];
+        self.toolbarPreview = [(DXCollectionView *)[renderer alloc] initWithConfiguration:configuration preview:YES];
+        self.toolbarPreview.backgroundColor = self.topConfiguration ? UIColor.secondarySystemGroupedBackgroundColor : UIColor.clearColor;
+        [previewHost addSubview:self.toolbarPreview];
     } else {
-        NSLog(@"[TypeX][ToolbarPreview] unavailable renderer in Settings");
+        NSLog(@"[TypeX][ToolbarPreview] unavailable renderer in Settings configuration=%@", configuration);
     }
+    [self.toolbarPreviewHeader bringSubviewToFront:self.toolbarPreviewStatus];
     self.tableView.tableHeaderView = self.toolbarPreviewHeader;
 }
 
@@ -350,6 +383,11 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
 - (void)applyToolbarPreviewPreferences:(NSDictionary *)preferences {
     if (!self.toolbarPreviewHeader) return;
     [self.toolbarPreview configurePreviewWithPreferences:preferences];
+    if (!self.topConfiguration) {
+        id value = preferences[kHeightOffsetkey];
+        CGFloat height = [value respondsToSelector:@selector(floatValue)] ? [value floatValue] : heightOffsetDefault;
+        self.toolbarPreviewDockHeight = isfinite(height) ? MIN(80.0, MAX(50.0, height)) : heightOffsetDefault;
+    }
     BOOL hasButtons = [self.toolbarPreview.shortcuts[kselectors] count] > 0;
     self.toolbarPreviewStatus.text = LOCALIZED(self.toolbarPreview ? @"TOOLBAR_PREVIEW_EMPTY" : @"TOOLBAR_PREVIEW_UNAVAILABLE");
     self.toolbarPreviewStatus.hidden = hasButtons;
@@ -360,19 +398,35 @@ static void DXAppendUniqueShortcuts(NSArray *shortcuts,
 - (void)layoutToolbarPreviewHeader {
     if (!self.toolbarPreviewHeader) return;
     CGFloat width = CGRectGetWidth(self.tableView.bounds);
-    CGFloat toolbarHeight = MAX(41.5, [self.toolbarPreview preferredToolbarHeight]);
+    CGFloat toolbarHeight = self.topConfiguration ? MAX(41.5, [self.toolbarPreview preferredToolbarHeight]) : self.toolbarPreviewDockHeight;
     CGFloat leading = self.tableView.safeAreaInsets.left;
     CGFloat trailing = self.tableView.safeAreaInsets.right;
     CGFloat contentWidth = MAX(0, width - leading - trailing);
     self.toolbarPreviewCaption.frame = CGRectMake(leading + 16, 12, MAX(0, contentWidth - 32), 20);
-    BOOL widthChanged = CGRectGetWidth(self.toolbarPreview.bounds) != contentWidth;
-    self.toolbarPreview.frame = CGRectMake(leading, 36, contentWidth, toolbarHeight);
-    self.toolbarPreviewStatus.frame = CGRectMake(leading + 16, 36, MAX(0, contentWidth - 32), toolbarHeight);
+    CGFloat panelHeight = toolbarHeight;
+    CGRect toolbarFrame = CGRectMake(leading, 36, contentWidth, toolbarHeight);
+    CGRect statusFrame = CGRectMake(leading + 16, 36, MAX(0, contentWidth - 32), toolbarHeight);
+    if (!self.topConfiguration) {
+        CGFloat leftInset = MIN(DXBottomToolbarLeadingInset, contentWidth);
+        CGFloat rightInset = MIN(DXBottomToolbarTrailingInset, MAX(0, contentWidth - leftInset));
+        CGFloat stripWidth = MAX(0, contentWidth - leftInset - rightInset);
+        panelHeight += DXBottomToolbarBottomInset;
+        self.toolbarPreviewDock.frame = CGRectMake(leading, 36, contentWidth, panelHeight);
+        toolbarFrame = CGRectMake(leftInset, 0, stripWidth, toolbarHeight);
+        statusFrame = CGRectMake(leading + leftInset + 8, 36, MAX(0, stripWidth - 16), toolbarHeight);
+        CGFloat buttonHeight = self.toolbarPreview ? self.toolbarPreview.buttonHeight : cellsHeightDefault;
+        CGFloat symbolY = DXBottomToolbarCellTopInset + (buttonHeight - 28.0) / 2.0;
+        self.toolbarPreviewGlobe.frame = CGRectMake(MAX(0, (leftInset - 28.0) / 2.0), symbolY, 28, 28);
+        self.toolbarPreviewDictation.frame = CGRectMake(contentWidth - rightInset + MAX(0, (rightInset - 28.0) / 2.0), symbolY, 28, 28);
+    }
+    BOOL widthChanged = CGRectGetWidth(self.toolbarPreview.bounds) != CGRectGetWidth(toolbarFrame);
+    self.toolbarPreview.frame = toolbarFrame;
+    self.toolbarPreviewStatus.frame = statusFrame;
     if (widthChanged) {
         [self.toolbarPreview.collectionViewLayout invalidateLayout];
         [self.toolbarPreview reloadData];
     }
-    CGRect headerFrame = CGRectMake(0, 0, width, 36 + toolbarHeight + 16);
+    CGRect headerFrame = CGRectMake(0, 0, width, 36 + panelHeight + 16);
     if (!CGRectEqualToRect(self.toolbarPreviewHeader.frame, headerFrame)) {
         self.toolbarPreviewHeader.frame = headerFrame;
         self.tableView.tableHeaderView = self.toolbarPreviewHeader;
@@ -649,8 +703,7 @@ static NSString *DXFormatSettingsValue(float value, float step, NSString *suffix
         slider.translatesAutoresizingMaskIntoConstraints = NO;
         [slider addTarget:self action:@selector(settingsSliderChanged:) forControlEvents:UIControlEventValueChanged];
         [slider addTarget:self action:@selector(settingsSliderReleased:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside];
-        if (self.topConfiguration)
-            [slider addTarget:self action:@selector(settingsSliderCancelled:) forControlEvents:UIControlEventTouchCancel];
+        [slider addTarget:self action:@selector(settingsSliderCancelled:) forControlEvents:UIControlEventTouchCancel];
         [cell.contentView addSubview:slider];
 
         [NSLayoutConstraint activateConstraints:@[

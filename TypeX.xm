@@ -801,8 +801,8 @@ static void reloadPrefs(void);
         
         // Stock globe/dictation buttons always stay; the toolbar sits between
         // them (69/-60 clear both stock buttons).
-        float leading = 69.0f;
-        float trailing = -60.0f;
+        float leading = DXBottomToolbarLeadingInset;
+        float trailing = -DXBottomToolbarTrailingInset;
 
         NSLayoutConstraint *leadingConstraint = [NSLayoutConstraint constraintWithItem:self.typex attribute:NSLayoutAttributeLeading relatedBy:NSLayoutRelationEqual toItem:dockView attribute:NSLayoutAttributeLeading multiplier:1.0 constant:leading];
         leadingConstraint.identifier = @"TypeX";
@@ -817,7 +817,7 @@ static void reloadPrefs(void);
         [dockView addConstraint:heightConstraint];
 
         // Fixed lift above the dock's bottom edge (the former vertical-offset default).
-        NSLayoutConstraint *bottomConstraint = [NSLayoutConstraint constraintWithItem:self.typex attribute:NSLayoutAttributeBottom relatedBy:NSLayoutRelationEqual toItem:dockView attribute:NSLayoutAttributeBottom multiplier:1.0 constant:-22.0f];
+        NSLayoutConstraint *bottomConstraint = [NSLayoutConstraint constraintWithItem:self.typex attribute:NSLayoutAttributeBottom relatedBy:NSLayoutRelationEqual toItem:dockView attribute:NSLayoutAttributeBottom multiplier:1.0 constant:-DXBottomToolbarBottomInset];
         bottomConstraint.identifier = @"TypeX";
         [dockView addConstraint:bottomConstraint];
 
