@@ -101,8 +101,6 @@ int main(void) {
         check([DXPixPinDylibPath isEqual:@"/Library/MobileSubstrate/DynamicLibraries/PixPin.dylib"]);
         check(DXVisibleSystemActionCatalog(NO).count == 27 && DXVisibleSystemActionCatalog(YES).count == 34);
         for (NSDictionary *action in DXVisibleSystemActionCatalog(NO)) check(!action[@"pixpinNotification"]);
-        check(DXSystemActionIsPixPinCapture(@"pixpin-full") && DXSystemActionIsPixPinCapture(@"pixpin-long"));
-        check(!DXSystemActionIsPixPinCapture(@"pixpin-cancel") && !DXSystemActionIsPixPinCapture(@"wifi") && !DXSystemActionIsPixPinCapture(nil));
         NSString *fixtureDirectory = [NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
         NSString *fixtureDylib = [fixtureDirectory stringByAppendingPathComponent:@"PixPin.dylib"];
         check([NSFileManager.defaultManager createDirectoryAtPath:fixtureDirectory withIntermediateDirectories:YES attributes:nil error:nil]);

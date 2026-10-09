@@ -182,28 +182,6 @@
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
-			<key>footerText</key>
-			<string>SHELLX_SCREENSHOT_HIDE_KEYBOARD_FOOTER</string>
-			<key>id</key>
-			<string>shellxScreenshotKeyboardGroup</string>
-		</dict>
-		<dict>
-			<key>PostNotification</key>
-			<string>com.lindo.typex/prefschanged</string>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>default</key>
-			<false/>
-			<key>defaults</key>
-			<string>com.lindo.typex</string>
-			<key>key</key>
-			<string>shellxscreenshothidekeyboardBOOL</string>
-			<key>label</key>
-			<string>SHELLX_SCREENSHOT_HIDE_KEYBOARD</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSGroupCell</string>
 			<key>label</key>
 			<string>BACKUP_SECTION</string>
 			<key>footerText</key>

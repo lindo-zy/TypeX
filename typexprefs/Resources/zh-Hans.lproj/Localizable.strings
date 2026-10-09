@@ -317,10 +317,6 @@
 
 "PASTE_CHIP_ACTION" = "粘贴";
 
-/* 截图 */
-"SHELLX_SCREENSHOT_HIDE_KEYBOARD" = "截图时隐藏键盘";
-"SHELLX_SCREENSHOT_HIDE_KEYBOARD_FOOTER" = "默认关闭。开启后，使用 ShellX 或 PixPin 截图动作时会先隐藏键盘再截图；截图后不会自动恢复键盘。";
-
 /* 设置页通用（补齐缺失键） */
 "TWEAK" = "插件";
 "ENABLED" = "启用";

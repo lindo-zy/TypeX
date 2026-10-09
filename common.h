@@ -106,11 +106,6 @@
 // or an entry without the host bundle ID means off: the per-app switches in
 // Settings all default to off.
 #define kPasteImageChipAppsKey @"pasteimagechipapps"
-// Optional ShellX screenshot behavior. This uses a new key so users who had
-// enabled the former "restore keyboard after screenshot" option do not
-// accidentally inherit the new behavior; the default remains off.
-#define kShellXScreenshotHideKeyboardKey @"shellxscreenshothidekeyboardBOOL"
-
 #define kbuttonsImages12 0
 #define kbuttonsImages13 1
 #define kselectors 2

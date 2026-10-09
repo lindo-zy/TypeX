@@ -318,10 +318,6 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 
 "PASTE_CHIP_ACTION" = "Paste";
 
-/* Screenshot */
-"SHELLX_SCREENSHOT_HIDE_KEYBOARD" = "Hide keyboard during screenshot";
-"SHELLX_SCREENSHOT_HIDE_KEYBOARD_FOOTER" = "Off by default. When enabled, ShellX and PixPin screenshot actions hide the keyboard before capturing. The keyboard is not restored afterward.";
-
 /* Settings (previously missing keys) */
 "TWEAK" = "Tweak";
 "ENABLED" = "Enabled";
