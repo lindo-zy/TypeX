@@ -49,15 +49,13 @@ typedef NS_ENUM(NSInteger, direction) {
 // the stock icons (the default).
 @property (nonatomic, assign) BOOL useShortLabel;
 
-// 多行模式（仅顶部工具栏生效）：YES 时按钮按 buttonsPerRow 换行，第一行
-// 紧贴键盘、第二行向上堆叠，最多两行/16 个；NO 时以 buttonsPerRow 为页长
-// 横向分页。
-@property (nonatomic, assign, readonly) BOOL multiRowEnabled;
+// 顶部工具栏固定按 buttonsPerRow 换行：第一行紧贴键盘、第二行向上堆叠，
+// 最多两行/16 个。
 @property (nonatomic, assign, readonly) NSInteger buttonsPerRow;
 @property (nonatomic, assign, readonly) CGFloat rowSpacing;
 
-// 工具栏自身期望的整条高度。顶部工具栏多行模式下随行数增长，其余情况返回
-// 单行固定高度；DXTopAccessoryContainer 以此决定容器（含原附件）的占位。
+// 顶部工具栏期望的整条高度随行数增长；底部工具栏返回 0。
+// DXTopAccessoryContainer 以此决定容器（含原附件）的占位。
 - (CGFloat)preferredToolbarHeight;
 
 -(void)reloadButtonChrome;

@@ -40,7 +40,17 @@ int main(void) {
         NSMutableArray *savedButtons = [NSMutableArray array];
         for (NSInteger i = 0; i < 20; i++) [savedButtons addObject:@{@"selector": [NSString stringWithFormat:@"button%ld", (long)i], @"name": @"kept"}];
         NSArray *order = @[savedButtons, @[@{@"selector": @"disabled-record"}]];
-        for (NSArray *fixture in @[@[@{}, @"top", @6], @[@{DXScopedPreferenceKey(kButtonsPerRowKey, @"top"): @4, DXScopedPreferenceKey(kMultiRowEnabledKey, @"top"): @YES}, @"top", @8], @[@{}, @"bottom", @8]]) {
+        // Missing and legacy on/off values all use the same two-row capacity.
+        for (NSArray *fixture in @[
+            @[@{}, @"top", @12],
+            @[@{@"topmultirowBOOL": @NO}, @"top", @12],
+            @[@{DXScopedPreferenceKey(kButtonsPerRowKey, @"top"): @4, @"topmultirowBOOL": @YES}, @"top", @8],
+            @[@{DXScopedPreferenceKey(kButtonsPerRowKey, @"top"): @4, @"topmultirowBOOL": @NO}, @"top", @8],
+            @[@{DXScopedPreferenceKey(kButtonsPerRowKey, @"top"): @1}, @"top", @2],
+            @[@{DXScopedPreferenceKey(kButtonsPerRowKey, @"top"): @8}, @"top", @16],
+            @[@{}, @"bottom", @8],
+            @[@{@"topmultirowBOOL": @YES}, @"bottom", @8],
+        ]) {
             NSDictionary *settings = fixture[0];
             NSArray *normalized = DXToolbarOrderFittingCapacity(order, settings, fixture[1]);
             NSUInteger active = 0;
