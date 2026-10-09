@@ -2804,13 +2804,13 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
     // the tinted buttons clear of the dock's edge buttons).
     if ([self buttonChromeActive]){
         if (section == 0){
-            return UIEdgeInsetsMake(22.0, 2*self.buttonSpacing, 0.0, 0.0);
+            return UIEdgeInsetsMake(DXBottomToolbarCellTopInset, 2*self.buttonSpacing, 0.0, 0.0);
 
         }
-        return UIEdgeInsetsMake(22.0, self.buttonSpacing, 0.0, 0.0);
+        return UIEdgeInsetsMake(DXBottomToolbarCellTopInset, self.buttonSpacing, 0.0, 0.0);
 
     }
-    return UIEdgeInsetsMake(22.0, 0.0, 0.0, 0.0);
+    return UIEdgeInsetsMake(DXBottomToolbarCellTopInset, 0.0, 0.0, 0.0);
 }
 
 - (CGFloat)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout*)collectionViewLayout minimumLineSpacingForSectionAtIndex:(NSInteger)section{
