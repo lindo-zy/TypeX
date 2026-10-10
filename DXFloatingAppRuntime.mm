@@ -325,10 +325,10 @@ static void DXFloatForegroundSettings(id settings, BOOL foreground) {
 - (id)protectedSettings:(id)settings scene:(id)scene {
     if (![self protectsScene:scene]) return settings;
     @try {
-        id mutable = DXFloatObject(settings, @"mutableCopy");
-        if (!mutable) return settings;
-        DXFloatForegroundSettings(mutable, YES);
-        return mutable;
+        id mutableSettings = DXFloatObject(settings, @"mutableCopy");
+        if (!mutableSettings) return settings;
+        DXFloatForegroundSettings(mutableSettings, YES);
+        return mutableSettings;
     } @catch (__unused NSException *exception) { return settings; }
 }
 - (void)close { [self cleanup:DXSystemOpenFailed reason:@"close-button"]; }
@@ -654,7 +654,7 @@ static void DXFloatTrustedOpen(id workspace, SEL selector, id application, id op
             if ([activation respondsToSelector:description]) {
                 for (NSUInteger setting = 0; setting < 128; setting++) {
                     id key = ((id (*)(id, SEL, NSUInteger))objc_msgSend)(activation, description, setting);
-                    if ([key isKindOfClass:NSString.class] && [key.lowercaseString isEqual:@"suspended"]) { suspended = setting; break; }
+                    if ([key isKindOfClass:NSString.class] && [[(NSString *)key lowercaseString] isEqual:@"suspended"]) { suspended = setting; break; }
                 }
             }
             SEL set = NSSelectorFromString(@"setBool:forActivationSetting:");
