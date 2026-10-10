@@ -8,7 +8,9 @@
 #import "DXPanelRegistry.h"
 #import "DXToolbarHorizontalGesture.h"
 #import "DXSystemOpenBroker.h"
+#import "DXFloatingAppSession.h"
 #import "DXJavaScriptHost.h"
+#import "DXPixPinIntegration.h"
 
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -109,14 +111,19 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 @property (nonatomic, assign, readwrite) BOOL shortcutConfigurationAvailable;
 // 上次成功应用的偏好快照引用：键盘出现路径的整表重载门控依据（顺序闪变修复）。
 @property (nonatomic, strong) NSDictionary *dxAppliedPrefsSnapshot;
+@property (nonatomic, assign) BOOL dxPreviewMode;
+@property (nonatomic, copy) NSDictionary *dxPreviewPreferences;
 @property (nonatomic, assign, readwrite) CGFloat bottomSpacing;
-@property (nonatomic, assign, readwrite) BOOL multiRowEnabled;
 @property (nonatomic, assign, readwrite) NSInteger buttonsPerRow;
 @property (nonatomic, assign, readwrite) CGFloat rowSpacing;
 @property (nonatomic, strong) UIControl *subActionPanelOverlay;
 @property (nonatomic, strong) UIButton *subActionPanelSourceButton;
 @property (nonatomic, weak) id textPanelInput;
 @property (nonatomic, weak) UIWindow *textPanelSourceWindow;
+- (CGFloat)dxChromeFloat:(NSString *)key fallback:(CGFloat)fallback;
+- (BOOL)dxChromeBool:(NSString *)key fallback:(BOOL)fallback;
+- (UIColor *)dxButtonBackgroundTintColor;
+- (UIColor *)dxButtonTintColor;
 - (void)presentActionChooserForButton:(UIButton *)button selectors:(NSArray<NSString *> *)selectors
                          textRecords:(NSArray<NSString *> *)textRecords;
 @end
@@ -245,7 +252,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 // 多行模式（仅顶部）：单节承载全部按钮，由 DXMultiRowTopLayout 负责换行；
 // 不再走"节=分页"的横滑模型。
 - (BOOL)multiRowActive {
-    return self.multiRowEnabled && [self.configuration isEqualToString:@"top"];
+    return [self.configuration isEqualToString:@"top"];
 }
 
 // Button chrome is per toolbar: every value lives under the configuration-
@@ -255,23 +262,61 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 -(void)reloadButtonChrome {
     BOOL isTop = [self.configuration isEqualToString:@"top"];
     CGFloat heightFallback = isTop ? 33.33
-        : (currentBackgroundTintColor ? cellsHeightDefault + 5 : cellsHeightDefault);
-    self.buttonHeight = preferencesFloat([self scopedPreferenceKey:kCellHeightkey], heightFallback);
-    self.buttonRadius = preferencesFloat([self scopedPreferenceKey:kCellRadiuskey], cellsRadiusDefault);
-    self.buttonSpacing = preferencesFloat([self scopedPreferenceKey:kCellSpacingkey], spacingBetweenCellsDefault);
+        : ([self dxButtonBackgroundTintColor] ? cellsHeightDefault + 5 : cellsHeightDefault);
+    self.buttonHeight = [self dxChromeFloat:kCellHeightkey fallback:heightFallback];
+    self.buttonRadius = [self dxChromeFloat:kCellRadiuskey fallback:cellsRadiusDefault];
+    self.buttonSpacing = [self dxChromeFloat:kCellSpacingkey fallback:spacingBetweenCellsDefault];
     self.bottomSpacing = isTop ? MIN(20.0, MAX(0.0,
-        preferencesFloat([self scopedPreferenceKey:kBottomSpacingKey], topBottomSpacingDefault))) : 0.0;
-    self.borderEnabled = preferencesBool([self scopedPreferenceKey:kCellBorderEnabledkey], NO);
-    self.borderWidth = preferencesFloat([self scopedPreferenceKey:kCellBorderWidthkey], buttonBorderWidthDefault);
-    self.widthScale = MIN(100, MAX(30, preferencesFloat([self scopedPreferenceKey:kButtonWidthScalekey], buttonWidthScaleDefault)));
-    self.useShortLabel = preferencesBool([self scopedPreferenceKey:kShortLabelEnabledKey], NO);
-    // 多行模式与每行个数只对顶部工具栏生效；每行个数夹在 [1, 8] 防御 plist
+        [self dxChromeFloat:kBottomSpacingKey fallback:topBottomSpacingDefault])) : 0.0;
+    self.borderEnabled = [self dxChromeBool:kCellBorderEnabledkey fallback:NO];
+    self.borderWidth = [self dxChromeFloat:kCellBorderWidthkey fallback:buttonBorderWidthDefault];
+    self.widthScale = MIN(100, MAX(30, [self dxChromeFloat:kButtonWidthScalekey fallback:buttonWidthScaleDefault]));
+    self.useShortLabel = [self dxChromeBool:kShortLabelEnabledKey fallback:NO];
+    // 顶部固定使用多行布局；每行个数夹在 [1, 8] 防御 plist
     // 手改出的越界值（设置页滑动条本身已限范围）。
-    self.multiRowEnabled = isTop && preferencesBool([self scopedPreferenceKey:kMultiRowEnabledKey], NO);
-    float storedPerRow = preferencesFloat([self scopedPreferenceKey:kButtonsPerRowKey], buttonsPerRowDefault);
+    float storedPerRow = [self dxChromeFloat:kButtonsPerRowKey fallback:buttonsPerRowDefault];
     self.buttonsPerRow = MIN(8, MAX(1, (NSInteger)storedPerRow));
     self.rowSpacing = MIN(20.0, MAX(0.0,
-        preferencesFloat([self scopedPreferenceKey:kMultiRowSpacingKey], multiRowSpacingDefault)));
+        [self dxChromeFloat:kMultiRowSpacingKey fallback:multiRowSpacingDefault]));
+}
+
+- (CGFloat)dxChromeFloat:(NSString *)key fallback:(CGFloat)fallback {
+    NSString *scopedKey = [self scopedPreferenceKey:key];
+    if (!self.dxPreviewMode) return preferencesFloat(scopedKey, fallback);
+    id value = self.dxPreviewPreferences[scopedKey];
+    return [value respondsToSelector:@selector(floatValue)] ? [value floatValue] : fallback;
+}
+
+- (BOOL)dxChromeBool:(NSString *)key fallback:(BOOL)fallback {
+    NSString *scopedKey = [self scopedPreferenceKey:key];
+    if (!self.dxPreviewMode) return preferencesBool(scopedKey, fallback);
+    id value = self.dxPreviewPreferences[scopedKey];
+    return [value respondsToSelector:@selector(boolValue)] ? [value boolValue] : fallback;
+}
+
+- (UIColor *)dxButtonBackgroundTintColor {
+    if (!self.dxPreviewMode) return currentBackgroundTintColor;
+    NSDictionary *snapshot = self.dxPreviewPreferences;
+    if (![snapshot[kColorEnabledkey] boolValue]) return nil;
+    id enabled = snapshot[kShortcutsBackgroundTintEnabled];
+    if (enabled && ![enabled boolValue]) return nil;
+    return DXColorFromHex(snapshot[@"shortcutsbackgroundtint"], @"#5B5B5B");
+}
+
+- (UIColor *)dxButtonTintColor {
+    if (!self.dxPreviewMode) return currentTintColor;
+    NSDictionary *snapshot = self.dxPreviewPreferences;
+    return [snapshot[kShortcutsTintEnabled] boolValue]
+        ? DXColorFromHex(snapshot[@"shortcutstint"], @"#ff0000")
+        : UIColor.secondaryLabelColor;
+}
+
+- (void)configurePreviewWithPreferences:(NSDictionary *)preferences {
+    if (!self.dxPreviewMode || ![preferences isKindOfClass:[NSDictionary class]]) return;
+    self.dxPreviewPreferences = preferences;
+    [self reloadShortcutConfiguration];
+    [self.collectionViewLayout invalidateLayout];
+    [self reloadData];
 }
 
 // 多行模式最多两行；超量旧配置由数据源先裁到当前两行容量。
@@ -291,38 +336,30 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 - (CGFloat)preferredToolbarHeight {
     if (![self.configuration isEqualToString:@"top"]) return 0.0;
-    if (!self.multiRowEnabled) return 41.5 + self.bottomSpacing;
     NSInteger rows = [self multiRowCountOfRows];
     return 8.0 + rows * self.buttonHeight + (rows - 1) * self.rowSpacing
          + self.bottomSpacing;
 }
 
-// 多行开关切换布局实例：自绘双行布局 ↔ 固定单行布局。放在 reloadShortcutConfiguration
-// 里执行，偏好恢复竞态（init 时快照未就绪）也会在下一次重载时纠正。
+// 顶部始终使用同一套多行布局，设置页预览也经过这个入口。
 - (void)dxApplyLayoutForConfiguration {
     if (![self.configuration isEqualToString:@"top"]) return;
-    if (self.multiRowEnabled) {
-        if (![self.collectionViewLayout isKindOfClass:[DXMultiRowTopLayout class]]) {
-            [self setCollectionViewLayout:[[DXMultiRowTopLayout alloc] init] animated:NO];
-        }
-        return;
-    }
-    if (![self.collectionViewLayout isKindOfClass:[DXTopShortcutFlowLayout class]]) {
-        UICollectionViewFlowLayout *flowLayout = [[DXTopShortcutFlowLayout alloc] init];
-        flowLayout.scrollDirection = UICollectionViewScrollDirectionHorizontal;
-        flowLayout.minimumLineSpacing = 0;
-        flowLayout.minimumInteritemSpacing = [self buttonChromeActive] ? self.buttonSpacing : 0;
-        [self setCollectionViewLayout:flowLayout animated:NO];
+    if (![self.collectionViewLayout isKindOfClass:[DXMultiRowTopLayout class]]) {
+        [self setCollectionViewLayout:[[DXMultiRowTopLayout alloc] init] animated:NO];
     }
 }
 
 // Buttons get visible chrome (per-button spacing, corner radius, spacing-aware
 // insets) when either the shared background tint or this toolbar's border is on.
 - (BOOL)buttonChromeActive {
-    return currentBackgroundTintColor != nil || self.borderEnabled;
+    return [self dxButtonBackgroundTintColor] != nil || self.borderEnabled;
 }
 
 - (instancetype)initWithConfiguration:(NSString *)configuration{
+    return [self initWithConfiguration:configuration preview:NO];
+}
+
+- (instancetype)initWithConfiguration:(NSString *)configuration preview:(BOOL)preview {
 
     // Both toolbars get the non-flipping flow layout: the dock toolbar joins
     // the same rebuilt keyboard hierarchy as the top accessory, so an unpinned
@@ -340,6 +377,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         // positions (the reversed-first-frame flash).
         self.semanticContentAttribute = UISemanticContentAttributeForceLeftToRight;
         self.configuration = configuration ?: @"bottom";
+        self.dxPreviewMode = preview;
+        if (preview) self.dxPreviewPreferences = [DXPrefsManager sharedInstance].prefs;
         self.shortcutsGenerator = [DXShortcutsGenerator sharedInstance];
         // Build the data source exactly once, directly from the complete
         // preference snapshot.  There is no default/cache view that is later
@@ -361,12 +400,17 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         self.showsHorizontalScrollIndicator = NO;
         self.pagingEnabled = NO;
         self.scrollEnabled = NO;
+        [self registerClass:NSClassFromString(@"DXCell") forCellWithReuseIdentifier:@"kTypeXCellID"];
+        // A page preview never joins the live keyboard/panel lifecycle or routes actions.
+        if (preview) {
+            self.userInteractionEnabled = NO;
+            return self;
+        }
         DXToolbarHorizontalGesture *horizontal = [[DXToolbarHorizontalGesture alloc] initWithTarget:self action:@selector(toolbarHorizontalEnded:)];
         horizontal.cancelsTouchesInView = YES;
         horizontal.delaysTouchesBegan = NO;
         [self addGestureRecognizer:horizontal];
         [[DXKeyboardPanel sharedInstance] registerToolbar:self];
-        [self registerClass:NSClassFromString(@"DXCell") forCellWithReuseIdentifier:@"kTypeXCellID"];
         dispatch_async(dispatch_get_main_queue(), ^{
             [self keyboardRotated:nil];
         });
@@ -394,6 +438,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 - (void)didMoveToWindow {
     [super didMoveToWindow];
+    if (self.dxPreviewMode) return;
     if (!self.window) {
         [self dismissSubActionPanelAnimated:NO completion:nil];
         [[DXKeyboardPanel sharedInstance] toolbarDetached:self];
@@ -557,11 +602,12 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
 -(BOOL)reloadShortcutConfiguration{
     DXPrefsManager *manager = [DXPrefsManager sharedInstance];
-    NSDictionary *freshPrefs = manager.preferencesAvailable ? manager.prefs : nil;
+    NSDictionary *freshPrefs = self.dxPreviewMode ? self.dxPreviewPreferences
+        : (manager.preferencesAvailable ? manager.prefs : nil);
     NSDictionary *previousPrefs = self.dxAppliedPrefsSnapshot;
     self.shortcutConfigurationAvailable = [freshPrefs isKindOfClass:[NSDictionary class]];
     NSDictionary *currentPrefs = self.shortcutConfigurationAvailable ? freshPrefs : @{};
-    prefs = [currentPrefs mutableCopy];
+    if (!self.dxPreviewMode) prefs = [currentPrefs mutableCopy];
     NSMutableArray *defaultImages12 = [[self.shortcutsGenerator imageNameArrayForiOS:0] mutableCopy];
     NSMutableArray *defaultImages13 = [[self.shortcutsGenerator imageNameArrayForiOS:1] mutableCopy];
     NSMutableArray *defaultSelectors = [[self.shortcutsGenerator selectorNames] mutableCopy];
@@ -1138,26 +1184,19 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 // 截图按钮：ShellX 只注入 SpringBoard/assistivetouchd，键盘进程内其类不在内存，
 // Darwin 通知 com.iosdump.screenshotshell/AssistiveScreenshot 是官方跨进程触发入口
 // （SpringBoard 侧 CFNotificationCenterAddObserver，守卫检查 GlobalEnabled 后走系统截图路径）。
-// 默认直接截图；用户开启“截图时隐藏键盘”后，先收起键盘并等待收起动画，
-// 再触发截图。该功能不恢复键盘。
+// 直接触发截图，保留当前键盘状态。
 -(void)shellxScreenshotAction:(UIButton*)sender{
     [self triggerImpactAndAnimationWithButton:sender];
+    notify_post("com.iosdump.screenshotshell/AssistiveScreenshot");
+}
 
-    if (preferencesBool(kShellXScreenshotHideKeyboardKey, NO)) {
-        kbImpl = [objc_getClass("UIKeyboardImpl") activeInstance];
-        if (kbImpl) {
-            [kbImpl dismissKeyboard];
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), ^{
-                notify_post("com.iosdump.screenshotshell/AssistiveScreenshot");
-            });
-        } else {
-            notify_post("com.iosdump.screenshotshell/AssistiveScreenshot");
-        }
-    } else {
-        notify_post("com.iosdump.screenshotshell/AssistiveScreenshot");
-    }
-
+// PixPin's native area-capture notification is shared with the system action.
+// Posting succeeds independently of PixPin's enabled/busy state; never retry.
+-(void)pixpinScreenshotAction:(UIButton*)sender{
+    if (!NSThread.isMainThread || !self.window || self.hidden ||
+        ![DXShortcutsGenerator isPixPinScreenshotAvailable]) return;
+    [self triggerImpactAndAnimationWithButton:sender];
+    DXPostPixPinSystemAction(@"pixpin-area", DX_ROOT_PATH_NS(DXPixPinDylibPath));
 }
 
 // 剪贴板按钮：Kayoko/KayokoX 只在自己注入的进程里挂 Darwin 观察者，键盘进程内
@@ -1174,40 +1213,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 -(void)pulloverWakeAction:(UIButton*)sender{
     [self triggerImpactAndAnimationWithButton:sender];
     notify_post("com.mlgm.pulloverx.external-wake");
-}
-
-// Match SquidGesturePro's PullOver integration: publish the target Bundle ID to
-// TypeX's SpringBoard injection, which calls PullOverWindow.controller's
-// pinAppWithBundleId: directly. The 64-bit Darwin state is visible across App
-// sandboxes; CFPreferences is not suitable here because cfprefsd redirects the
-// same logical domain into the current host App's private container.
--(BOOL)publishPullOverOpenRequestForBundleIdentifier:(NSString *)bundleIdentifier {
-    uint64_t state = DXPullOverOpenStateForBundleIdentifier(bundleIdentifier);
-    int token = NOTIFY_TOKEN_INVALID;
-    uint32_t registerStatus = notify_register_check(kPullOverOpenRequestIdentifier.UTF8String,
-                                                    &token);
-    uint32_t stateStatus = registerStatus == NOTIFY_STATUS_OK
-        ? notify_set_state(token, state) : registerStatus;
-    uint32_t postStatus = stateStatus == NOTIFY_STATUS_OK
-        ? notify_post(kPullOverOpenRequestIdentifier.UTF8String) : stateStatus;
-    if (token != NOTIFY_TOKEN_INVALID) notify_cancel(token);
-
-    BOOL success = state != 0 && registerStatus == NOTIFY_STATUS_OK &&
-        stateStatus == NOTIFY_STATUS_OK && postStatus == NOTIFY_STATUS_OK;
-    if (!success) {
-        NSLog(@"[TypeX] PullOver-X publish failed for %@ (register=%u state=%u post=%u)",
-              bundleIdentifier, registerStatus, stateStatus, postStatus);
-    } else {
-        NSLog(@"[TypeX] published PullOver-X request for %@", bundleIdentifier);
-    }
-    return success;
-}
-
-// Same probe idiom as isShellXScreenshotAvailable: dylib file existence under
-// the tweak loader directory, resolved through the jbroot prefix. Single source
-// of truth lives on DXShortcutsGenerator (the prefs catalog gates on it too).
--(BOOL)isPullOverXInstalled{
-    return [DXShortcutsGenerator isPullOverXInstalled];
 }
 
 // AI 问答按钮，按承载能力分派（第一版 + ShellX 时代两套验证过的路径）：
@@ -1717,7 +1722,8 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 -(NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section {
     (void)collectionView;
     return section == 0 ? MIN(((NSArray *)self.shortcuts[kselectors]).count,
-        DXToolbarCapacityForPreferences([DXPrefsManager sharedInstance].prefs, self.configuration)) : 0;
+        DXToolbarCapacityForPreferences(self.dxPreviewMode ? self.dxPreviewPreferences
+            : [DXPrefsManager sharedInstance].prefs, self.configuration)) : 0;
 }
 
 // All six gestures share the same behavior: one action runs directly;
@@ -2119,10 +2125,14 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
             return YES;
         }
 
-        BOOL usePullOver = [entry[kCustomActionUsePullOverKey] boolValue];
-        BOOL handedOff = usePullOver && [self isPullOverXInstalled] &&
-            [self publishPullOverOpenRequestForBundleIdentifier:link];
-        if (!handedOff) {
+        if (DXActionUsesFloatingApp(entry)) {
+            DXCustomActionOpenCompletion completion = [self guardedCustomOpenCompletion:^(BOOL success) {
+                if (!success) [self showCustomActionMessage:LOCALIZED(@"FLOATING_APP_OPEN_ERROR")];
+            }];
+            DXOpenFloatingApplication(link, ^(DXSystemOpenResult result) {
+                [self finishCustomActionOpen:completion success:result == DXSystemOpenSucceeded];
+            });
+        } else {
             [self openApplicationWithBundleIdentifier:link completion:^(BOOL success) {
                 if (!success) [self showCustomActionLinkError];
             }];
@@ -2153,11 +2163,18 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         }
         if ([self cutReplaceArmedForEntry:entry rawPayload:link]) [self cutHostInputField];
         NSURL *url = [NSURL URLWithString:payload];
-        [self openCustomActionURL:url completion:^(BOOL success) {
-            if (!success) {
-                [self showCustomActionLinkError];
-            }
-        }];
+        if (DXActionUsesFloatingApp(entry)) {
+            DXCustomActionOpenCompletion completion = [self guardedCustomOpenCompletion:^(BOOL success) {
+                if (!success) [self showCustomActionMessage:LOCALIZED(@"FLOATING_APP_OPEN_ERROR")];
+            }];
+            DXOpenFloatingURL(url, ^(DXSystemOpenResult result) {
+                [self finishCustomActionOpen:completion success:result == DXSystemOpenSucceeded];
+            });
+        } else {
+            [self openCustomActionURL:url completion:^(BOOL success) {
+                if (!success) [self showCustomActionLinkError];
+            }];
+        }
         return YES;
     }
 
@@ -2188,6 +2205,15 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
         if (cutField) [self cutHostInputField];
         NSURL *url = [NSURL URLWithString:link];
+        if (DXActionUsesFloatingApp(entry)) {
+            DXCustomActionOpenCompletion completion = [self guardedCustomOpenCompletion:^(BOOL success) {
+                if (!success) [self showCustomActionMessage:LOCALIZED(@"FLOATING_APP_OPEN_ERROR")];
+            }];
+            DXOpenFloatingURL(url, ^(DXSystemOpenResult result) {
+                [self finishCustomActionOpen:completion success:result == DXSystemOpenSucceeded];
+            });
+            return YES;
+        }
         [self openCustomActionURL:url completion:^(BOOL success) {
             if (!success) {
                 [self showCustomActionLinkError];
@@ -2198,6 +2224,15 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
     if ([self isBundleIdentifier:link]) {
         if (cutField) [self cutHostInputField];
+        if (DXActionUsesFloatingApp(entry)) {
+            DXCustomActionOpenCompletion completion = [self guardedCustomOpenCompletion:^(BOOL success) {
+                if (!success) [self showCustomActionMessage:LOCALIZED(@"FLOATING_APP_OPEN_ERROR")];
+            }];
+            DXOpenFloatingApplication(link, ^(DXSystemOpenResult result) {
+                [self finishCustomActionOpen:completion success:result == DXSystemOpenSucceeded];
+            });
+            return YES;
+        }
         [self openApplicationWithBundleIdentifier:link completion:^(BOOL success) {
             if (!success) {
                 [self showCustomActionLinkError];
@@ -2686,11 +2721,12 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
     // with no gesture-recognizer window, so taps can be repeated as fast as the
     // user likes. No tap recognizer is mounted; one would delay every touch-up
     // until it fails.
-    [cell.btn addTarget:self action:@selector(cellButtonTouchUpInside:) forControlEvents:UIControlEventTouchUpInside];
+    if (!self.dxPreviewMode)
+        [cell.btn addTarget:self action:@selector(cellButtonTouchUpInside:) forControlEvents:UIControlEventTouchUpInside];
 
     // Mount recognizers only for gestures with executable actions.
     NSMutableArray<UIGestureRecognizer *> *recognizers = [NSMutableArray array];
-    if ([preferencesGestureActionSelectors(cell.btn.accessibilityIdentifier, DXShortcutGestureLongPress, self.configuration) count] > 0) {
+    if (!self.dxPreviewMode && [preferencesGestureActionSelectors(cell.btn.accessibilityIdentifier, DXShortcutGestureLongPress, self.configuration) count] > 0) {
         UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(activateLPActions:)];
         longPress.minimumPressDuration = 0.5;
         [recognizers addObject:longPress];
@@ -2698,6 +2734,7 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
 
     // Horizontal gestures are routed once by the toolbar; only vertical swipes stay on buttons.
     for (NSInteger gesture = DXShortcutGestureSwipeUp; gesture <= DXShortcutGestureSwipeDown; gesture++) {
+        if (self.dxPreviewMode) break;
         if ([preferencesGestureActionSelectors(cell.btn.accessibilityIdentifier, (int)gesture, self.configuration) count] == 0) continue;
 
         UISwipeGestureRecognizer *swipe = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(activateSwipeActions:)];
@@ -2726,10 +2763,11 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
     cell.btn.layer.borderWidth = self.borderEnabled ? self.borderWidth : 0;
     cell.btn.layer.borderColor = self.borderEnabled ? [UIColor labelColor].CGColor : NULL;
     [cell applyButtonWidthMultiplier:self.widthScale / buttonWidthScaleDefault];
-    cell.btn.backgroundColor = currentBackgroundTintColor ? : [UIColor clearColor];
-    cell.btn.tintColor = currentTintColor;
-    [cell.btn setTitleColor:currentTintColor forState:UIControlStateNormal];
-    cell.btn.hidden = isLandscape||isDictating?YES:NO;
+    cell.btn.backgroundColor = [self dxButtonBackgroundTintColor] ?: [UIColor clearColor];
+    UIColor *buttonTint = [self dxButtonTintColor];
+    cell.btn.tintColor = buttonTint;
+    [cell.btn setTitleColor:buttonTint forState:UIControlStateNormal];
+    cell.btn.hidden = !self.dxPreviewMode && (isLandscape || isDictating);
     //cell.btn.backgroundColor = [UIColor colorWithWhite:0.5 alpha:0.7];
     return cell;
     
@@ -2756,13 +2794,13 @@ static UIWindow *DXSubActionPanelCreateHostWindow(UIWindow *sourceWindow) {
     // the tinted buttons clear of the dock's edge buttons).
     if ([self buttonChromeActive]){
         if (section == 0){
-            return UIEdgeInsetsMake(22.0, 2*self.buttonSpacing, 0.0, 0.0);
+            return UIEdgeInsetsMake(DXBottomToolbarCellTopInset, 2*self.buttonSpacing, 0.0, 0.0);
 
         }
-        return UIEdgeInsetsMake(22.0, self.buttonSpacing, 0.0, 0.0);
+        return UIEdgeInsetsMake(DXBottomToolbarCellTopInset, self.buttonSpacing, 0.0, 0.0);
 
     }
-    return UIEdgeInsetsMake(22.0, 0.0, 0.0, 0.0);
+    return UIEdgeInsetsMake(DXBottomToolbarCellTopInset, 0.0, 0.0, 0.0);
 }
 
 - (CGFloat)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout*)collectionViewLayout minimumLineSpacingForSectionAtIndex:(NSInteger)section{

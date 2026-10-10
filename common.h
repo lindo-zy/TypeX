@@ -54,6 +54,7 @@
 #define kCustomActionTypeKey @"type"
 #define kCustomActionInAppKey @"inapp"
 #define kCustomActionUsePullOverKey @"pullover"
+#define kCustomActionFloatingKey @"floating"
 #define kCustomActionCutReplaceKey @"cutreplace"
 #define kCustomActionTypeURLScheme @"urlscheme"
 #define kCustomActionTypeText @"text"
@@ -87,10 +88,8 @@
 #define kCellBorderWidthkey @"shortcutborderwidth"
 #define kButtonWidthScalekey @"shortcutwidthscale"
 #define kSubActionPanelScaleKey @"subactionpanelscale"
-// 多行模式（仅顶部工具栏设置页提供）：开启后按钮按"每行个数"换行，第一行
-// 紧贴键盘、第二行向上堆叠；关闭时以每行个数为页长横向分页。行距只作用于
-// 两行之间。
-#define kMultiRowEnabledKey @"multirowBOOL"
+// 顶部工具栏固定按"每行个数"换行，第一行紧贴键盘、第二行向上堆叠。
+// 行距只作用于两行之间；旧的多行开关不再参与布局或容量计算。
 #define kButtonsPerRowKey @"buttonsperrow"
 #define kMultiRowSpacingKey @"multirowspacing"
 #define buttonsPerRowDefault 6.0f
@@ -108,11 +107,6 @@
 // or an entry without the host bundle ID means off: the per-app switches in
 // Settings all default to off.
 #define kPasteImageChipAppsKey @"pasteimagechipapps"
-// Optional ShellX screenshot behavior. This uses a new key so users who had
-// enabled the former "restore keyboard after screenshot" option do not
-// accidentally inherit the new behavior; the default remains off.
-#define kShellXScreenshotHideKeyboardKey @"shellxscreenshothidekeyboardBOOL"
-
 #define kbuttonsImages12 0
 #define kbuttonsImages13 1
 #define kselectors 2
@@ -125,6 +119,11 @@
 
 
 #define heightOffsetDefault 60.0f
+// Bottom dock geometry shared by the live toolbar and its Settings preview.
+#define DXBottomToolbarLeadingInset 69.0f
+#define DXBottomToolbarTrailingInset 60.0f
+#define DXBottomToolbarBottomInset 22.0f
+#define DXBottomToolbarCellTopInset 22.0f
 
 #define searchedCountEaster 100
 
@@ -167,14 +166,6 @@
 #define TypeXAIChatRequestKey @"ai-chat-request"
 #define kAIChatRequestIdentifier @"com.lindo.typex/aichat"
 
-// TypeX-owned bridge for opening an application through PullOver-X. Darwin
-// notification state is global across processes, unlike CFPreferences written
-// by a sandboxed host (which is redirected into that App's own container).
-// The sender publishes a stable 64-bit Bundle-ID fingerprint; SpringBoard
-// resolves it against its installed-app registry before invoking PullOver's
-// existing PullOverWindow -> controller -> pinAppWithBundleId: entry point.
-#define kPullOverOpenRequestIdentifier @"com.lindo.typex/pulloveropen"
-
 // Complete SpringBoard-authored snapshot of each app's current static and
 // dynamic UIApplicationShortcutItems. The value is replaced as one generation,
 // so removed apps and actions cannot survive an incremental merge:
@@ -216,21 +207,6 @@ static inline BOOL DXIsValidAppShortcutType(NSString *value) {
         [value rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location == NSNotFound;
 }
 
-static inline uint64_t DXPullOverOpenStateForBundleIdentifier(NSString *bundleIdentifier) {
-    if (!DXIsValidBundleIdentifier(bundleIdentifier)) return 0;
-    const unsigned char *bytes = (const unsigned char *)bundleIdentifier.UTF8String;
-    if (!bytes) return 0;
-
-    // FNV-1a keeps the transport dependency-free. SpringBoard accepts a state
-    // only when it resolves to exactly one currently installed Bundle ID.
-    uint64_t state = UINT64_C(14695981039346656037);
-    for (const unsigned char *cursor = bytes; *cursor != '\0'; cursor++) {
-        state ^= (uint64_t)*cursor;
-        state *= UINT64_C(1099511628211);
-    }
-    return state;
-}
-
 // Shared URL-shape test for the openurl channel action (and the scheme
 // classification of custom-action links): a scheme-shaped URL of bounded
 // length whose scheme is not an executable/document one (javascript:, data:,
@@ -263,12 +239,6 @@ static inline NSInteger DXMultiRowButtonsPerRowFromPreferences(NSDictionary *pre
     return MIN(8, MAX(1, perRow));
 }
 
-static inline BOOL DXMultiRowEnabledForPreferences(NSDictionary *preferences) {
-    id value = [preferences isKindOfClass:[NSDictionary class]]
-        ? preferences[DXScopedPreferenceKey(kMultiRowEnabledKey, @"top")] : nil;
-    return [value respondsToSelector:@selector(boolValue)] && [value boolValue];
-}
-
 // Two rows are the hard layout limit. The configured per-row count can lower
 // the active capacity, while eight columns keep the absolute ceiling at 16.
 static inline NSInteger DXMultiRowCapacityForPreferences(NSDictionary *preferences) {
@@ -279,8 +249,7 @@ static inline NSInteger DXMultiRowCapacityForPreferences(NSDictionary *preferenc
 // With paging removed, every enabled button must fit the current toolbar surface.
 static inline NSInteger DXToolbarCapacityForPreferences(NSDictionary *preferences, NSString *configuration) {
     if (![configuration isEqualToString:@"top"]) return maxEnabledBottomButtons;
-    NSInteger columns = DXMultiRowButtonsPerRowFromPreferences(preferences);
-    return DXMultiRowEnabledForPreferences(preferences) ? DXMultiRowCapacityForPreferences(preferences) : columns;
+    return DXMultiRowCapacityForPreferences(preferences);
 }
 
 static inline NSArray *DXToolbarOrderFittingCapacity(NSArray *order, NSDictionary *preferences, NSString *configuration) {

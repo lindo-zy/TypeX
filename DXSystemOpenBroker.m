@@ -10,11 +10,10 @@
 #import "DXGlobalPanelPolicy.h"
 #import "DXGlobalPanel.h"
 #import "DXGlobalActionExecutor.h"
+#import "DXFloatingApp.h"
 #import <notify.h>
 #import "common.h"
-#import "DXShared.h"
 #import <objc/message.h>
-#import <objc/runtime.h>
 #import <dlfcn.h>
 
 BOOL DXIsSensitiveOpenScheme(NSString *scheme) {
@@ -68,6 +67,17 @@ static void DXPerformSystemOpen(NSDictionary *request, DXSystemOpenReply reply) 
     NSString *payload = request[@"payload"];
     if (![kind isKindOfClass:NSString.class] || ![payload isKindOfClass:NSString.class] || !payload.length) {
         reply(DXSystemOpenInvalid);
+        return;
+    }
+    if ([kind isEqual:@"floating-application"] || [kind isEqual:@"floating-url"]) {
+        BOOL isURL = [kind isEqual:@"floating-url"];
+        NSURL *url = isURL && DXIsOpenableSchemeURLString(payload) ? [NSURL URLWithString:payload] : nil;
+        NSString *identifier = isURL ? DXFloatingBundleIdentifierForURL(url) : payload;
+        if (payload.length > (isURL ? 4096 : 256) || (isURL && !url) || !DXIsValidBundleIdentifier(identifier)) {
+            reply(DXSystemOpenInvalid); return;
+        }
+        NSDate *deadline = [NSDate dateWithTimeIntervalSince1970:[request[@"created"] doubleValue] + DXSystemOpenRequestTTL];
+        DXPresentFloatingApplication(identifier, url, deadline, reply);
         return;
     }
     if ([kind isEqual:@"statusbar-gesture"]) {
@@ -236,29 +246,18 @@ void DXOpenSystemApplication(NSString *bundleIdentifier, DXSystemOpenReply reply
     DXSubmitSystemOpen(@"application", bundleIdentifier, reply);
 }
 
+void DXOpenFloatingApplication(NSString *bundleIdentifier, DXSystemOpenReply reply) {
+    DXSubmitSystemOpen(@"floating-application", bundleIdentifier, reply);
+}
+
+void DXOpenFloatingURL(NSURL *url, DXSystemOpenReply reply) {
+    DXSubmitSystemOpen(@"floating-url", url.absoluteString, reply);
+}
+
 void DXRunSystemAction(NSString *identifier, DXSystemOpenReply reply) {
     if (!DXSystemActionDefinition(identifier)) {
         if (reply) dispatch_async(dispatch_get_main_queue(), ^{ reply(DXSystemOpenInvalid); });
         return;
-    }
-    // PixPin capture actions share the toolbar ShellX screenshot button timing:
-    // with the toggle on, dismiss the keyboard and let the collapse animation
-    // finish before dispatching; the keyboard is not restored. Only the keyboard
-    // process can dismiss it — SpringBoard and non-main callers dispatch straight
-    // away, and a missing active keyboard means there is nothing to hide.
-    if (DXSystemActionIsPixPinCapture(identifier) && preferencesBool(kShellXScreenshotHideKeyboardKey, NO) &&
-        !DXIsSystemOpenServerProcess() && NSThread.isMainThread) {
-        Class keyboardClass = objc_getClass("UIKeyboardImpl");
-        id activeInstance = [keyboardClass respondsToSelector:@selector(activeInstance)] ? [keyboardClass activeInstance] : nil;
-        if (activeInstance) {
-            [activeInstance dismissKeyboard];
-            NSLog(@"[TypeX][PixPin] hide-keyboard dismiss id=%@, request follows in 0.35s", identifier);
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), ^{
-                DXSubmitSystemOpen(@"system-action", identifier, reply);
-            });
-            return;
-        }
     }
     DXSubmitSystemOpen(@"system-action", identifier, reply);
 }

@@ -104,7 +104,7 @@
 //Button settings (per toolbar)
 "BUTTON_SETTINGS" = "按钮设置";
 "FOOTER_BUTTON_SETTINGS" = "以下设置仅对当前工具栏生效，顶部与底部工具栏相互独立。边框颜色自动适配深浅色模式；按钮大小为按钮宽度占单元格宽度的百分比。";
-"FOOTER_BUTTON_SETTINGS_TOP" = "以下设置仅对当前工具栏生效，顶部与底部工具栏相互独立。边框颜色自动适配深浅色模式；按钮大小为按钮宽度占单元格宽度的百分比。每行个数同时决定未开启多行模式时每页显示的按钮个数，超出一页的按钮左右滑动查看。";
+"FOOTER_BUTTON_SETTINGS_TOP" = "以下设置仅对当前工具栏生效，顶部与底部工具栏相互独立。边框颜色自动适配深浅色模式；按钮大小为按钮宽度占单元格宽度的百分比。顶部工具栏固定按每行个数自动换行，最多两行。";
 "BORDER_ENABLED" = "显示边框";
 "BORDER_WIDTH" = "边框粗细";
 "BUTTON_WIDTH" = "按钮大小";
@@ -113,10 +113,9 @@
 "PANEL_SIZE" = "面板大小";
 "FOOTER_PANEL_SETTINGS" = "调整当前工具栏打开的子动作弹出面板大小，顶部与底部设置相互独立。";
 "MULTILINE_SETTINGS" = "多行布局";
-"MULTI_ROW_MODE" = "多行模式";
 "BUTTONS_PER_ROW" = "每行个数";
 "BUTTON_ROW_SPACING" = "按钮行距";
-"FOOTER_MULTILINE" = "开启后第一行紧贴键盘、第二行向上排列，最多两行。可启用数量为每行个数 × 2，最多 16 个按钮（每行个数在按钮设置中调整）；按钮行距可在 0–20 之间以 0.1 调整。关闭时按每行个数横向分页，超出一页的按钮左右滑动查看。";
+"FOOTER_MULTILINE" = "顶部工具栏固定使用多行布局，第一行紧贴键盘、第二行向上排列，最多两行。可启用数量为每行个数 × 2，最多 16 个按钮（每行个数在按钮设置中调整）；按钮行距可在 0–20 之间以 0.1 调整。";
 "MULTI_ROW_LIMIT_MESSAGE" = "当前设置每行 %2$d 个，多行模式最多两行，因此最多可启用 %1$d 个按钮。请先关闭多余按钮或增加每行个数。";
 "ENABLED_BUTTON_LIMIT_MESSAGE" = "顶部工具栏最多同时开启 %d 个按钮。请先关闭一个已开启的按钮，才能开启新的按钮。";
 //Offsets
@@ -170,12 +169,11 @@
 "TEXT_SETTINGS" = "文本设置";
 "URL_SETTINGS" = "网页链接设置";
 "OPEN_IN_APP" = "应用内打开";
-"OPEN_WITH_PULLOVER" = "由 PullOver-X 打开";
 "CUT_REPLACE_FIELD" = "剪切替换";
-"TYPE_FOOTER_URL_SCHEME" = "点击后执行 URL Scheme 打开跳转，沿用系统跳转方式；使用 @@@ 可传入当前输入框的内容作为入参。开启「剪切替换」后，@@@ 传入内容的同时清空输入框；关闭则保留输入框内容。";
+"TYPE_FOOTER_URL_SCHEME" = "默认将 URL Scheme 对应的应用悬浮打开，并投递原始链接。可直接操作小窗，点击关闭按钮结束悬浮。关闭悬浮开关可正常跳转；不对应应用的系统命令需要关闭该开关。支持 @@@ 传入输入框内容。";
 "TYPE_FOOTER_TEXT" = "管理多条纯文本记录。一条时直接插入，多条时打开悬浮列表，点选记录后插入并关闭。原样保留文本、空格和换行。点击“编辑”可删除记录或拖动排序。";
 "TYPE_FOOTER_URL" = "点击后打开该网址，可选择在 APP 内或 APP 外打开；url 支持入参替换，使用 @@@ 传入当前输入框的内容。开启「剪切替换」后，@@@ 传入内容的同时清空输入框；关闭则保留输入框内容。";
-"TYPE_FOOTER_OPEN_APP" = "默认正常跳转打开所选应用。安装 PullOver-X 后可交由其接管；PullOver-X 未激活时，TypeX 会回退为正常打开。";
+"TYPE_FOOTER_OPEN_APP" = "默认以 TypeX 小窗悬浮打开所选应用，可直接操作、拖动标题栏，并点击关闭按钮结束悬浮。关闭此开关可正常全屏打开。无需安装 PullOver-X。";
 
 //=====================APP / SHORTCUT PICKERS=====================
 "OPEN_APP" = "打开应用";
@@ -239,9 +237,14 @@
 "DEFAULT_BUTTON_NAME" = "动作";
 "TEST_INPUT_FIELD" = "测试输入框（点击弹出键盘试试按钮）";
 "TEST_INPUT_FIELD_PLACEHOLDER" = "输入文本试试工具栏按钮…";
+"TOOLBAR_PREVIEW" = "工具栏预览";
+"TOOLBAR_PREVIEW_EMPTY" = "暂无已开启的按钮";
+"TOOLBAR_PREVIEW_UNAVAILABLE" = "预览暂不可用，请安装 TypeX 后重新打开设置。";
 
 "LONG_SHELLX_SCREENSHOT" = "ShellX 截图";
 "SHORT_SHELLX_SCREENSHOT" = "截图";
+"LONG_PIXPIN_SCREENSHOT" = "PixPin 截图";
+"SHORT_PIXPIN_SCREENSHOT" = "PixPin";
 "LONG_AI_CHAT" = "AI问答";
 "SHORT_AI_CHAT" = "AI";
 "LONG_CLIPBOARD" = "剪切板";
@@ -312,10 +315,6 @@
 "AI_HINT_CUSTOM" = "自定义引擎需填写 OpenAI 兼容接口地址（含 /v1 一类前缀），模型用逗号分隔，抓取走 {地址}/models。";
 
 "PASTE_CHIP_ACTION" = "粘贴";
-
-/* 截图 */
-"SHELLX_SCREENSHOT_HIDE_KEYBOARD" = "截图时隐藏键盘";
-"SHELLX_SCREENSHOT_HIDE_KEYBOARD_FOOTER" = "默认关闭。开启后，使用 ShellX 或 PixPin 截图动作时会先隐藏键盘再截图；截图后不会自动恢复键盘。";
 
 /* 设置页通用（补齐缺失键） */
 "TWEAK" = "插件";
@@ -553,3 +552,9 @@
 "PANEL_GESTURE_FOOTER" = "只可从 Dock、状态栏手势或其他手势面板打开。不能添加基础键盘操作、文本或脚本。链接等动作允许配置，执行时若需要输入内容或替换则报错。";
 "PANEL_TOOLBAR_FOOTER" = "左右长滑分别执行所选动作，未选择时不触发。只能选择键盘面板；单个按钮内滑动仍使用按钮自身手势。";
 "PANEL_KEYBOARD_TEST" = "输入文字，测试键盘面板";
+
+"OPEN_FLOATING_APP" = "悬浮打开应用";
+
+"FLOATING_APP_CLOSE" = "关闭悬浮应用";
+
+"FLOATING_APP_OPEN_ERROR" = "悬浮打开失败，请检查目标应用或重试";

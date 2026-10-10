@@ -158,7 +158,7 @@ static NSBundle *tweakBundle;
         entry[kCustomActionTextRecordsKey] = @[@""];
         [entry removeObjectForKey:@"link"];
     }
-    if (opensApplication) entry[kCustomActionUsePullOverKey] = @NO;
+    if (opensApplication || [type isEqualToString:kCustomActionTypeURLScheme]) entry[kCustomActionFloatingKey] = @YES;
     if ([type isEqualToString:kCustomActionTypeJavaScript]) {
         entry[@"icon"] = @"curlybraces";
         entry[@"script"] = @"async function main(str) {\n    return str.toUpperCase();\n}\n";

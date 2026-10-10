@@ -11,6 +11,7 @@
 +(BOOL)isAvailableShortcutSelector:(NSString *)selector;
 +(BOOL)isVisibleShortcutSelector:(NSString *)selector;
 +(BOOL)isShellXScreenshotAvailable;
++(BOOL)isPixPinScreenshotAvailable;
 +(BOOL)isKayokoInstalled;
 +(BOOL)isPullOverXInstalled;
 +(instancetype)sharedInstance;

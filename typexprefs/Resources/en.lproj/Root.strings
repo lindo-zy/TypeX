@@ -28,10 +28,6 @@
 "PASTE_CHIP_FOOTER" = "Only in enabled apps: when a NEW image or text lands on the clipboard, a chip floats at the screen's right edge, level with the text caret above the keyboard, for 3 seconds (image thumbnail or text preview); tap it to paste. While enabled, the system paste-permission prompt is answered automatically. All apps are off by default.";
 "PASTE_CHIP_APPS" = "Enabled Apps";
 
-// Screenshot
-"SHELLX_SCREENSHOT_HIDE_KEYBOARD" = "Hide Keyboard During Screenshot";
-"SHELLX_SCREENSHOT_HIDE_KEYBOARD_FOOTER" = "Off by default. When enabled, ShellX and PixPin screenshot actions hide the keyboard before capturing. The keyboard is not restored afterward.";
-
 // Configuration backup
 "BACKUP_SECTION" = "Configuration Backup";
 "BACKUP_CONFIG" = "Back Up Configuration";

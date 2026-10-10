@@ -103,7 +103,7 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 //Button settings (per toolbar)
 "BUTTON_SETTINGS" = "Button Settings";
 "FOOTER_BUTTON_SETTINGS" = "These settings apply only to this toolbar; the top and bottom toolbars are styled independently. The border color adapts to light and dark mode. Button Size is the percentage of the cell width each button fills.";
-"FOOTER_BUTTON_SETTINGS_TOP" = "These settings apply only to this toolbar; the top and bottom toolbars are styled independently. The border color adapts to light and dark mode. Button Size is the percentage of the cell width each button fills. While multi-row mode is off, Buttons per Row also sets how many buttons each page shows; swipe sideways for the rest.";
+"FOOTER_BUTTON_SETTINGS_TOP" = "These settings apply only to this toolbar; the top and bottom toolbars are styled independently. The border color adapts to light and dark mode. Button Size is the percentage of the cell width each button fills. The top toolbar always wraps by Buttons per Row, with at most two rows.";
 "BORDER_ENABLED" = "Show Border";
 "BORDER_WIDTH" = "Border Thickness";
 "BUTTON_WIDTH" = "Button Size";
@@ -112,10 +112,9 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "PANEL_SIZE" = "Panel Size";
 "FOOTER_PANEL_SETTINGS" = "Adjust the size of the sub-action panel opened from this toolbar. Top and bottom settings are independent.";
 "MULTILINE_SETTINGS" = "Multi-Row Layout";
-"MULTI_ROW_MODE" = "Multi-Row Mode";
 "BUTTONS_PER_ROW" = "Buttons per Row";
 "BUTTON_ROW_SPACING" = "Button Row Spacing";
-"FOOTER_MULTILINE" = "When enabled, the first row hugs the keyboard and the second stacks above it, with at most two rows. The enabled limit is twice the per-row count, up to 16 buttons (adjust Buttons per Row under Button Settings). Row spacing is adjustable from 0–20 in 0.1 increments. When disabled, buttons page horizontally by the per-row count; swipe sideways for the rest.";
+"FOOTER_MULTILINE" = "The top toolbar always uses multi-row layout. The first row hugs the keyboard and the second stacks above it, with at most two rows. The enabled limit is twice the per-row count, up to 16 buttons (adjust Buttons per Row under Button Settings). Row spacing is adjustable from 0–20 in 0.1 increments.";
 "MULTI_ROW_LIMIT_MESSAGE" = "With %2$d buttons per row, multi-row mode supports at most two rows and %1$d enabled buttons. Disable extra buttons or increase the per-row count first.";
 "ENABLED_BUTTON_LIMIT_MESSAGE" = "The top toolbar can have at most %d enabled buttons. Disable an enabled button before turning on another one.";
 //Offsets
@@ -169,12 +168,11 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "TEXT_SETTINGS" = "Text";
 "URL_SETTINGS" = "URL";
 "OPEN_IN_APP" = "Open in App";
-"OPEN_WITH_PULLOVER" = "Open with PullOver-X";
 "CUT_REPLACE_FIELD" = "Cut & Replace";
-"TYPE_FOOTER_URL_SCHEME" = "Opens the URL scheme when tapped. Use @@@ to pass the current input field's text as a parameter. With Cut & Replace on, the field is cleared as its text is passed in; off keeps the field's content.";
+"TYPE_FOOTER_URL_SCHEME" = "By default, TypeX hosts the app handling this URL Scheme in a floating window and delivers the original link. Turn floating off for normal navigation or system commands without a hostable app. @@@ passes the current input text.";
 "TYPE_FOOTER_TEXT" = "Manage literal text records. One record is inserted directly; multiple records open a floating list. Tap a record to insert it and close the panel. Text, spaces and line breaks are preserved. Use Edit to delete or reorder records.";
 "TYPE_FOOTER_URL" = "Opens the web URL, either inside this app or outside. Use @@@ to pass the current input field's text as a parameter. With Cut & Replace on, the field is cleared as its text is passed in; off keeps the field's content.";
-"TYPE_FOOTER_OPEN_APP" = "Opens the selected app normally by default. When PullOver-X is installed, you can let it take over; if PullOver-X is not active, TypeX falls back to opening the app normally.";
+"TYPE_FOOTER_OPEN_APP" = "TypeX opens the selected app in an interactive floating window by default. Drag its title bar or tap close to end hosting. Turn this off for normal full-screen opening. PullOver-X is not required.";
 
 //=====================APP / SHORTCUT PICKERS=====================
 "OPEN_APP" = "Open App";
@@ -240,9 +238,14 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "DEFAULT_BUTTON_NAME" = "Action";
 "TEST_INPUT_FIELD" = "Test Field (tap to try the toolbar buttons)";
 "TEST_INPUT_FIELD_PLACEHOLDER" = "Type here to test the toolbar…";
+"TOOLBAR_PREVIEW" = "Toolbar Preview";
+"TOOLBAR_PREVIEW_EMPTY" = "No enabled buttons";
+"TOOLBAR_PREVIEW_UNAVAILABLE" = "Preview unavailable. Restart Settings after installing TypeX.";
 
 "LONG_SHELLX_SCREENSHOT" = "ShellX Screenshot";
 "SHORT_SHELLX_SCREENSHOT" = "Shot";
+"LONG_PIXPIN_SCREENSHOT" = "PixPin Screenshot";
+"SHORT_PIXPIN_SCREENSHOT" = "PixPin";
 "LONG_AI_CHAT" = "AI Chat";
 "SHORT_AI_CHAT" = "AI";
 "LONG_CLIPBOARD" = "Clipboard";
@@ -313,10 +316,6 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "AI_HINT_CUSTOM" = "Custom engines need an OpenAI-compatible endpoint (with the /v1-style prefix). Comma-separate models. Fetch uses {endpoint}/models.";
 
 "PASTE_CHIP_ACTION" = "Paste";
-
-/* Screenshot */
-"SHELLX_SCREENSHOT_HIDE_KEYBOARD" = "Hide keyboard during screenshot";
-"SHELLX_SCREENSHOT_HIDE_KEYBOARD_FOOTER" = "Off by default. When enabled, ShellX and PixPin screenshot actions hide the keyboard before capturing. The keyboard is not restored afterward.";
 
 /* Settings (previously missing keys) */
 "TWEAK" = "Tweak";
@@ -554,3 +553,9 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "PANEL_GESTURE_FOOTER" = "Open from Dock/status-bar gestures or other gesture panels. Built-in keyboard actions, text and scripts are unavailable. Links are selectable, but actions requiring input or replacement fail with an error.";
 "PANEL_TOOLBAR_FOOTER" = "Configure left and right long swipes separately. Unassigned swipes do nothing. Only keyboard panels are available; swipes confined to a button keep its own gesture action.";
 "PANEL_KEYBOARD_TEST" = "Type to test keyboard panels";
+
+"OPEN_FLOATING_APP" = "Open in a floating window";
+
+"FLOATING_APP_CLOSE" = "Close floating app";
+
+"FLOATING_APP_OPEN_ERROR" = "Could not open the floating app. Check the target or try again.";

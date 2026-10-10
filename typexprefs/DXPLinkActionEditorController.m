@@ -7,6 +7,7 @@
 #import "DXPIconInputView.h"
 #import "DXPKeyboardAvoider.h"
 #import "../DXSystemActionCatalog.h"
+#import "../DXFloatingAppSession.h"
 #import "DXPJavaScriptTestController.h"
 #import "../DXHelper.h"
 #import "../common.h"
@@ -19,7 +20,8 @@ static NSBundle *tweakBundle;
 //              the 剪切替换 switch (the box types that support @@@)
 // - text:      section 1 = ordered records and an Add row
 // - url:       3 = URL 设置 (field), 4 = APP内打开 switch, 5 = 剪切替换 switch
-// - openapp:   3 = installed-app picker, 4 = PullOver-X switch when installed
+// - openapp:   3 = installed-app picker, 4 = TypeX floating switch
+// - urlscheme: section 2 = TypeX floating switch
 // 剪切替换 appears wherever the payload supports @@@ (legacy / url /
 // urlscheme): ON clears the input field after its text is passed in (cut),
 // OFF keeps the field's content (copy, the default).
@@ -136,7 +138,7 @@ static NSInteger const DXLegacyRowLink = 2;
 @property (nonatomic, strong) DXPIconInputView *iconInputView;
 @property (nonatomic, strong) UITextField *linkField;
 @property (nonatomic, strong) UISwitch *inAppSwitch;
-@property (nonatomic, strong) UISwitch *pullOverSwitch;
+@property (nonatomic, strong) UISwitch *floatingSwitch;
 @property (nonatomic, strong) UISwitch *cutReplaceSwitch;
 @property (nonatomic, copy) NSString *selectedAppName;
 // The one payload box cell for URL scheme / JavaScript; kept as a
@@ -239,15 +241,10 @@ static NSInteger const DXLegacyRowLink = 2;
     return [_displayedType isEqualToString:kCustomActionTypeShortcut];
 }
 
-- (BOOL)isPullOverXInstalled {
-    NSString *path = DX_ROOT_PATH_NS(@"/Library/MobileSubstrate/DynamicLibraries/PullOverX.dylib");
-    return path.length > 0 && [[NSFileManager defaultManager] fileExistsAtPath:path];
-}
-
 - (NSInteger)rowCount {
     if (self.isLegacyEntry) return DXLegacyRowLink + 1 + (self.hasCutReplaceSwitch ? 1 : 0);
     BOOL hasSwitch = [_displayedType isEqualToString:kCustomActionTypeURL] ||
-        (self.isOpenAppEntry && self.isPullOverXInstalled);
+        self.isOpenAppEntry;
     NSInteger rows = DXActionRowPayload + 1 + (hasSwitch ? 1 : 0);
     if (self.hasCutReplaceSwitch) rows++;
     return rows;
@@ -314,7 +311,7 @@ static NSInteger const DXLegacyRowLink = 2;
         if (self.isSystemEntry) return LOCALIZED(@"SELECT_SYSTEM_ACTION");
     }
     if (row == DXActionRowInApp) {
-        return self.isOpenAppEntry ? LOCALIZED(@"OPEN_WITH_PULLOVER") : LOCALIZED(@"OPEN_IN_APP");
+        return self.isOpenAppEntry ? LOCALIZED(@"OPEN_FLOATING_APP") : LOCALIZED(@"OPEN_IN_APP");
     }
     return @"";
 }
@@ -357,12 +354,14 @@ static NSInteger const DXLegacyRowLink = 2;
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
     if (self.isTextEntry) return 2;
     if (self.isJavaScriptEntry) return 3;
+    if ([_displayedType isEqualToString:kCustomActionTypeURLScheme]) return 3;
     return [self usesLargePayloadBox] ? 2 : 1;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (self.isTextEntry) return section == 0 ? DXActionRowPayload : self.textRecords.count + 1;
     if (self.isJavaScriptEntry && section == 2) return 3;
+    if ([_displayedType isEqualToString:kCustomActionTypeURLScheme] && section == 2) return 1;
     if (![self usesLargePayloadBox]) return [self rowCount];
     // Box layout: section 0 holds the shared rows (类型/名称/图标), section 1
     // the payload box followed by the 剪切替换 switch when the type supports @@@.
@@ -373,6 +372,7 @@ static NSInteger const DXLegacyRowLink = 2;
     if (self.isTextEntry) return section == 1 ? LOCALIZED(@"TEXT_RECORDS") : nil;
     if (self.isJavaScriptEntry && section == 1) return LOCALIZED(@"JS_SOURCE");
     if (self.isJavaScriptEntry && section == 2) return LOCALIZED(@"JS_BEHAVIOR");
+    if ([_displayedType isEqualToString:kCustomActionTypeURLScheme] && section == 2) return nil;
     if (![self usesLargePayloadBox] || section == 0) return nil;
     return [_displayedType isEqualToString:kCustomActionTypeURLScheme]
         ? LOCALIZED(@"URL_SCHEME_SETTINGS") : LOCALIZED(@"TEXT_SETTINGS");
@@ -472,6 +472,13 @@ static NSInteger const DXLegacyRowLink = 2;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if ([_displayedType isEqualToString:kCustomActionTypeURLScheme] && indexPath.section == 2) {
+        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+        cell.textLabel.text = LOCALIZED(@"OPEN_FLOATING_APP");
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        cell.accessoryView = self.floatingSwitch;
+        return cell;
+    }
     if (self.isTextEntry && indexPath.section == 1) {
         UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
         if (indexPath.row == (NSInteger)self.textRecords.count) {
@@ -572,7 +579,7 @@ static NSInteger const DXLegacyRowLink = 2;
         cell.imageView.image = nil;
         cell.detailTextLabel.text = nil;
         cell.accessoryType = UITableViewCellAccessoryNone;
-        cell.accessoryView = self.isOpenAppEntry ? self.pullOverSwitch : self.inAppSwitch;
+        cell.accessoryView = self.isOpenAppEntry ? self.floatingSwitch : self.inAppSwitch;
         return cell;
     }
     return [self fieldCellForRowAtIndexPath:indexPath];
@@ -582,6 +589,7 @@ static NSInteger const DXLegacyRowLink = 2;
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    if ([_displayedType isEqualToString:kCustomActionTypeURLScheme] && indexPath.section == 2) return;
     if (self.isTextEntry && indexPath.section == 1) {
         if (self.tableView.editing) return; // 编辑态只有删除圆圈与拖动把手，不进内容编辑
         [self.view endEditing:YES];
@@ -864,6 +872,7 @@ static NSInteger const DXLegacyRowLink = 2;
         [updated removeObjectForKey:kCustomActionTypeKey];
         [updated removeObjectForKey:kCustomActionInAppKey];
         [updated removeObjectForKey:kCustomActionUsePullOverKey];
+        [updated removeObjectForKey:kCustomActionFloatingKey];
         // Legacy payloads support @@@, so the 剪切替换 choice applies to them.
         updated[kCustomActionCutReplaceKey] = @(self.cutReplaceSwitch.on);
     } else {
@@ -873,11 +882,10 @@ static NSInteger const DXLegacyRowLink = 2;
         } else {
             [updated removeObjectForKey:kCustomActionInAppKey];
         }
-        if (self.isOpenAppEntry) {
-            updated[kCustomActionUsePullOverKey] = @(self.isPullOverXInstalled && self.pullOverSwitch.on);
-        } else {
-            [updated removeObjectForKey:kCustomActionUsePullOverKey];
-        }
+        [updated removeObjectForKey:kCustomActionUsePullOverKey];
+        if (self.isOpenAppEntry || [_displayedType isEqualToString:kCustomActionTypeURLScheme])
+            updated[kCustomActionFloatingKey] = @(self.floatingSwitch.on);
+        else [updated removeObjectForKey:kCustomActionFloatingKey];
         if (self.hasCutReplaceSwitch) {
             updated[kCustomActionCutReplaceKey] = @(self.cutReplaceSwitch.on);
         } else {
@@ -1000,9 +1008,9 @@ static NSInteger const DXLegacyRowLink = 2;
     self.inAppSwitch.on = (storedInApp == nil) || [storedInApp boolValue];
     [self.inAppSwitch addTarget:self action:@selector(inAppSwitchChanged:) forControlEvents:UIControlEventValueChanged];
 
-    self.pullOverSwitch = [[UISwitch alloc] init];
-    self.pullOverSwitch.on = [self.entry[kCustomActionUsePullOverKey] boolValue];
-    [self.pullOverSwitch addTarget:self action:@selector(inAppSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+    self.floatingSwitch = [[UISwitch alloc] init];
+    self.floatingSwitch.on = DXActionUsesFloatingApp(self.entry);
+    [self.floatingSwitch addTarget:self action:@selector(inAppSwitchChanged:) forControlEvents:UIControlEventValueChanged];
 
     // 剪切替换 defaults to off: the field keeps its content (copy semantics,
     // the historical behavior); on, the field is cleared after @@@ passes its
