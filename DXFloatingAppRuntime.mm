@@ -394,18 +394,24 @@ static void DXFloatForegroundSettings(id settings, BOOL foreground) {
     NSMethodSignature *signature = [service methodSignatureForSelector:open];
     if (![service respondsToSelector:open] || signature.numberOfArguments != 5 || strcmp(signature.methodReturnType, "v") ||
         !suspendedKey.length || !urlKey.length || !optionsKey.length) return NO;
-    NSMutableDictionary *options = [@{suspendedKey: @YES, urlKey: url,
+    // The options dictionary crosses the system-service XPC transport, which
+    // only accepts property-list values: the payload URL travels as a string
+    // (matching the __PayloadURL form seen on live open requests), never as an
+    // NSURL object.
+    NSMutableDictionary *options = [@{suspendedKey: @YES, urlKey: url.absoluteString,
         @"__TypeXFloatingGeneration": @(generation),
         optionsKey: @{UIApplicationLaunchOptionsSourceApplicationKey: self.baseIdentifier ?: @"com.apple.springboard"}} mutableCopy];
     NSString *validKey = DXFloatConstant("FBSOpenApplicationOptionKeyPayloadIsValid");
     if (validKey.length) options[validKey] = @YES;
     __weak typeof(self) weakSelf = self;
     @try {
-        ((void (*)(id, SEL, id, id, id))objc_msgSend)(service, open, self.session.bundleIdentifier, options, ^(NSError *error) {
+        // The vendored header declares a zero-argument result callback while
+        // other dumps show an NSError parameter; a zero-argument block is
+        // call-safe under both ABIs, so the poll loop owns the real outcome.
+        ((void (*)(id, SEL, id, id, id))objc_msgSend)(service, open, self.session.bundleIdentifier, options, ^{
             dispatch_async(dispatch_get_main_queue(), ^{
                 DXFloatingAppCoordinator *host = weakSelf;
                 if (![host.session isCurrent:generation]) return;
-                if (error) { [host cleanup:DXSystemOpenFailed reason:@"url-delivery-failed"]; return; }
                 host.urlAccepted = YES;
                 NSLog(@"[TypeX][FloatingApp] URL accepted bundleID=%@ generation=%lu", host.session.bundleIdentifier, (unsigned long)generation);
             });
