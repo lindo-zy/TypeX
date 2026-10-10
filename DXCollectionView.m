@@ -8,6 +8,7 @@
 #import "DXPanelRegistry.h"
 #import "DXToolbarHorizontalGesture.h"
 #import "DXSystemOpenBroker.h"
+#import "DXFloatingAppSession.h"
 #import "DXJavaScriptHost.h"
 #import "DXPixPinIntegration.h"
 
@@ -1214,40 +1215,6 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
     notify_post("com.mlgm.pulloverx.external-wake");
 }
 
-// Match SquidGesturePro's PullOver integration: publish the target Bundle ID to
-// TypeX's SpringBoard injection, which calls PullOverWindow.controller's
-// pinAppWithBundleId: directly. The 64-bit Darwin state is visible across App
-// sandboxes; CFPreferences is not suitable here because cfprefsd redirects the
-// same logical domain into the current host App's private container.
--(BOOL)publishPullOverOpenRequestForBundleIdentifier:(NSString *)bundleIdentifier {
-    uint64_t state = DXPullOverOpenStateForBundleIdentifier(bundleIdentifier);
-    int token = NOTIFY_TOKEN_INVALID;
-    uint32_t registerStatus = notify_register_check(kPullOverOpenRequestIdentifier.UTF8String,
-                                                    &token);
-    uint32_t stateStatus = registerStatus == NOTIFY_STATUS_OK
-        ? notify_set_state(token, state) : registerStatus;
-    uint32_t postStatus = stateStatus == NOTIFY_STATUS_OK
-        ? notify_post(kPullOverOpenRequestIdentifier.UTF8String) : stateStatus;
-    if (token != NOTIFY_TOKEN_INVALID) notify_cancel(token);
-
-    BOOL success = state != 0 && registerStatus == NOTIFY_STATUS_OK &&
-        stateStatus == NOTIFY_STATUS_OK && postStatus == NOTIFY_STATUS_OK;
-    if (!success) {
-        NSLog(@"[TypeX] PullOver-X publish failed for %@ (register=%u state=%u post=%u)",
-              bundleIdentifier, registerStatus, stateStatus, postStatus);
-    } else {
-        NSLog(@"[TypeX] published PullOver-X request for %@", bundleIdentifier);
-    }
-    return success;
-}
-
-// Same probe idiom as isShellXScreenshotAvailable: dylib file existence under
-// the tweak loader directory, resolved through the jbroot prefix. Single source
-// of truth lives on DXShortcutsGenerator (the prefs catalog gates on it too).
--(BOOL)isPullOverXInstalled{
-    return [DXShortcutsGenerator isPullOverXInstalled];
-}
-
 // AI 问答按钮，按承载能力分派（第一版 + ShellX 时代两套验证过的路径）：
 // 系统键盘——TypeX 跑在宿主 app / SpringBoard 进程内（工具栏就长在 UIKeyboardImpl
 // 上），面板第一版同款进程内承载，点按钮立即弹出，不依赖跨进程通道；
@@ -2158,10 +2125,14 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
             return YES;
         }
 
-        BOOL usePullOver = [entry[kCustomActionUsePullOverKey] boolValue];
-        BOOL handedOff = usePullOver && [self isPullOverXInstalled] &&
-            [self publishPullOverOpenRequestForBundleIdentifier:link];
-        if (!handedOff) {
+        if (DXActionUsesFloatingApp(entry)) {
+            DXCustomActionOpenCompletion completion = [self guardedCustomOpenCompletion:^(BOOL success) {
+                if (!success) [self showCustomActionMessage:LOCALIZED(@"FLOATING_APP_OPEN_ERROR")];
+            }];
+            DXOpenFloatingApplication(link, ^(DXSystemOpenResult result) {
+                [self finishCustomActionOpen:completion success:result == DXSystemOpenSucceeded];
+            });
+        } else {
             [self openApplicationWithBundleIdentifier:link completion:^(BOOL success) {
                 if (!success) [self showCustomActionLinkError];
             }];
@@ -2192,11 +2163,18 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         }
         if ([self cutReplaceArmedForEntry:entry rawPayload:link]) [self cutHostInputField];
         NSURL *url = [NSURL URLWithString:payload];
-        [self openCustomActionURL:url completion:^(BOOL success) {
-            if (!success) {
-                [self showCustomActionLinkError];
-            }
-        }];
+        if (DXActionUsesFloatingApp(entry)) {
+            DXCustomActionOpenCompletion completion = [self guardedCustomOpenCompletion:^(BOOL success) {
+                if (!success) [self showCustomActionMessage:LOCALIZED(@"FLOATING_APP_OPEN_ERROR")];
+            }];
+            DXOpenFloatingURL(url, ^(DXSystemOpenResult result) {
+                [self finishCustomActionOpen:completion success:result == DXSystemOpenSucceeded];
+            });
+        } else {
+            [self openCustomActionURL:url completion:^(BOOL success) {
+                if (!success) [self showCustomActionLinkError];
+            }];
+        }
         return YES;
     }
 
@@ -2227,6 +2205,15 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
         if (cutField) [self cutHostInputField];
         NSURL *url = [NSURL URLWithString:link];
+        if (DXActionUsesFloatingApp(entry)) {
+            DXCustomActionOpenCompletion completion = [self guardedCustomOpenCompletion:^(BOOL success) {
+                if (!success) [self showCustomActionMessage:LOCALIZED(@"FLOATING_APP_OPEN_ERROR")];
+            }];
+            DXOpenFloatingURL(url, ^(DXSystemOpenResult result) {
+                [self finishCustomActionOpen:completion success:result == DXSystemOpenSucceeded];
+            });
+            return YES;
+        }
         [self openCustomActionURL:url completion:^(BOOL success) {
             if (!success) {
                 [self showCustomActionLinkError];
@@ -2237,6 +2224,15 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
     if ([self isBundleIdentifier:link]) {
         if (cutField) [self cutHostInputField];
+        if (DXActionUsesFloatingApp(entry)) {
+            DXCustomActionOpenCompletion completion = [self guardedCustomOpenCompletion:^(BOOL success) {
+                if (!success) [self showCustomActionMessage:LOCALIZED(@"FLOATING_APP_OPEN_ERROR")];
+            }];
+            DXOpenFloatingApplication(link, ^(DXSystemOpenResult result) {
+                [self finishCustomActionOpen:completion success:result == DXSystemOpenSucceeded];
+            });
+            return YES;
+        }
         [self openApplicationWithBundleIdentifier:link completion:^(BOOL success) {
             if (!success) {
                 [self showCustomActionLinkError];

@@ -168,12 +168,11 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "TEXT_SETTINGS" = "Text";
 "URL_SETTINGS" = "URL";
 "OPEN_IN_APP" = "Open in App";
-"OPEN_WITH_PULLOVER" = "Open with PullOver-X";
 "CUT_REPLACE_FIELD" = "Cut & Replace";
-"TYPE_FOOTER_URL_SCHEME" = "Opens the URL scheme when tapped. Use @@@ to pass the current input field's text as a parameter. With Cut & Replace on, the field is cleared as its text is passed in; off keeps the field's content.";
+"TYPE_FOOTER_URL_SCHEME" = "By default, TypeX hosts the app handling this URL Scheme in a floating window and delivers the original link. Turn floating off for normal navigation or system commands without a hostable app. @@@ passes the current input text.";
 "TYPE_FOOTER_TEXT" = "Manage literal text records. One record is inserted directly; multiple records open a floating list. Tap a record to insert it and close the panel. Text, spaces and line breaks are preserved. Use Edit to delete or reorder records.";
 "TYPE_FOOTER_URL" = "Opens the web URL, either inside this app or outside. Use @@@ to pass the current input field's text as a parameter. With Cut & Replace on, the field is cleared as its text is passed in; off keeps the field's content.";
-"TYPE_FOOTER_OPEN_APP" = "Opens the selected app normally by default. When PullOver-X is installed, you can let it take over; if PullOver-X is not active, TypeX falls back to opening the app normally.";
+"TYPE_FOOTER_OPEN_APP" = "TypeX opens the selected app in an interactive floating window by default. Drag its title bar or tap close to end hosting. Turn this off for normal full-screen opening. PullOver-X is not required.";
 
 //=====================APP / SHORTCUT PICKERS=====================
 "OPEN_APP" = "Open App";
@@ -554,3 +553,9 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "PANEL_GESTURE_FOOTER" = "Open from Dock/status-bar gestures or other gesture panels. Built-in keyboard actions, text and scripts are unavailable. Links are selectable, but actions requiring input or replacement fail with an error.";
 "PANEL_TOOLBAR_FOOTER" = "Configure left and right long swipes separately. Unassigned swipes do nothing. Only keyboard panels are available; swipes confined to a button keep its own gesture action.";
 "PANEL_KEYBOARD_TEST" = "Type to test keyboard panels";
+
+"OPEN_FLOATING_APP" = "Open in a floating window";
+
+"FLOATING_APP_CLOSE" = "Close floating app";
+
+"FLOATING_APP_OPEN_ERROR" = "Could not open the floating app. Check the target or try again.";

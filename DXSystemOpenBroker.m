@@ -10,6 +10,7 @@
 #import "DXGlobalPanelPolicy.h"
 #import "DXGlobalPanel.h"
 #import "DXGlobalActionExecutor.h"
+#import "DXFloatingApp.h"
 #import <notify.h>
 #import "common.h"
 #import <objc/message.h>
@@ -66,6 +67,17 @@ static void DXPerformSystemOpen(NSDictionary *request, DXSystemOpenReply reply) 
     NSString *payload = request[@"payload"];
     if (![kind isKindOfClass:NSString.class] || ![payload isKindOfClass:NSString.class] || !payload.length) {
         reply(DXSystemOpenInvalid);
+        return;
+    }
+    if ([kind isEqual:@"floating-application"] || [kind isEqual:@"floating-url"]) {
+        BOOL isURL = [kind isEqual:@"floating-url"];
+        NSURL *url = isURL && DXIsOpenableSchemeURLString(payload) ? [NSURL URLWithString:payload] : nil;
+        NSString *identifier = isURL ? DXFloatingBundleIdentifierForURL(url) : payload;
+        if (payload.length > (isURL ? 4096 : 256) || (isURL && !url) || !DXIsValidBundleIdentifier(identifier)) {
+            reply(DXSystemOpenInvalid); return;
+        }
+        NSDate *deadline = [NSDate dateWithTimeIntervalSince1970:[request[@"created"] doubleValue] + DXSystemOpenRequestTTL];
+        DXPresentFloatingApplication(identifier, url, deadline, reply);
         return;
     }
     if ([kind isEqual:@"statusbar-gesture"]) {
@@ -232,6 +244,14 @@ void DXRequestStatusBarGesture(NSString *slot, NSString *expectedSelector, BOOL 
 
 void DXOpenSystemApplication(NSString *bundleIdentifier, DXSystemOpenReply reply) {
     DXSubmitSystemOpen(@"application", bundleIdentifier, reply);
+}
+
+void DXOpenFloatingApplication(NSString *bundleIdentifier, DXSystemOpenReply reply) {
+    DXSubmitSystemOpen(@"floating-application", bundleIdentifier, reply);
+}
+
+void DXOpenFloatingURL(NSURL *url, DXSystemOpenReply reply) {
+    DXSubmitSystemOpen(@"floating-url", url.absoluteString, reply);
 }
 
 void DXRunSystemAction(NSString *identifier, DXSystemOpenReply reply) {
