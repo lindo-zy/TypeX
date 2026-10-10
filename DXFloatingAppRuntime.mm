@@ -196,6 +196,8 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
 @property(nonatomic) pid_t processPID;
 @property(nonatomic) BOOL activeLease;
 @property(nonatomic) BOOL sceneCreationAttempted;
+@property(nonatomic) BOOL loggedProcessWait;
+@property(nonatomic) BOOL loggedContentWait;
 @property(nonatomic, strong) NSArray<NSNumber *> *notifyTokens;
 + (instancetype)shared;
 - (void)open:(NSString *)identifier url:(NSURL *)url deadline:(NSDate *)deadline reply:(DXSystemOpenReply)reply;
@@ -390,6 +392,7 @@ static void DXFloatForegroundSettings(id settings, BOOL foreground) {
     self.originalSettings = nil; self.layerManager = nil; self.fallbackHostManager = nil;
     self.publishedLayers = nil; self.requestedURL = nil; self.urlAccepted = NO;
     self.hasContent = NO; self.processPID = 0; self.sceneCreationAttempted = NO;
+    self.loggedProcessWait = NO; self.loggedContentWait = NO;
     if (identifier.length) NSLog(@"[TypeX][FloatingApp] release bundleID=%@ reason=%@", identifier, reason);
 }
 - (BOOL)prewarm:(NSString *)identifier {
@@ -409,32 +412,44 @@ static void DXFloatForegroundSettings(id settings, BOOL foreground) {
     return NO;
 }
 - (BOOL)deliverURL:(NSURL *)url generation:(NSUInteger)generation {
+    // The workspace URL-open channel (openURL:application:options:
+    // clientPort:withResult:) is the same entry an application's openURL
+    // funnels through; it re-enters the trusted-open hook where this session
+    // marks the activation suspended. A self-assembled openApplication
+    // request with payload options is not a system request shape and dies on
+    // non-LaunchServices schemes (prefs:/app-prefs:) before the target ever
+    // launches, which surfaced as an endless spinner on the card.
     id service = DXFloatObject(NSClassFromString(@"FBSSystemService"), @"sharedService");
-    SEL open = NSSelectorFromString(@"openApplication:options:withResult:");
+    SEL open = NSSelectorFromString(@"openURL:application:options:clientPort:withResult:");
+    SEL createPort = NSSelectorFromString(@"createClientPort");
     NSString *suspendedKey = DXFloatConstant("FBSOpenApplicationOptionKeyActivateSuspended");
-    NSString *urlKey = DXFloatConstant("FBSOpenApplicationOptionKeyPayloadURL");
-    NSString *optionsKey = DXFloatConstant("FBSOpenApplicationOptionKeyPayloadOptions");
     NSMethodSignature *signature = [service methodSignatureForSelector:open];
-    if (![service respondsToSelector:open] || signature.numberOfArguments != 5 || strcmp(signature.methodReturnType, "v") ||
-        !suspendedKey.length || !urlKey.length || !optionsKey.length) return NO;
-    // The options dictionary crosses the system-service XPC transport, which
-    // only accepts property-list values: the payload URL travels as a string
-    // (matching the __PayloadURL form seen on live open requests), never as an
-    // NSURL object.
-    NSMutableDictionary *options = [@{suspendedKey: @YES, urlKey: url.absoluteString,
-        @"__TypeXFloatingGeneration": @(generation),
-        optionsKey: @{UIApplicationLaunchOptionsSourceApplicationKey: self.baseIdentifier ?: @"com.apple.springboard"}} mutableCopy];
-    NSString *validKey = DXFloatConstant("FBSOpenApplicationOptionKeyPayloadIsValid");
-    if (validKey.length) options[validKey] = @YES;
+    if (![service respondsToSelector:open] || ![service respondsToSelector:createPort] ||
+        signature.numberOfArguments != 7 || strcmp(signature.methodReturnType, "v") ||
+        strcmp([signature getArgumentTypeAtIndex:2], "@") || strcmp([signature getArgumentTypeAtIndex:3], "@") ||
+        strcmp([signature getArgumentTypeAtIndex:4], "@")) return NO;
+    const char *portType = [signature getArgumentTypeAtIndex:5];
+    if (strcmp(portType, "I") && strcmp(portType, "i")) return NO;
+    if (!suspendedKey.length) return NO;
+    NSMutableDictionary *options = [@{suspendedKey: @YES,
+        @"__TypeXFloatingGeneration": @(generation)} mutableCopy];
     __weak typeof(self) weakSelf = self;
     @try {
-        // The vendored header declares a zero-argument result callback while
-        // other dumps show an NSError parameter; a zero-argument block is
-        // call-safe under both ABIs, so the poll loop owns the real outcome.
-        ((void (*)(id, SEL, id, id, id))objc_msgSend)(service, open, self.session.bundleIdentifier, options, ^{
+        // FBSSystemServiceResultCallback carries an NSError per the vendored
+        // header; a rejected open must fail the card immediately instead of
+        // spinning until the readiness deadline.
+        mach_port_t port = ((mach_port_t (*)(id, SEL))objc_msgSend)(service, createPort);
+        ((void (*)(id, SEL, id, id, id, mach_port_t, id))objc_msgSend)(service, open, url,
+            self.session.bundleIdentifier, options, port, ^(NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 DXFloatingAppCoordinator *host = weakSelf;
                 if (![host.session isCurrent:generation]) return;
+                if (error) {
+                    NSLog(@"[TypeX][FloatingApp] URL rejected bundleID=%@ error=%@",
+                        host.session.bundleIdentifier, error.localizedDescription ?: error.domain);
+                    [host cleanup:DXSystemOpenFailed reason:@"url-delivery-failed"];
+                    return;
+                }
                 host.urlAccepted = YES;
                 NSLog(@"[TypeX][FloatingApp] URL accepted bundleID=%@ generation=%lu", host.session.bundleIdentifier, (unsigned long)generation);
             });
@@ -511,7 +526,17 @@ static void DXFloatForegroundSettings(id settings, BOOL foreground) {
     if (!NSThread.isMainThread || !self.activeLease || !self.scene || !self.controller) return;
     // A scene with an unready content state can already own layers. Don't
     // acknowledge an icon/launch placeholder as a live application.
-    if (DXFloatInteger(self.scene, @"contentState", 2) != 2) return;
+    NSInteger contentState = DXFloatInteger(self.scene, @"contentState", 2);
+    if (contentState != 2) {
+        // One-shot: distinguishes a stalled scene (waiting content) from a
+        // target that never launched (waiting process) in device syslog.
+        if (!self.loggedContentWait) {
+            self.loggedContentWait = YES;
+            NSLog(@"[TypeX][FloatingApp] waiting content bundleID=%@ contentState=%ld",
+                self.session.bundleIdentifier, (long)contentState);
+        }
+        return;
+    }
     @try {
         id collection = DXFloatObject(self.layerManager, @"layers");
         NSArray *layers = [collection isKindOfClass:NSArray.class] ? collection : DXFloatObject(collection, @"array");
@@ -620,6 +645,10 @@ static void DXFloatForegroundSettings(id settings, BOOL foreground) {
     }
     NSString *identifier = self.session.bundleIdentifier;
     pid_t pid = DXFloatPID(identifier);
+    if (pid <= 0 && !self.loggedProcessWait && self.session.deadline.timeIntervalSinceNow < DXSystemOpenRequestTTL - 2.0) {
+        self.loggedProcessWait = YES;
+        NSLog(@"[TypeX][FloatingApp] waiting process bundleID=%@", identifier);
+    }
     if (self.processPID > 0 && pid != self.processPID) { [self cleanup:DXSystemOpenUnavailable reason:@"process-ended"]; return; }
     if (!self.scene && pid > 0) {
         id scene = DXFloatFindScene(identifier);
