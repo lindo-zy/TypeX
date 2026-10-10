@@ -171,6 +171,8 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
 @property(nonatomic, strong) UIActivityIndicatorView *spinner;
 @property(nonatomic) CGSize canvasSize;
 @property(nonatomic) CGPoint normalizedCenter;
+// 悬浮设置页写入的默认最大占屏比例；每次打开卡片时由协调器注入。
+@property(nonatomic) CGFloat maxScale;
 - (void)setTitle:(NSString *)title;
 - (void)setHostViews:(NSArray<UIView *> *)views canvasSize:(CGSize)size;
 @end
@@ -198,6 +200,7 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
 + (instancetype)shared;
 - (void)open:(NSString *)identifier url:(NSURL *)url deadline:(NSDate *)deadline reply:(DXSystemOpenReply)reply;
 - (void)close;
+- (void)minimize;
 - (void)cleanup:(DXSystemOpenResult)result reason:(NSString *)reason;
 - (void)poll:(NSUInteger)generation;
 - (void)publishLayers;
@@ -225,6 +228,12 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
     close.accessibilityLabel = LOCALIZED(@"FLOATING_APP_CLOSE");
     [close addTarget:self action:@selector(closeTapped) forControlEvents:UIControlEventTouchUpInside];
     [header addSubview:close];
+    // "-" 最小化：收起小窗并把目标挂后台，与右侧关闭按钮相邻。
+    UIButton *minimize = [UIButton buttonWithType:UIButtonTypeSystem]; minimize.tag = 43;
+    [minimize setImage:[UIImage systemImageNamed:@"minus.circle.fill"] forState:UIControlStateNormal];
+    minimize.accessibilityLabel = LOCALIZED(@"FLOATING_APP_MINIMIZE");
+    [minimize addTarget:self action:@selector(minimizeTapped) forControlEvents:UIControlEventTouchUpInside];
+    [header addSubview:minimize];
     UIPanGestureRecognizer *drag = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(drag:)];
     [header addGestureRecognizer:drag];
     self.content = [[UIView alloc] init]; self.content.clipsToBounds = YES;
@@ -234,6 +243,7 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
     [self.content addSubview:self.spinner]; [self.spinner startAnimating];
 }
 - (void)closeTapped { [self.owner close]; }
+- (void)minimizeTapped { [self.owner minimize]; }
 - (void)setTitle:(NSString *)title { [self loadViewIfNeeded]; self.titleLabel.text = title; }
 - (void)drag:(UIPanGestureRecognizer *)gesture {
     CGPoint translation = [gesture translationInView:self.view];
@@ -250,7 +260,8 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
     CGRect available = UIEdgeInsetsInsetRect(bounds, UIEdgeInsetsMake(safe.top + 8, safe.left + 8, safe.bottom + 8, safe.right + 8));
     CGSize size = self.canvasSize;
     if (size.width < 1 || size.height < 1) size = UIScreen.mainScreen.bounds.size;
-    CGFloat scale = MIN(0.72, MIN(available.size.width / size.width, MAX(1, available.size.height - 44) / size.height));
+    CGFloat cap = (self.maxScale >= 0.30 && self.maxScale <= 1.0) ? self.maxScale : 0.72;
+    CGFloat scale = MIN(cap, MIN(available.size.width / size.width, MAX(1, available.size.height - 44) / size.height));
     CGFloat width = size.width * scale, height = size.height * scale + 44;
     CGPoint center = CGPointMake(bounds.size.width * self.normalizedCenter.x, bounds.size.height * self.normalizedCenter.y);
     center.x = MAX(CGRectGetMinX(available) + width / 2, MIN(CGRectGetMaxX(available) - width / 2, center.x));
@@ -258,7 +269,8 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
     self.card.frame = CGRectMake(center.x - width / 2, center.y - height / 2, width, height);
     UIView *header = [self.card viewWithTag:41]; header.frame = CGRectMake(0, 0, width, 44);
     [header viewWithTag:42].frame = CGRectMake(width - 44, 0, 44, 44);
-    self.titleLabel.frame = CGRectMake(12, 0, MAX(0, width - 60), 44);
+    [header viewWithTag:43].frame = CGRectMake(width - 88, 0, 44, 44);
+    self.titleLabel.frame = CGRectMake(12, 0, MAX(0, width - 104), 44);
     self.content.frame = CGRectMake(0, 44, width, height - 44);
     self.canvas.transform = CGAffineTransformIdentity;
     self.canvas.bounds = (CGRect){CGPointZero, size};
@@ -332,6 +344,17 @@ static void DXFloatForegroundSettings(id settings, BOOL foreground) {
     } @catch (__unused NSException *exception) { return settings; }
 }
 - (void)close { [self cleanup:DXSystemOpenFailed reason:@"close-button"]; }
+- (void)minimize {
+    if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ [self minimize]; }); return; }
+    NSString *identifier = self.session.bundleIdentifier;
+    [self cleanup:DXSystemOpenFailed reason:@"minimize-button"];
+    // 收起小窗后把目标以挂起方式重新停靠：进程仍在则原地保活，进程被系统
+    // 回收则挂起重建，保证应用驻留后台而不是随托管解除一并退出。
+    if (identifier.length) {
+        BOOL parked = [self prewarm:identifier];
+        NSLog(@"[TypeX][FloatingApp] minimize bundleID=%@ parked=%d", identifier, parked);
+    }
+}
 - (void)cleanup:(DXSystemOpenResult)result reason:(NSString *)reason {
     if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ [self cleanup:result reason:reason]; }); return; }
     NSString *identifier = self.session.bundleIdentifier;
@@ -457,6 +480,7 @@ static void DXFloatForegroundSettings(id settings, BOOL foreground) {
     self.baseScene = frontmost.length ? DXFloatFindScene(frontmost) : nil;
     self.requestedURL = url; self.urlAccepted = !url;
     self.controller = [DXFloatingAppCardController new]; self.controller.owner = self;
+    self.controller.maxScale = DXFloatingCardMaxScaleFromPreferences(DXPrefsManager.sharedInstance.readPrefs);
     id application = DXFloatApplication(identifier);
     NSString *title = DXFloatObject(application, @"displayName") ?: identifier;
     [self.controller setTitle:title];

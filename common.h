@@ -88,6 +88,8 @@
 #define kCellBorderWidthkey @"shortcutborderwidth"
 #define kButtonWidthScalekey @"shortcutwidthscale"
 #define kSubActionPanelScaleKey @"subactionpanelscale"
+// 悬浮打开应用小窗的默认最大占屏比例（百分比存储，如 72 = 72%）。
+#define kFloatingCardMaxScaleKey @"floatingcardmaxscale"
 // 顶部工具栏固定按"每行个数"换行，第一行紧贴键盘、第二行向上堆叠。
 // 行距只作用于两行之间；旧的多行开关不再参与布局或容量计算。
 #define kButtonsPerRowKey @"buttonsperrow"
@@ -244,6 +246,15 @@ static inline NSInteger DXMultiRowButtonsPerRowFromPreferences(NSDictionary *pre
 static inline NSInteger DXMultiRowCapacityForPreferences(NSDictionary *preferences) {
     return MIN(maxMultiRowButtons,
                DXMultiRowButtonsPerRowFromPreferences(preferences) * maxMultiRowRows);
+}
+
+// 悬浮小窗布局把自动适配比例封顶在这个配置值上（0.30–1.00，缺省 0.72）。
+// 非法值（含 NaN）一律回退缺省，读配置失败不产生危险布局。
+static inline CGFloat DXFloatingCardMaxScaleFromPreferences(NSDictionary *preferences) {
+    id value = [preferences isKindOfClass:[NSDictionary class]] ? preferences[kFloatingCardMaxScaleKey] : nil;
+    CGFloat scale = [value respondsToSelector:@selector(doubleValue)] ? [value doubleValue] / 100.0 : 0.72;
+    if (!(scale >= 0.30) || scale > 1.0) scale = 0.72;
+    return scale;
 }
 
 // With paging removed, every enabled button must fit the current toolbar surface.

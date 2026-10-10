@@ -557,4 +557,14 @@
 
 "FLOATING_APP_CLOSE" = "关闭悬浮应用";
 
+"FLOATING_APP_MINIMIZE" = "最小化悬浮应用";
+
+"FLOATING_APP_SETTINGS" = "悬浮面板";
+
+"FLOATING_APP_SIZE_GROUP" = "默认大小";
+
+"FLOATING_APP_MAX_SCALE" = "大小比例";
+
+"FLOATING_APP_SCALE_FOOTER" = "调整悬浮小窗默认最大占屏比例，对新打开的悬浮生效。";
+
 "FLOATING_APP_OPEN_ERROR" = "悬浮打开失败，请检查目标应用或重试";
