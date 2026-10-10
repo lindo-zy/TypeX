@@ -566,6 +566,18 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 
 "FLOATING_APP_MAX_SCALE" = "Size Ratio";
 
-"FLOATING_APP_SCALE_FOOTER" = "Caps the floating window's default on-screen size. Applies to newly opened floating windows.";
+"FLOATING_APP_SCALE_FOOTER" = "Caps the floating window's default on-screen size. 100% opens it full screen. Applies to newly opened floating windows.";
+
+"FLOATING_APP_POSITION_GROUP" = "Default Position";
+
+"FLOATING_APP_POSITION" = "Dock Position";
+
+"FLOATING_APP_POSITION_FOOTER" = "Chooses the floating window's default horizontal position when opened. Dragging the window overrides it. Applies to newly opened floating windows.";
+
+"FLOATING_APP_POSITION_LEFT" = "Left";
+
+"FLOATING_APP_POSITION_CENTER" = "Center";
+
+"FLOATING_APP_POSITION_RIGHT" = "Right";
 
 "FLOATING_APP_OPEN_ERROR" = "Could not open the floating app. Check the target or try again.";

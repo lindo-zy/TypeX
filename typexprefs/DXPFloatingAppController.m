@@ -1,5 +1,6 @@
 #import "DXPFloatingAppController.h"
 #import "DXPPanelSliderCell.h"
+#import "DXPPanelSegmentCell.h"
 #import "../DXHelper.h"
 #import "../common.h"
 #import <Preferences/PSSpecifier.h>
@@ -8,8 +9,8 @@ static NSString *DXFloatingLocalized(NSString *key) {
     return [[NSBundle bundleWithPath:bundlePath] localizedStringForKey:key value:key table:nil];
 }
 
-// 悬浮打开应用小窗的全局设置。比例键由 DXFloatingCardMaxScaleFromPreferences
-// 消费（键盘工具栏触发的 SpringBoard 托管卡片读取同一份快照）。
+// 悬浮打开应用小窗的全局设置。比例与位置键由 DXFloatingCardMaxScaleFromPreferences /
+// DXFloatingCardPositionFromPreferences 消费（SpringBoard 托管卡片读取同一份快照）。
 @implementation DXPFloatingAppController
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -27,7 +28,16 @@ static NSString *DXFloatingLocalized(NSString *key) {
     [scale setProperty:@30 forKey:@"min"];
     [scale setProperty:@100 forKey:@"max"];
     [scale setProperty:@YES forKey:@"showValue"];
-    _specifiers = [@[group, scale] mutableCopy];
+    PSSpecifier *positionGroup = [PSSpecifier groupSpecifierWithName:DXFloatingLocalized(@"FLOATING_APP_POSITION_GROUP")];
+    [positionGroup setProperty:DXFloatingLocalized(@"FLOATING_APP_POSITION_FOOTER") forKey:@"footerText"];
+    PSSpecifier *position = [PSSpecifier preferenceSpecifierNamed:DXFloatingLocalized(@"FLOATING_APP_POSITION") target:self
+        set:@selector(setPreferenceValue:specifier:) get:@selector(readPreferenceValue:) detail:nil cell:PSStaticTextCell edit:nil];
+    [position setProperty:kFloatingCardPositionKey forKey:@"key"];
+    [position setProperty:@1 forKey:@"default"];
+    [position setProperty:DXPPanelSegmentCell.class forKey:@"cellClass"];
+    [position setProperty:@[DXFloatingLocalized(@"FLOATING_APP_POSITION_LEFT"), DXFloatingLocalized(@"FLOATING_APP_POSITION_CENTER"),
+        DXFloatingLocalized(@"FLOATING_APP_POSITION_RIGHT")] forKey:@"titles"];
+    _specifiers = [@[group, scale, positionGroup, position] mutableCopy];
     return _specifiers;
 }
 - (id)readPreferenceValue:(PSSpecifier *)specifier {
@@ -35,15 +45,22 @@ static NSString *DXFloatingLocalized(NSString *key) {
     id value = preferences[[specifier propertyForKey:@"key"]];
     return [value respondsToSelector:@selector(floatValue)] ? value : [specifier propertyForKey:@"default"];
 }
-// 与 DXPKeyboardPanelController 相同：滑杆单元需要 80pt 行高。
+// 与 DXPKeyboardPanelController 相同：滑杆与分段单元都是自绘 80pt 行高。
 - (CGFloat)tableView:(UITableView *)table heightForRowAtIndexPath:(NSIndexPath *)path {
-    if ([[self specifierAtIndexPath:path] propertyForKey:@"cellClass"] == DXPPanelSliderCell.class) return 80;
+    Class cellClass = [[self specifierAtIndexPath:path] propertyForKey:@"cellClass"];
+    if (cellClass == DXPPanelSliderCell.class || cellClass == DXPPanelSegmentCell.class) return 80;
     return [super tableView:table heightForRowAtIndexPath:path];
 }
 - (void)setPreferenceValue:(id)value specifier:(PSSpecifier *)specifier {
     if (![value isKindOfClass:NSNumber.class]) return;
-    // 与滑杆 5% 步进一致；越界值夹回，避免写进快照后触发读取侧缺省回退。
-    NSInteger percent = MIN(100, MAX(30, lround([value doubleValue] / 5) * 5));
-    [DXPrefsManager.sharedInstance setValue:@(percent) forKey:[specifier propertyForKey:@"key"]];
+    NSString *key = [specifier propertyForKey:@"key"];
+    NSInteger stored;
+    if ([key isEqual:kFloatingCardPositionKey]) {
+        stored = MIN(2, MAX(0, lround([value doubleValue])));
+    } else {
+        // 与滑杆 5% 步进一致；越界值夹回，避免写进快照后触发读取侧缺省回退。
+        stored = MIN(100, MAX(30, lround([value doubleValue] / 5) * 5));
+    }
+    [DXPrefsManager.sharedInstance setValue:@(stored) forKey:key];
 }
 @end

@@ -173,6 +173,9 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
 @property(nonatomic) CGPoint normalizedCenter;
 // 悬浮设置页写入的默认最大占屏比例；每次打开卡片时由协调器注入。
 @property(nonatomic) CGFloat maxScale;
+// 悬浮设置页写入的默认水平停靠位置（0=居左 1=居中 2=居右）；拖动后以拖动为准。
+@property(nonatomic) NSInteger horizontalAlignment;
+@property(nonatomic) BOOL horizontalCustomized;
 - (void)setTitle:(NSString *)title;
 - (void)setHostViews:(NSArray<UIView *> *)views canvasSize:(CGSize)size;
 @end
@@ -215,6 +218,7 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
     self.view = [[UIView alloc] initWithFrame:UIScreen.mainScreen.bounds];
     self.view.backgroundColor = UIColor.clearColor;
     self.normalizedCenter = CGPointMake(0.5, 0.45);
+    self.horizontalAlignment = 1;
     self.card = [[UIView alloc] init];
     self.card.backgroundColor = UIColor.secondarySystemBackgroundColor;
     self.card.layer.cornerRadius = 16;
@@ -249,6 +253,7 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
 - (void)setTitle:(NSString *)title { [self loadViewIfNeeded]; self.titleLabel.text = title; }
 - (void)drag:(UIPanGestureRecognizer *)gesture {
     CGPoint translation = [gesture translationInView:self.view];
+    if (!CGPointEqualToPoint(translation, CGPointZero)) self.horizontalCustomized = YES;
     CGPoint center = self.card.center;
     center.x += translation.x; center.y += translation.y;
     self.normalizedCenter = CGPointMake(center.x / MAX(1, self.view.bounds.size.width), center.y / MAX(1, self.view.bounds.size.height));
@@ -259,17 +264,46 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
     [super viewDidLayoutSubviews];
     CGRect bounds = self.view.bounds;
     UIEdgeInsets safe = self.view.safeAreaInsets;
-    CGRect available = UIEdgeInsetsInsetRect(bounds, UIEdgeInsetsMake(safe.top + 8, safe.left + 8, safe.bottom + 8, safe.right + 8));
     CGSize size = self.canvasSize;
     if (size.width < 1 || size.height < 1) size = UIScreen.mainScreen.bounds.size;
     CGFloat cap = (self.maxScale >= 0.30 && self.maxScale <= 1.0) ? self.maxScale : 0.72;
+    UIView *header = [self.card viewWithTag:41];
+    // 100% 视为全屏接管：卡片铺满整屏、内容铺满卡片，标题栏悬浮在安全区下方，
+    // 保证关闭/最小化/拖动仍可用；其余比例保持留白小窗布局。
+    if (cap >= 0.999) {
+        CGFloat scale = MIN(1.0, MIN(bounds.size.width / size.width, bounds.size.height / size.height));
+        CGFloat width = bounds.size.width, height = bounds.size.height;
+        CGFloat headerY = MAX(0, safe.top);
+        self.card.layer.cornerRadius = 0;
+        self.card.frame = (CGRect){CGPointZero, bounds.size};
+        header.frame = CGRectMake(0, headerY, width, 44);
+        header.backgroundColor = [UIColor.secondarySystemBackgroundColor colorWithAlphaComponent:0.9];
+        [header viewWithTag:42].frame = CGRectMake(width - 44, 0, 44, 44);
+        [header viewWithTag:43].frame = CGRectMake(width - 88, 0, 44, 44);
+        self.titleLabel.frame = CGRectMake(12, 0, MAX(0, width - 104), 44);
+        self.content.frame = (CGRect){CGPointZero, bounds.size};
+        self.canvas.transform = CGAffineTransformIdentity;
+        self.canvas.bounds = (CGRect){CGPointZero, size};
+        self.canvas.center = CGPointMake(width / 2, height / 2);
+        self.canvas.transform = CGAffineTransformMakeScale(scale, scale);
+        self.spinner.center = CGPointMake(width / 2, height / 2);
+        return;
+    }
+    CGRect available = UIEdgeInsetsInsetRect(bounds, UIEdgeInsetsMake(safe.top + 8, safe.left + 8, safe.bottom + 8, safe.right + 8));
     CGFloat scale = MIN(cap, MIN(available.size.width / size.width, MAX(1, available.size.height - 44) / size.height));
     CGFloat width = size.width * scale, height = size.height * scale + 44;
     CGPoint center = CGPointMake(bounds.size.width * self.normalizedCenter.x, bounds.size.height * self.normalizedCenter.y);
+    if (!self.horizontalCustomized) {
+        // 未拖动时按设置页的默认停靠位置落位；拖动后由 normalizedCenter 接管。
+        if (self.horizontalAlignment == 0) center.x = CGRectGetMinX(available) + width / 2;
+        else if (self.horizontalAlignment == 2) center.x = CGRectGetMaxX(available) - width / 2;
+        else center.x = CGRectGetMidX(available);
+    }
     center.x = MAX(CGRectGetMinX(available) + width / 2, MIN(CGRectGetMaxX(available) - width / 2, center.x));
     center.y = MAX(CGRectGetMinY(available) + height / 2, MIN(CGRectGetMaxY(available) - height / 2, center.y));
     self.card.frame = CGRectMake(center.x - width / 2, center.y - height / 2, width, height);
-    UIView *header = [self.card viewWithTag:41]; header.frame = CGRectMake(0, 0, width, 44);
+    header.frame = CGRectMake(0, 0, width, 44);
+    header.backgroundColor = UIColor.clearColor;
     [header viewWithTag:42].frame = CGRectMake(width - 44, 0, 44, 44);
     [header viewWithTag:43].frame = CGRectMake(width - 88, 0, 44, 44);
     self.titleLabel.frame = CGRectMake(12, 0, MAX(0, width - 104), 44);
@@ -495,7 +529,9 @@ static void DXFloatForegroundSettings(id settings, BOOL foreground) {
     self.baseScene = frontmost.length ? DXFloatFindScene(frontmost) : nil;
     self.requestedURL = url; self.urlAccepted = !url;
     self.controller = [DXFloatingAppCardController new]; self.controller.owner = self;
-    self.controller.maxScale = DXFloatingCardMaxScaleFromPreferences(DXPrefsManager.sharedInstance.readPrefs);
+    NSDictionary *preferences = DXPrefsManager.sharedInstance.readPrefs;
+    self.controller.maxScale = DXFloatingCardMaxScaleFromPreferences(preferences);
+    self.controller.horizontalAlignment = DXFloatingCardPositionFromPreferences(preferences);
     id application = DXFloatApplication(identifier);
     NSString *title = DXFloatObject(application, @"displayName") ?: identifier;
     [self.controller setTitle:title];
