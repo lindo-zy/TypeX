@@ -417,27 +417,42 @@ static BOOL DXStatusConstructionSupported(Class cls) {
 
 %group TypeXStatusBarWrapper
 %hook UIStatusBar
-- (void)didMoveToWindow { %orig; DXInstallStatusGestures((UIView *)self); }
+- (void)didMoveToWindow {
+    %orig;
+    DXInstallStatusGestures((UIView *)self);
+}
 %end
 %end
 %group TypeXStatusBarCore
 %hook _UIStatusBar
-- (void)didMoveToWindow { %orig; DXInstallStatusGestures((UIView *)self); }
+- (void)didMoveToWindow {
+    %orig;
+    DXInstallStatusGestures((UIView *)self);
+}
 %end
 %end
 %group TypeXStatusBarModern
 %hook UIStatusBar_Modern
-- (void)didMoveToWindow { %orig; DXInstallStatusGestures((UIView *)self); }
+- (void)didMoveToWindow {
+    %orig;
+    DXInstallStatusGestures((UIView *)self);
+}
 %end
 %end
 %group TypeXSystemStatusBarWrapper
 %hook STUIStatusBar_Wrapper
-- (void)didMoveToWindow { %orig; DXInstallStatusGestures((UIView *)self); }
+- (void)didMoveToWindow {
+    %orig;
+    DXInstallStatusGestures((UIView *)self);
+}
 %end
 %end
 %group TypeXSystemStatusBarCore
 %hook STUIStatusBar
-- (void)didMoveToWindow { %orig; DXInstallStatusGestures((UIView *)self); }
+- (void)didMoveToWindow {
+    %orig;
+    DXInstallStatusGestures((UIView *)self);
+}
 %end
 %end
 %group TypeXStatusBarCoreConstruction
@@ -460,7 +475,10 @@ static BOOL DXStatusConstructionSupported(Class cls) {
 %end
 %group TypeXStatusBarAperture
 %hook SBSystemApertureContainerView
-- (void)didMoveToWindow { %orig; DXInstallStatusGestures((UIView *)self); }
+- (void)didMoveToWindow {
+    %orig;
+    DXInstallStatusGestures((UIView *)self);
+}
 %end
 %end
 
