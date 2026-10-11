@@ -5,11 +5,16 @@
 
 int main(void) {
     @autoreleasepool {
-        REQUIRE(DXActionUsesFloatingApp(@{}));
-        REQUIRE(DXActionUsesFloatingApp(@{@"pullover": @NO}));
-        REQUIRE(DXActionUsesFloatingApp(@{@"pullover": @YES}));
-        REQUIRE(!DXActionUsesFloatingApp(@{@"floating": @NO, @"pullover": @YES}));
-        REQUIRE(DXActionUsesFloatingApp(@{@"floating": @YES}));
+        for (NSNumber *defaultValue in @[@NO, @YES]) {
+            BOOL defaultEnabled = defaultValue.boolValue;
+            REQUIRE(DXActionUsesFloatingApp(@{}, defaultEnabled) == defaultEnabled);
+            REQUIRE(DXActionUsesFloatingApp(nil, defaultEnabled) == defaultEnabled);
+            REQUIRE(DXActionUsesFloatingApp(@{@"pullover": @NO}, defaultEnabled) == defaultEnabled);
+            REQUIRE(DXActionUsesFloatingApp(@{@"pullover": @YES}, defaultEnabled) == defaultEnabled);
+            REQUIRE(DXActionUsesFloatingApp(@{@"floating": @"invalid"}, defaultEnabled) == defaultEnabled);
+            REQUIRE(!DXActionUsesFloatingApp(@{@"floating": @NO, @"pullover": @YES}, defaultEnabled));
+            REQUIRE(DXActionUsesFloatingApp(@{@"floating": @YES, @"pullover": @NO}, defaultEnabled));
+        }
         DXFloatingAppSession *session = [DXFloatingAppSession new];
         __block NSUInteger firstReplies = 0, secondReplies = 0;
         __block DXSystemOpenResult firstResult = 0, secondResult = 0;

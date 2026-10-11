@@ -18,10 +18,10 @@ typedef NS_ENUM(NSUInteger, DXFloatingAppState) {
 - (void)finish:(DXSystemOpenResult)result;
 @end
 
-static inline BOOL DXActionUsesFloatingApp(NSDictionary *entry) {
+static inline BOOL DXActionUsesFloatingApp(NSDictionary *entry, BOOL defaultEnabled) {
     id choice = entry[@"floating"];
-    // Both supported action types now use TypeX hosting by default, including
-    // old entries whose 'pullover' flag was merely an installation-dependent
-    // integration setting. An explicit new choice still permits normal open.
-    return ![choice isKindOfClass:NSNumber.class] || [choice boolValue];
+    // The resolved action supplies its default: apps float, URL schemes do
+    // not. This also covers legacy payloads after their kind is resolved.
+    // The old installation-dependent 'pullover' flag remains ignored.
+    return [choice isKindOfClass:NSNumber.class] ? [choice boolValue] : defaultEnabled;
 }

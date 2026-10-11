@@ -2125,7 +2125,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
             return YES;
         }
 
-        if (DXActionUsesFloatingApp(entry)) {
+        if (DXActionUsesFloatingApp(entry, YES)) {
             DXCustomActionOpenCompletion completion = [self guardedCustomOpenCompletion:^(BOOL success) {
                 if (!success) [self showCustomActionMessage:LOCALIZED(@"FLOATING_APP_OPEN_ERROR")];
             }];
@@ -2163,7 +2163,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
         }
         if ([self cutReplaceArmedForEntry:entry rawPayload:link]) [self cutHostInputField];
         NSURL *url = [NSURL URLWithString:payload];
-        if (DXActionUsesFloatingApp(entry)) {
+        if (DXActionUsesFloatingApp(entry, NO)) {
             DXCustomActionOpenCompletion completion = [self guardedCustomOpenCompletion:^(BOOL success) {
                 if (!success) [self showCustomActionMessage:LOCALIZED(@"FLOATING_APP_OPEN_ERROR")];
             }];
@@ -2205,7 +2205,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
         if (cutField) [self cutHostInputField];
         NSURL *url = [NSURL URLWithString:link];
-        if (DXActionUsesFloatingApp(entry)) {
+        if (DXActionUsesFloatingApp(entry, NO)) {
             DXCustomActionOpenCompletion completion = [self guardedCustomOpenCompletion:^(BOOL success) {
                 if (!success) [self showCustomActionMessage:LOCALIZED(@"FLOATING_APP_OPEN_ERROR")];
             }];
@@ -2224,7 +2224,7 @@ static BOOL DXIsHiddenShortcutSelector(NSString *selector) {
 
     if ([self isBundleIdentifier:link]) {
         if (cutField) [self cutHostInputField];
-        if (DXActionUsesFloatingApp(entry)) {
+        if (DXActionUsesFloatingApp(entry, YES)) {
             DXCustomActionOpenCompletion completion = [self guardedCustomOpenCompletion:^(BOOL success) {
                 if (!success) [self showCustomActionMessage:LOCALIZED(@"FLOATING_APP_OPEN_ERROR")];
             }];

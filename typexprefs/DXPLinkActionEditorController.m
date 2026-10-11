@@ -1009,7 +1009,7 @@ static NSInteger const DXLegacyRowLink = 2;
     [self.inAppSwitch addTarget:self action:@selector(inAppSwitchChanged:) forControlEvents:UIControlEventValueChanged];
 
     self.floatingSwitch = [[UISwitch alloc] init];
-    self.floatingSwitch.on = DXActionUsesFloatingApp(self.entry);
+    self.floatingSwitch.on = DXActionUsesFloatingApp(self.entry, self.isOpenAppEntry);
     [self.floatingSwitch addTarget:self action:@selector(inAppSwitchChanged:) forControlEvents:UIControlEventValueChanged];
 
     // 剪切替换 defaults to off: the field keeps its content (copy semantics,

@@ -170,7 +170,7 @@
 "URL_SETTINGS" = "网页链接设置";
 "OPEN_IN_APP" = "应用内打开";
 "CUT_REPLACE_FIELD" = "剪切替换";
-"TYPE_FOOTER_URL_SCHEME" = "默认将 URL Scheme 对应的应用悬浮打开，并投递原始链接。可直接操作小窗，点击关闭按钮结束悬浮。关闭悬浮开关可正常跳转；不对应应用的系统命令需要关闭该开关。支持 @@@ 传入输入框内容。";
+"TYPE_FOOTER_URL_SCHEME" = "默认关闭悬浮，按 URL Scheme 正常跳转。开启“悬浮打开应用”后，将对应应用悬浮打开并投递原始链接。不对应应用的系统命令请保持悬浮关闭。支持 @@@ 传入输入框内容。";
 "TYPE_FOOTER_TEXT" = "管理多条纯文本记录。一条时直接插入，多条时打开悬浮列表，点选记录后插入并关闭。原样保留文本、空格和换行。点击“编辑”可删除记录或拖动排序。";
 "TYPE_FOOTER_URL" = "点击后打开该网址，可选择在 APP 内或 APP 外打开；url 支持入参替换，使用 @@@ 传入当前输入框的内容。开启「剪切替换」后，@@@ 传入内容的同时清空输入框；关闭则保留输入框内容。";
 "TYPE_FOOTER_OPEN_APP" = "默认以 TypeX 小窗悬浮打开所选应用，可直接操作、拖动标题栏，并点击关闭按钮结束悬浮。关闭此开关可正常全屏打开。无需安装 PullOver-X。";
@@ -559,7 +559,7 @@
 
 "FLOATING_APP_MINIMIZE" = "最小化悬浮应用";
 
-"FLOATING_APP_SETTINGS" = "悬浮面板";
+"FLOATING_APP_SETTINGS" = "应用悬浮";
 
 "FLOATING_APP_SIZE_GROUP" = "默认大小";
 
