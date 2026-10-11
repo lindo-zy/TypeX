@@ -10,6 +10,7 @@
 #import "DXStatusBarGestures.h"
 #import "DXSystemOpenBroker.h"
 #import "DXFloatingApp.h"
+#import "DXFloatingAppInput.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <notify.h>
@@ -1181,6 +1182,7 @@ static void shortcutRefreshRequestCallback(CFNotificationCenterRef center,
                                                                object:nil];
                     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, reloadPrefsNotificationCallback, (CFStringRef)kPrefsChangedIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                     DXStartStatusBarGestures();
+                    if (!isSpringBoard) DXStartFloatingAppInputClient();
                     if (isSpringBoard) {
                         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, shortcutRefreshRequestCallback, (CFStringRef)kShortcutRefreshRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
                         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, aiChatRequestCallback, (CFStringRef)kAIChatRequestIdentifier, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);

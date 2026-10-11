@@ -14,6 +14,8 @@ URL Scheme 通过 LaunchServices 解析目标，向 FrontBoard 提交带原始 U
 - `DXFloatingAppSession` 管理代次、就绪截止时间、替换请求与单次完成。
 - `DXFloatingAppRuntime` 仅在 SpringBoard 初始化。默认 Scene 图层由系统 host view 绘制，主内容、键盘、external Scene 分开接入后按原画布缩放，初始自动适配比例由 `floatingcardmaxscale`（悬浮面板设置页，30–100%）封顶；双指缩放可突破初始比例，以屏幕可用区域为上限。
 - 当前 target/base Scene 的 settings 更新受会话限定的前台保护。可见目标持有 RBS 运行断言。最小化、关闭、目标进程/Scene 结束、锁屏、原生前台切换都会释放断言、图层 KVO、host requester 和窗口；最小化在释放后追加一次挂起停靠（`launchApplicationWithIdentifier:suspended:YES`），保证目标驻留后台。
+- 最小化在释放 Scene 前，用实际 Scene identifier 创建 `SBDisplayItem`，通过系统 `SBMainSwitcherControllerCoordinator` 的 `addAppLayoutForDisplayItem:windowScene:completion:` 登记最近应用卡片；已有卡片不重复插入，接口缺失、Scene 未就绪或异常会在日志中标为 `switcherRequested=0`。挂起启动与任务切换器登记是两个独立步骤，不能以 `parked=1` 推断卡片可见。接口依据 [iOS 17 的运行时头文件](https://github.com/MTACS/iOS-17-Runtime-Headers/blob/main/PrivateFrameworks/SpringBoard.framework/SBMainSwitcherControllerCoordinator.h)，iOS 16/17 均在调用前检查能力与方法签名；真实卡片与恢复行为需要设备验收。
+- 托管应用画面的触摸送入目标进程。`DXFloatingAppInput` 在目标 App 自己的匹配 Scene 窗口里注册双指识别器，通过 Darwin notify 的内存状态传送比例；SpringBoard 校验随机会话标识、PID、会话代次、窗口与解锁状态，再复用卡片等比缩放。消息带手势序号，通知合并后即使先收到 Changed/Ended，也只取一次起始尺寸。最小化、关闭、锁屏、切换目标及正常前台接管会撤销会话并移除 App 端识别器，不写偏好或设备日志文件；常规 App 双指手势只在该 Scene 被托管时让位。
 - 内容与 URL 接收回执都就绪后才能返回成功；截止时间使用原始请求时间，等待内容不会跨过传输超时后突然打开。
 - 类型和方法检查、失败路径不能替代设备 ABI、渲染和输入测试。特别需要验证目标的权限弹窗、键盘、横竖屏、受保护视频和相机。
 
@@ -23,7 +25,9 @@ URL Scheme 通过 LaunchServices 解析目标，向 FrontBoard 提交带原始 U
 
 设备日志使用 `[TypeX][FloatingApp]` 的 `prepare`、`URL accepted`、`scene acquired`、`live`、`resize`、`close terminate`、`release`，携带必要的 Bundle ID、generation、缩放或终止结果，不记录 URL 参数或输入文本。主机可用 `idevicesyslog` 捕获，设备端不写日志文件。
 
-本地测试 `python3 tests/run-floating-app-session.py` 覆盖会话代次与完成竞态；`python3 tests/run-floating-app-runtime.py` 覆盖实际关闭方法的释放顺序与 PID/前台/重开保护，以及等比缩放和停靠几何边界。不证明设备上的托管、触摸或键盘正确。项目构建唯一入口为 `./build.sh`。
+应用画面内部缩放的诊断链为 SpringBoard `input relay ready` → 目标 App `input installed` / `input pinch` → SpringBoard `resize`；最小化应有 `parked=1 switcherRequested=1`，随后手动打开任务切换器确认卡片存在、点击可恢复目标。冷启动目标与已在后台的目标都要测试；反复最小化、重新悬浮、缩放、关闭后，不得留下旧消息或重复卡片。设备连接、安装及日志抓取均须用户明确授权。
+
+本地测试 `python3 tests/run-floating-app-session.py` 覆盖会话代次与完成竞态；`python3 tests/run-floating-app-runtime.py` 覆盖实际关闭方法的释放顺序与 PID/前台/重开保护、等比缩放和停靠几何边界、实际 App 输入客户端的 Scene 过滤/消息/替换撤销，以及实际任务切换器登记方法的去重与 ABI/能力保护。窗口、卡片模型采用主机替身，不证明设备上的托管、触摸或键盘正确。项目构建唯一入口为 `./build.sh`。
 
 ## 源码来源
 

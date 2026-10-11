@@ -4,6 +4,7 @@
 #import "DXFloatingApp.h"
 #import "DXFloatingAppSession.h"
 #import "DXFloatingAppGeometry.h"
+#import "DXFloatingAppInput.h"
 #import "DXGlobalPanel.h"
 #import "common.h"
 #import <UIKit/UIKit.h>
@@ -186,6 +187,7 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
 @property(nonatomic, strong) UIPinchGestureRecognizer *pinchGesture;
 - (void)setTitle:(NSString *)title;
 - (void)setHostViews:(NSArray<UIView *> *)views canvasSize:(CGSize)size;
+- (void)applyPinchScale:(CGFloat)scale phase:(DXFloatPinchPhase)phase;
 @end
 
 @interface DXFloatingAppCoordinator : NSObject
@@ -210,6 +212,12 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
 @property(nonatomic) BOOL loggedProcessWait;
 @property(nonatomic) BOOL loggedContentWait;
 @property(nonatomic, strong) NSArray<NSNumber *> *notifyTokens;
+@property(nonatomic) int inputSessionToken;
+@property(nonatomic) int inputToken;
+@property(nonatomic) int inputSceneToken;
+@property(nonatomic) uint32_t inputNonce;
+@property(nonatomic) uint8_t inputGesture;
+@property(nonatomic) BOOL inputGestureFinished;
 + (instancetype)shared;
 - (void)open:(NSString *)identifier url:(NSURL *)url deadline:(NSDate *)deadline reply:(DXSystemOpenReply)reply;
 - (void)close;
@@ -217,6 +225,9 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
 - (void)cleanup:(DXSystemOpenResult)result reason:(NSString *)reason;
 - (void)poll:(NSUInteger)generation;
 - (void)publishLayers;
+- (void)startInputRelay;
+- (void)receivePinchWord:(uint64_t)word nonce:(uint32_t)nonce;
+- (void)stopInputRelay;
 - (BOOL)protectsScene:(id)scene;
 - (id)protectedSettings:(id)settings scene:(id)scene;
 @end
@@ -288,19 +299,20 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
     return YES;
 }
 - (void)pinch:(UIPinchGestureRecognizer *)gesture {
-    if (gesture.state == UIGestureRecognizerStateBegan) {
-        self.pinchStartZoom = self.displayedZoom;
+    switch (gesture.state) {
+        case UIGestureRecognizerStateBegan: [self applyPinchScale:gesture.scale phase:DXFloatPinchBegan]; break;
+        case UIGestureRecognizerStateChanged: [self applyPinchScale:gesture.scale phase:DXFloatPinchChanged]; break;
+        case UIGestureRecognizerStateEnded: [self applyPinchScale:gesture.scale phase:DXFloatPinchEnded]; break;
+        case UIGestureRecognizerStateCancelled: [self applyPinchScale:1 phase:DXFloatPinchCancelled]; break;
+        default: break;
     }
-    if (gesture.state == UIGestureRecognizerStateBegan || gesture.state == UIGestureRecognizerStateChanged ||
-        gesture.state == UIGestureRecognizerStateEnded) {
-        if (!isfinite(gesture.scale) || gesture.scale <= 0) return;
-        self.requestedZoom = self.pinchStartZoom * gesture.scale;
-    } else if (gesture.state == UIGestureRecognizerStateCancelled || gesture.state == UIGestureRecognizerStateFailed) {
-        self.requestedZoom = self.pinchStartZoom;
-    } else return;
+}
+- (void)applyPinchScale:(CGFloat)scale phase:(DXFloatPinchPhase)phase {
+    if (!isfinite(scale) || scale <= 0) return;
+    if (phase == DXFloatPinchBegan) self.pinchStartZoom = self.displayedZoom;
+    self.requestedZoom = phase == DXFloatPinchCancelled ? self.pinchStartZoom : self.pinchStartZoom * scale;
     [self.view setNeedsLayout]; [self.view layoutIfNeeded];
-    if (gesture.state == UIGestureRecognizerStateEnded) {
-        // Start the next gesture at the actual on-screen size, even after a limit.
+    if (phase == DXFloatPinchEnded || phase == DXFloatPinchCancelled) {
         self.requestedZoom = self.displayedZoom;
         NSLog(@"[TypeX][FloatingApp] resize zoom=%.3f", (double)self.displayedZoom);
     }
@@ -411,6 +423,42 @@ static void DXFloatForegroundSettings(id settings, BOOL foreground) {
     if (foreground && [settings respondsToSelector:reasons]) ((void (*)(id, SEL, unsigned long long))objc_msgSend)(settings, reasons, 0);
 }
 
+// Register the hosted scene with the system switcher. A suspended launch alone
+// never creates a recent-app layout. These signatures are from iOS 17 runtime
+// headers; every call is gated for iOS 16/17 availability and ABI shape.
+static BOOL DXFloatRegisterSwitcherCard(NSString *identifier, id scene, id windowScene) {
+    if (!NSThread.isMainThread || !DXIsValidBundleIdentifier(identifier) || !scene || !windowScene) return NO;
+    NSString *sceneIdentifier = DXFloatObject(scene, @"identifier");
+    if (!DXFloatSceneMatches(scene, identifier) || !sceneIdentifier.length) return NO;
+    id coordinator = DXFloatObject(NSClassFromString(@"SBMainSwitcherControllerCoordinator"), @"sharedInstance");
+    Class itemClass = NSClassFromString(@"SBDisplayItem");
+    SEL factory = NSSelectorFromString(@"applicationDisplayItemWithBundleIdentifier:sceneIdentifier:");
+    NSMethodSignature *signature = [itemClass methodSignatureForSelector:factory];
+    if (![itemClass respondsToSelector:factory] || signature.numberOfArguments != 4 ||
+        strcmp(signature.methodReturnType, "@") || strcmp([signature getArgumentTypeAtIndex:2], "@") ||
+        strcmp([signature getArgumentTypeAtIndex:3], "@")) return NO;
+    @try {
+        id item = ((id (*)(id, SEL, id, id))objc_msgSend)(itemClass, factory, identifier, sceneIdentifier);
+        if (!item) return NO;
+        if (DXFloatObjectArgument(coordinator, @"_appLayoutContainingDisplayItem:", item)) return YES;
+        for (NSString *name in @[@"addAppLayoutForDisplayItem:windowScene:completion:",
+                                 @"addCenterRoleAppLayoutForDisplayItem:windowScene:completion:"]) {
+            SEL add = NSSelectorFromString(name);
+            signature = [coordinator methodSignatureForSelector:add];
+            if (![coordinator respondsToSelector:add] || signature.numberOfArguments != 5 ||
+                strcmp(signature.methodReturnType, "v") || strcmp([signature getArgumentTypeAtIndex:2], "@") ||
+                strcmp([signature getArgumentTypeAtIndex:3], "@") || strcmp([signature getArgumentTypeAtIndex:4], "@?")) continue;
+            // No retained host/session state in the completion; registration
+            // remains valid after the floating window is released.
+            ((void (*)(id, SEL, id, id, id))objc_msgSend)(coordinator, add, item, windowScene, ^{});
+            return YES;
+        }
+    } @catch (NSException *exception) {
+        NSLog(@"[TypeX][FloatingApp] switcher registration exception=%@", exception.name);
+    }
+    return NO;
+}
+
 @implementation DXFloatingAppCoordinator
 + (instancetype)shared {
     static DXFloatingAppCoordinator *coordinator;
@@ -418,8 +466,69 @@ static void DXFloatForegroundSettings(id settings, BOOL foreground) {
     dispatch_once(&once, ^{
         tweakBundle = [NSBundle bundleWithPath:bundlePath];
         coordinator = [self new]; coordinator.session = [DXFloatingAppSession new];
+        coordinator.inputSessionToken = coordinator.inputToken = coordinator.inputSceneToken = NOTIFY_TOKEN_INVALID;
+        if (notify_register_check(DXFloatInputSessionName.UTF8String, &coordinator->_inputSessionToken) == NOTIFY_STATUS_OK) {
+            // Revoke any marker left behind by the previous SpringBoard process.
+            notify_set_state(coordinator.inputSessionToken, 0);
+            notify_post(DXFloatInputSessionName.UTF8String);
+        }
     });
     return coordinator;
+}
+- (void)startInputRelay {
+    if (self.inputToken != NOTIFY_TOKEN_INVALID || self.processPID <= 1 || !self.window) return;
+    if (self.inputSessionToken == NOTIFY_TOKEN_INVALID &&
+        notify_register_check(DXFloatInputSessionName.UTF8String, &_inputSessionToken) != NOTIFY_STATUS_OK) return;
+    uint32_t nonce = arc4random(); if (!nonce) nonce = 1;
+    NSUInteger generation = self.session.generation;
+    pid_t pid = self.processPID;
+    uint64_t sceneHash = DXFloatInputSceneHash(DXFloatObject(self.scene, @"identifier"));
+    if (!sceneHash || notify_register_check(DXFloatInputSceneName((uint32_t)pid).UTF8String, &_inputSceneToken) != NOTIFY_STATUS_OK) return;
+    __weak typeof(self) weakSelf = self;
+    int token = NOTIFY_TOKEN_INVALID;
+    if (notify_register_dispatch(DXFloatInputName((uint32_t)pid).UTF8String, &token,
+        dispatch_get_main_queue(), ^(int eventToken) {
+        DXFloatingAppCoordinator *host = weakSelf;
+        if (![host.session isCurrent:generation] || host.inputNonce != nonce || host.processPID != pid ||
+            DXFloatPID(host.session.bundleIdentifier) != pid || !host.window || host.window.hidden ||
+            ![DXGlobalPanel deviceUnlocked]) return;
+        uint64_t word = 0;
+        if (notify_get_state(eventToken, &word) == NOTIFY_STATUS_OK) [host receivePinchWord:word nonce:nonce];
+    }) != NOTIFY_STATUS_OK) { notify_cancel(self.inputSceneToken); self.inputSceneToken = NOTIFY_TOKEN_INVALID; return; }
+    self.inputToken = token; self.inputNonce = nonce; self.inputGesture = 0; self.inputGestureFinished = NO;
+    notify_set_state(token, 0);
+    if (notify_set_state(self.inputSceneToken, sceneHash) != NOTIFY_STATUS_OK ||
+        notify_set_state(self.inputSessionToken, DXFloatInputSessionWord((uint32_t)pid, nonce)) != NOTIFY_STATUS_OK) {
+        [self stopInputRelay]; return;
+    }
+    notify_post(DXFloatInputSessionName.UTF8String);
+    NSLog(@"[TypeX][FloatingApp] input relay ready pid=%d generation=%lu", pid, (unsigned long)generation);
+}
+- (void)receivePinchWord:(uint64_t)word nonce:(uint32_t)nonce {
+    uint8_t serial = 0; DXFloatPinchPhase phase; double scale = 0;
+    if (self.inputNonce != nonce || !DXFloatDecodePinch(word, nonce, &serial, &phase, &scale)) return;
+    if (serial != self.inputGesture) {
+        self.inputGesture = serial; self.inputGestureFinished = NO;
+        // Notifications coalesce: Changed/Ended may be the first sample.
+        [self.controller applyPinchScale:phase == DXFloatPinchBegan ? scale : 1 phase:DXFloatPinchBegan];
+        if (phase == DXFloatPinchBegan) return;
+    } else if (self.inputGestureFinished || phase == DXFloatPinchBegan) return;
+    [self.controller applyPinchScale:scale phase:phase];
+    if (phase == DXFloatPinchEnded || phase == DXFloatPinchCancelled) self.inputGestureFinished = YES;
+}
+- (void)stopInputRelay {
+    uint64_t word = 0;
+    if (self.inputSessionToken != NOTIFY_TOKEN_INVALID && self.inputNonce &&
+        notify_get_state(self.inputSessionToken, &word) == NOTIFY_STATUS_OK &&
+        word == DXFloatInputSessionWord((uint32_t)self.processPID, self.inputNonce)) {
+        notify_set_state(self.inputSessionToken, 0);
+        notify_post(DXFloatInputSessionName.UTF8String);
+    }
+    self.inputNonce = 0; self.inputGesture = 0; self.inputGestureFinished = NO;
+    if (self.inputToken != NOTIFY_TOKEN_INVALID) notify_cancel(self.inputToken);
+    if (self.inputSceneToken != NOTIFY_TOKEN_INVALID) notify_cancel(self.inputSceneToken);
+    self.inputToken = NOTIFY_TOKEN_INVALID;
+    self.inputSceneToken = NOTIFY_TOKEN_INVALID;
 }
 - (BOOL)protectsScene:(id)scene {
     return NSThread.isMainThread && self.activeLease && self.session.state != DXFloatingAppIdle &&
@@ -457,17 +566,20 @@ static void DXFloatForegroundSettings(id settings, BOOL foreground) {
 - (void)minimize {
     if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ [self minimize]; }); return; }
     NSString *identifier = self.session.bundleIdentifier;
+    // Keep the canonical scene available while constructing its display item.
+    BOOL switcherRequested = DXFloatRegisterSwitcherCard(identifier, self.scene, self.window.windowScene);
     [self cleanup:DXSystemOpenFailed reason:@"minimize-button"];
     // 收起小窗后把目标以挂起方式重新停靠：进程仍在则原地保活，进程被系统
     // 回收则挂起重建，保证应用驻留后台而不是随托管解除一并退出。
     if (identifier.length) {
         BOOL parked = [self prewarm:identifier];
-        NSLog(@"[TypeX][FloatingApp] minimize bundleID=%@ parked=%d", identifier, parked);
+        NSLog(@"[TypeX][FloatingApp] minimize bundleID=%@ parked=%d switcherRequested=%d", identifier, parked, switcherRequested);
     }
 }
 - (void)cleanup:(DXSystemOpenResult)result reason:(NSString *)reason {
     if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ [self cleanup:result reason:reason]; }); return; }
     NSString *identifier = self.session.bundleIdentifier;
+    [self stopInputRelay];
     self.activeLease = NO;
     // Revoke callbacks before releasing the scene or removing the views.
     [self.session finish:result];
@@ -787,6 +899,7 @@ static void DXFloatForegroundSettings(id settings, BOOL foreground) {
         }
     }
     if (self.scene && !DXFloatInteger(self.scene, @"isValid", YES)) { [self cleanup:DXSystemOpenUnavailable reason:@"scene-invalid"]; return; }
+    if (self.scene) [self startInputRelay];
     [self publishLayers];
     if (self.hasContent && self.urlAccepted && self.session.state == DXFloatingAppPreparing) {
         NSLog(@"[TypeX][FloatingApp] live bundleID=%@ generation=%lu", identifier, (unsigned long)generation);
