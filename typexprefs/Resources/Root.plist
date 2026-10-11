@@ -110,6 +110,20 @@
 			<key>cell</key>
 			<string>PSLinkCell</string>
 			<key>detail</key>
+			<string>DXPFloatingAppController</string>
+			<key>id</key>
+			<string>floatingAppSettings</string>
+			<key>label</key>
+			<string>悬浮面板</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>detail</key>
 			<string>DXPAIChatController</string>
 			<key>id</key>
 			<string>aiChat</string>

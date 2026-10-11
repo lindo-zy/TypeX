@@ -557,4 +557,26 @@
 
 "FLOATING_APP_CLOSE" = "关闭悬浮应用";
 
+"FLOATING_APP_MINIMIZE" = "最小化悬浮应用";
+
+"FLOATING_APP_SETTINGS" = "悬浮面板";
+
+"FLOATING_APP_SIZE_GROUP" = "默认大小";
+
+"FLOATING_APP_MAX_SCALE" = "大小比例";
+
+"FLOATING_APP_SCALE_FOOTER" = "调整悬浮小窗默认最大占屏比例，设为 100% 时全屏打开，对新打开的悬浮生效。";
+
+"FLOATING_APP_POSITION_GROUP" = "默认位置";
+
+"FLOATING_APP_POSITION" = "停靠位置";
+
+"FLOATING_APP_POSITION_FOOTER" = "设置悬浮小窗打开时的默认水平位置；手动拖动后以拖动位置为准，对新打开的悬浮生效。";
+
+"FLOATING_APP_POSITION_LEFT" = "居左";
+
+"FLOATING_APP_POSITION_CENTER" = "居中";
+
+"FLOATING_APP_POSITION_RIGHT" = "居右";
+
 "FLOATING_APP_OPEN_ERROR" = "悬浮打开失败，请检查目标应用或重试";
