@@ -20,15 +20,7 @@ int preferencesInt(NSString* key, int fallback) {
 }
 
 NSDictionary *preferencesLinkActionForSelector(NSString *selector) {
-    if (!DXIsLinkActionSelector(selector)) return nil;
-    id stored = prefs[kLinkActionskey];
-    if (![stored isKindOfClass:[NSArray class]]) return nil;
-    for (NSDictionary *entry in (NSArray *)stored) {
-        if ([entry isKindOfClass:[NSDictionary class]] && [entry[@"selector"] isEqual:selector]) {
-            return entry;
-        }
-    }
-    return nil;
+    return DXPanelActionDefinition(prefs, selector);
 }
 
 BOOL preferencesIsConfiguredActionSelector(NSString *selector) {

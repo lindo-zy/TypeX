@@ -521,6 +521,8 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 
 "ICON_LIBRARY_ROW" = "Pick from Icon Library";
 "KEYBOARD_PANEL_ACTIONS" = "Configure panel actions";
+"PANEL_APPLICATIONS" = "All Applications";
+"PANEL_APPLICATIONS_FOOTER" = "Enable an app to add it to this panel, or disable it to remove it. Existing Open App actions also appear enabled. Newly added apps open in a floating window by default. Change their names and order in Configure Panel Actions.";
 "SF_SYMBOL_COLUMNS_ONE" = "One";
 "SF_SYMBOL_COLUMNS_TWO" = "Two";
 "SF_SYMBOL_COLUMNS_THREE" = "Three";

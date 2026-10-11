@@ -4,6 +4,7 @@
 #define kDXPanels @"panels"
 #define kDXToolbarBindings @"toolbarpanelbindings"
 #define DXPanelLinkSelectorPrefix @"__typex_link_action_"
+#define DXPanelApplicationSelectorPrefix @"__typex_link_action_panel_application_"
 #define DXPanelSelectorPrefix @"__typex_panel_"
 #define DXPanelKeyboardKind @"keyboard"
 #define DXPanelGestureKind @"gesture"
@@ -51,8 +52,42 @@ static inline NSDictionary *DXPanelDisplayDefinition(NSDictionary *preferences, 
 static inline BOOL DXPanelAllowed(NSDictionary *preferences, NSString *selector, NSString *kind) {
     return [DXPanelDefinition(preferences, selector)[@"kind"] isEqual:kind];
 }
+static inline BOOL DXPanelApplicationIdentifierValid(NSString *bundleIdentifier) {
+    NSString *identifier = DXPanelString(bundleIdentifier);
+    NSRange match = [identifier rangeOfString:@"^[A-Za-z0-9_](?:[A-Za-z0-9_-]*[A-Za-z0-9_])?(?:\\.[A-Za-z0-9_](?:[A-Za-z0-9_-]*[A-Za-z0-9_])?)+$" options:NSRegularExpressionSearch];
+    return identifier.length && match.location == 0 && match.length == identifier.length;
+}
+static inline NSString *DXPanelApplicationSelector(NSString *panelSelector, NSString *bundleIdentifier) {
+    if (!DXIsPanelSelector(panelSelector) || !DXPanelApplicationIdentifierValid(bundleIdentifier)) return nil;
+    NSString *panelID = [panelSelector substringFromIndex:DXPanelSelectorPrefix.length];
+    return [NSString stringWithFormat:@"%@%@|%@", DXPanelApplicationSelectorPrefix, panelID, bundleIdentifier];
+}
+static inline NSString *DXPanelApplicationBundleIdentifier(NSString *selector) {
+    NSString *value = DXPanelString(selector);
+    if (![value hasPrefix:DXPanelApplicationSelectorPrefix]) return nil;
+    NSRange separator = [value rangeOfString:@"|" options:NSBackwardsSearch];
+    if (separator.location == NSNotFound || separator.location <= DXPanelApplicationSelectorPrefix.length) return nil;
+    NSString *identifier = [value substringFromIndex:NSMaxRange(separator)];
+    return DXPanelApplicationIdentifierValid(identifier) ? identifier : nil;
+}
 static inline NSDictionary *DXPanelActionDefinition(NSDictionary *preferences, NSString *selector) {
     if (![DXPanelString(selector) hasPrefix:DXPanelLinkSelectorPrefix] || DXPanelString(selector).length <= DXPanelLinkSelectorPrefix.length) return nil;
+    if ([selector hasPrefix:DXPanelApplicationSelectorPrefix]) {
+        NSString *identifier = DXPanelApplicationBundleIdentifier(selector);
+        if (!identifier) return nil;
+        // Bind generated actions to their owning panel, including name resolution
+        // and revocation when that panel or its application entry is removed.
+        NSRange separator = [selector rangeOfString:@"|" options:NSBackwardsSearch];
+        NSString *panelID = [selector substringWithRange:NSMakeRange(DXPanelApplicationSelectorPrefix.length, separator.location - DXPanelApplicationSelectorPrefix.length)];
+        id items = DXPanelDefinition(preferences, DXPanelSelector(panelID))[@"items"];
+        for (id item in [items isKindOfClass:NSArray.class] ? items : @[]) {
+            if (![item isKindOfClass:NSDictionary.class] || ![item[@"selector"] isEqual:selector]) continue;
+            NSString *name = DXPanelString(item[@"name"]);
+            return @{@"selector": selector, @"type": @"openapp", @"link": identifier,
+                @"icon": identifier, @"name": name.length ? name : identifier};
+        }
+        return nil;
+    }
     id stored = preferences[@"linkactions"];
     if (![stored isKindOfClass:NSArray.class]) return nil;
     for (id entry in stored) if ([entry isKindOfClass:NSDictionary.class] && [entry[@"selector"] isEqual:selector]) return entry;
@@ -106,6 +141,44 @@ static inline void DXPanelUpdate(NSMutableDictionary *preferences, NSString *sel
     [panel addEntriesFromDictionary:changes];
     panels[index] = panel;
     preferences[kDXPanels] = panels;
+}
+static inline BOOL DXPanelItemOpensApplication(NSDictionary *preferences, id item, NSString *bundleIdentifier) {
+    if (![item isKindOfClass:NSDictionary.class]) return NO;
+    NSString *selector = DXPanelString(item[@"selector"]);
+    // Resolve only matching generated apps, avoiding a panel scan for every row.
+    if ([selector hasPrefix:DXPanelApplicationSelectorPrefix])
+        return [DXPanelApplicationBundleIdentifier(selector) isEqual:bundleIdentifier] && DXPanelActionDefinition(preferences, selector) != nil;
+    NSDictionary *definition = DXPanelActionDefinition(preferences, item[@"selector"]);
+    return [definition[@"type"] isEqual:@"openapp"] &&
+        [[DXPanelString(definition[@"link"]) stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] isEqual:bundleIdentifier];
+}
+static inline BOOL DXPanelApplicationEnabled(NSDictionary *preferences, NSString *panelSelector, NSString *bundleIdentifier) {
+    if (!DXPanelApplicationIdentifierValid(bundleIdentifier)) return NO;
+    id items = DXPanelDefinition(preferences, panelSelector)[@"items"];
+    for (id item in [items isKindOfClass:NSArray.class] ? items : @[])
+        if (DXPanelItemOpensApplication(preferences, item, bundleIdentifier)) return YES;
+    return NO;
+}
+static inline BOOL DXPanelSetApplicationEnabled(NSMutableDictionary *preferences, NSString *panelSelector,
+                                               NSString *bundleIdentifier, NSString *name, BOOL enabled) {
+    NSString *selector = DXPanelApplicationSelector(panelSelector, bundleIdentifier);
+    NSDictionary *panel = DXPanelDefinition(preferences, panelSelector);
+    if (!selector || !panel) return NO;
+    id stored = panel[@"items"];
+    NSMutableArray *items = [NSMutableArray array];
+    BOOL found = NO;
+    for (id item in [stored isKindOfClass:NSArray.class] ? stored : @[]) {
+        BOOL matches = DXPanelItemOpensApplication(preferences, item, bundleIdentifier);
+        found |= matches;
+        if (!matches || enabled) [items addObject:item];
+    }
+    if (enabled && found) return NO;
+    if (!enabled && !found) return NO;
+    if (enabled) [items addObject:@{@"id": NSUUID.UUID.UUIDString, @"selector": selector,
+        @"name": DXPanelString(name).length ? name : bundleIdentifier}];
+    // Update just this panel against the latest snapshot, preserving global actions.
+    DXPanelUpdate(preferences, panelSelector, @{@"items": items});
+    return YES;
 }
 static inline NSString *DXToolbarBindingSlot(NSString *configuration, NSString *direction) {
     if (![@[@"top", @"bottom"] containsObject:configuration] || ![@[@"left", @"right"] containsObject:direction]) return nil;
