@@ -3,6 +3,7 @@
 #import "DXPanelRegistry.h"
 #import "DXKeyboardPanelGeometry.h"
 #import "DXKeyboardPanelLayout.h"
+#import "DXPanelPagedGridView.h"
 #import "DXPanelSystemControlsView.h"
 #import "DXPanelControlSession.h"
 #import "DXKeyboardPanelHostPolicy.h"
@@ -42,6 +43,7 @@
 @property(nonatomic, strong) DXKeyboardPanelOverlay *overlay;
 @property(nonatomic, strong) UIView *panel;
 @property(nonatomic, strong) UIScrollView *scroll;
+@property(nonatomic, strong) DXPanelPagedGridView *grid;
 @property(nonatomic, strong) DXPanelSystemControlsView *systemControls;
 @property(nonatomic, strong) DXPanelControlSession *controlSession;
 @property(nonatomic, strong) UILabel *titleLabel;
@@ -334,8 +336,17 @@
 
     self.scroll = [[UIScrollView alloc] init];
     self.scroll.showsVerticalScrollIndicator = NO;
+    self.scroll.directionalLockEnabled = YES;
     [panel addSubview:self.scroll];
     [self.scroll addSubview:self.systemControls];
+    self.grid = [DXPanelPagedGridView new];
+    self.grid.diagnosticName = @"keyboard";
+    __weak DXPanelPagedGridView *grid = self.grid;
+    self.grid.blankAction = ^{
+        DXKeyboardPanel *owner = weakSelf;
+        if (owner.grid == grid) [owner dismiss];
+    };
+    [self.scroll addSubview:self.grid];
     NSMutableArray *buttons = [NSMutableArray array];
     for (NSDictionary *entry in items) {
         NSString *selector = entry[@"selector"];
@@ -359,10 +370,10 @@
         [button addSubview:button.actionImage];
         [button addSubview:button.actionLabel];
         [button addTarget:self action:@selector(itemTapped:) forControlEvents:UIControlEventTouchUpInside];
-        [self.scroll addSubview:button];
         [buttons addObject:button];
     }
     self.buttons = buttons;
+    [self.grid configureWithItems:buttons columns:self.columns scale:self.scale];
     UIControl *blank = [[UIControl alloc] init];
     blank.tag = 20;
     [blank addTarget:self action:@selector(dismiss) forControlEvents:UIControlEventTouchUpInside];
@@ -396,13 +407,14 @@
     CGFloat controlsHeight = [self.systemControls preferredHeightForWidth:MAX(0, width - 16)];
     self.scroll.frame = CGRectMake(8, 46, MAX(0, width - 16), MAX(0, height - 54));
     self.systemControls.frame = CGRectMake(0, 0, self.scroll.bounds.size.width, controlsHeight);
+    CGFloat gridHeight = [self.grid preferredHeightForWidth:self.scroll.bounds.size.width];
+    self.grid.frame = CGRectMake(0, controlsHeight, self.scroll.bounds.size.width, gridHeight);
+    [self.grid layoutIfNeeded];
     CGFloat itemWidth = self.scroll.bounds.size.width / self.columns;
     CGFloat circle = DXKeyboardPanelCircle(self.scroll.bounds.size.width, self.columns, self.scale);
     [self.buttons enumerateObjectsUsingBlock:^(DXKeyboardPanelButton *button, NSUInteger index, BOOL *stop) {
         (void)stop;
-        CGRect frame = DXKeyboardPanelItemFrame(index, self.scroll.bounds.size.width, self.columns, self.scale);
-        frame.origin.y += controlsHeight;
-        button.frame = frame;
+        (void)index;
         UIView *circleView = [button viewWithTag:10];
         if (!circleView) {
             circleView = [[UIView alloc] init];
@@ -417,7 +429,6 @@
         button.actionImage.frame = CGRectMake((itemWidth - icon) / 2, 4 + (circle - icon) / 2, icon, icon);
         button.actionLabel.frame = CGRectMake(3, circle + 9, itemWidth - 6, 30 * self.scale);
     }];
-    CGFloat gridHeight = self.buttons.count ? DXKeyboardPanelContentHeight(self.buttons.count, self.scroll.bounds.size.width, self.columns, self.scale) : 0;
     CGFloat contentHeight = MAX(self.scroll.bounds.size.height, controlsHeight + gridHeight);
     self.scroll.contentSize = CGSizeMake(self.scroll.bounds.size.width, contentHeight);
     [self.scroll viewWithTag:20].frame = CGRectMake(0, 0, self.scroll.bounds.size.width, contentHeight);
@@ -445,6 +456,8 @@
     self.window = nil;
     self.sessionScene = nil;
     self.panel = nil;
+    self.grid.blankAction = nil;
+    self.grid = nil;
     self.scroll = nil;
     self.buttons = nil;
     self.titleLabel = nil;

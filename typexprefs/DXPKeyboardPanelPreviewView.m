@@ -1,6 +1,7 @@
 #import "DXPKeyboardPanelPreviewView.h"
 #import "../DXKeyboardPanelPreferences.h"
 #import "../DXKeyboardPanelLayout.h"
+#import "../DXPanelPagedGridView.h"
 #import "../DXGlobalPanelGeometry.h"
 #import "../DXPanelSystemControlsView.h"
 #import "../DXHelper.h"
@@ -10,6 +11,7 @@
 @interface DXPKeyboardPanelPreviewView ()
 @property(nonatomic, strong) UILabel *titleLabel;
 @property(nonatomic, strong) UIScrollView *scroll;
+@property(nonatomic, strong) DXPanelPagedGridView *grid;
 @property(nonatomic, strong) DXPanelSystemControlsView *systemControls;
 @property(nonatomic, copy) NSArray<UIView *> *items;
 @property(nonatomic) NSInteger columns;
@@ -27,8 +29,11 @@
         self.systemControls = [DXPanelSystemControlsView new];
         self.scroll = [UIScrollView new];
         self.scroll.showsVerticalScrollIndicator = YES;
+        self.scroll.directionalLockEnabled = YES;
         [self addSubview:self.scroll];
         [self.scroll addSubview:self.systemControls];
+        self.grid = [DXPanelPagedGridView new];
+        [self.scroll addSubview:self.grid];
     }
     return self;
 }
@@ -76,10 +81,10 @@
         [item addSubview:label];
         item.isAccessibilityElement = YES;
         item.accessibilityLabel = label.text;
-        [self.scroll addSubview:item];
         [items addObject:item];
     }
     self.items = items;
+    [self.grid configureWithItems:items columns:self.columns scale:self.scale];
     self.scroll.contentOffset = CGPointZero;
     [self setNeedsLayout];
 }
@@ -91,11 +96,13 @@
     self.scroll.frame = CGRectMake(8, 46, MAX(0, width - 16), MAX(0, self.bounds.size.height - 54));
     self.systemControls.frame = CGRectMake(0, 0, self.scroll.bounds.size.width, controlsHeight);
     CGFloat contentWidth = self.scroll.bounds.size.width;
+    CGFloat gridHeight = [self.grid preferredHeightForWidth:contentWidth];
+    self.grid.frame = CGRectMake(0, controlsHeight, contentWidth, gridHeight);
+    [self.grid layoutIfNeeded];
     CGFloat circleSize = DXKeyboardPanelCircle(contentWidth, self.columns, self.scale);
     [self.items enumerateObjectsUsingBlock:^(UIView *item, NSUInteger index, BOOL *stop) {
-        CGRect frame = DXKeyboardPanelItemFrame(index, contentWidth, self.columns, self.scale);
-        frame.origin.y += controlsHeight;
-        item.frame = frame;
+        (void)index;
+        (void)stop;
         CGFloat itemWidth = item.bounds.size.width;
         UIView *circle = [item viewWithTag:1];
         circle.frame = CGRectMake((itemWidth - circleSize) / 2, 4, circleSize, circleSize);
@@ -107,7 +114,6 @@
         label.frame = self.gesturePanel ? DXGlobalPanelLabelFrame(itemWidth, circleSize, self.scale, labelSize.height)
             : CGRectMake(3, circleSize + 9, MAX(0, itemWidth - 6), 30 * self.scale);
     }];
-    CGFloat gridHeight = self.items.count ? DXKeyboardPanelContentHeight(self.items.count, contentWidth, self.columns, self.scale) : 0;
     self.scroll.contentSize = CGSizeMake(contentWidth, MAX(self.scroll.bounds.size.height, controlsHeight + gridHeight));
 }
 @end

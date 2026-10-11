@@ -19,3 +19,32 @@ static inline CGRect DXKeyboardPanelItemFrame(NSUInteger index, CGFloat width, N
 static inline CGFloat DXKeyboardPanelContentHeight(NSUInteger count, CGFloat width, NSInteger columns, CGFloat scale) {
     return ceil((double)count / MAX(1, columns)) * DXKeyboardPanelRowHeight(width, columns, scale);
 }
+
+// Logical page zero starts at the right edge: a rightward drag reveals the
+// next page to its left. Item order within every page remains row-major.
+static inline NSUInteger DXPanelPageCapacity(NSInteger columns) {
+    return (NSUInteger)MAX(1, columns) * 3;
+}
+static inline NSUInteger DXPanelPageCount(NSUInteger count, NSInteger columns) {
+    NSUInteger capacity = DXPanelPageCapacity(columns);
+    return count / capacity + (count % capacity != 0);
+}
+static inline CGFloat DXPanelPageHeight(NSUInteger count, CGFloat width, NSInteger columns, CGFloat scale) {
+    return DXKeyboardPanelContentHeight(MIN(count, DXPanelPageCapacity(columns)), width, columns, scale);
+}
+static inline CGFloat DXPanelPageOffset(NSUInteger page, NSUInteger pages, CGFloat width) {
+    if (!pages || !isfinite(width) || width <= 0) return 0;
+    return (pages - 1 - MIN(page, pages - 1)) * width;
+}
+static inline NSUInteger DXPanelPageAtOffset(CGFloat offset, NSUInteger pages, CGFloat width) {
+    if (!pages || !isfinite(offset) || !isfinite(width) || width <= 0) return 0;
+    CGFloat physicalPage = MIN((CGFloat)(pages - 1), MAX(0, round(offset / width)));
+    return pages - 1 - (NSUInteger)physicalPage;
+}
+static inline CGRect DXPanelPagedItemFrame(NSUInteger index, NSUInteger count, CGFloat width, NSInteger columns, CGFloat scale) {
+    if (index >= count || !isfinite(width) || width <= 0) return CGRectZero;
+    NSUInteger capacity = DXPanelPageCapacity(columns);
+    CGRect frame = DXKeyboardPanelItemFrame(index % capacity, width, columns, scale);
+    frame.origin.x += DXPanelPageOffset(index / capacity, DXPanelPageCount(count, columns), width);
+    return frame;
+}
