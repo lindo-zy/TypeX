@@ -3,6 +3,7 @@
 // session, requester identity, UI and routing; no PullOver-X binary is used.
 #import "DXFloatingApp.h"
 #import "DXFloatingAppSession.h"
+#import "DXFloatingAppGeometry.h"
 #import "DXGlobalPanel.h"
 #import "common.h"
 #import <UIKit/UIKit.h>
@@ -12,6 +13,8 @@
 #import <notify.h>
 #include <math.h>
 #include <limits.h>
+#include <signal.h>
+#include <errno.h>
 
 static NSString * const DXFloatRequester = @"com.lindo.typex.floating-app";
 static void *DXFloatLayerObservation = &DXFloatLayerObservation;
@@ -162,7 +165,7 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
 }
 @end
 
-@interface DXFloatingAppCardController : UIViewController
+@interface DXFloatingAppCardController : UIViewController <UIGestureRecognizerDelegate>
 @property(nonatomic, weak) DXFloatingAppCoordinator *owner;
 @property(nonatomic, strong) UIView *card;
 @property(nonatomic, strong) UIView *canvas;
@@ -176,6 +179,11 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
 // 悬浮设置页写入的默认水平停靠位置（0=居左 1=居中 2=居右）；拖动后以拖动为准。
 @property(nonatomic) NSInteger horizontalAlignment;
 @property(nonatomic) BOOL horizontalCustomized;
+@property(nonatomic) CGFloat requestedZoom;
+@property(nonatomic) CGFloat displayedZoom;
+@property(nonatomic) CGFloat pinchStartZoom;
+@property(nonatomic, strong) UIPanGestureRecognizer *dragGesture;
+@property(nonatomic, strong) UIPinchGestureRecognizer *pinchGesture;
 - (void)setTitle:(NSString *)title;
 - (void)setHostViews:(NSArray<UIView *> *)views canvasSize:(CGSize)size;
 @end
@@ -214,11 +222,17 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
 @end
 
 @implementation DXFloatingAppCardController
+- (instancetype)init {
+    if ((self = [super init])) {
+        self.normalizedCenter = CGPointMake(0.5, 0.45);
+        self.horizontalAlignment = 1;
+        self.requestedZoom = self.displayedZoom = self.pinchStartZoom = 1;
+    }
+    return self;
+}
 - (void)loadView {
     self.view = [[UIView alloc] initWithFrame:UIScreen.mainScreen.bounds];
     self.view.backgroundColor = UIColor.clearColor;
-    self.normalizedCenter = CGPointMake(0.5, 0.45);
-    self.horizontalAlignment = 1;
     self.card = [[UIView alloc] init];
     self.card.backgroundColor = UIColor.secondarySystemBackgroundColor;
     self.card.layer.cornerRadius = 16;
@@ -241,7 +255,13 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
     [minimize addTarget:self action:@selector(minimizeTapped) forControlEvents:UIControlEventTouchUpInside];
     [header addSubview:minimize];
     UIPanGestureRecognizer *drag = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(drag:)];
+    drag.maximumNumberOfTouches = 1;
+    drag.delegate = self;
+    self.dragGesture = drag;
     [header addGestureRecognizer:drag];
+    self.pinchGesture = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(pinch:)];
+    self.pinchGesture.delegate = self;
+    [self.card addGestureRecognizer:self.pinchGesture];
     self.content = [[UIView alloc] init]; self.content.clipsToBounds = YES;
     [self.card addSubview:self.content];
     self.canvas = [[UIView alloc] init]; [self.content addSubview:self.canvas];
@@ -260,22 +280,64 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
     [gesture setTranslation:CGPointZero inView:self.view];
     [self.view setNeedsLayout]; [self.view layoutIfNeeded];
 }
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldReceiveTouch:(UITouch *)touch {
+    if (gesture == self.dragGesture) {
+        for (UIView *view = touch.view; view && view != gesture.view; view = view.superview)
+            if ([view isKindOfClass:UIControl.class]) return NO;
+    }
+    return YES;
+}
+- (void)pinch:(UIPinchGestureRecognizer *)gesture {
+    if (gesture.state == UIGestureRecognizerStateBegan) {
+        self.pinchStartZoom = self.displayedZoom;
+    }
+    if (gesture.state == UIGestureRecognizerStateBegan || gesture.state == UIGestureRecognizerStateChanged ||
+        gesture.state == UIGestureRecognizerStateEnded) {
+        if (!isfinite(gesture.scale) || gesture.scale <= 0) return;
+        self.requestedZoom = self.pinchStartZoom * gesture.scale;
+    } else if (gesture.state == UIGestureRecognizerStateCancelled || gesture.state == UIGestureRecognizerStateFailed) {
+        self.requestedZoom = self.pinchStartZoom;
+    } else return;
+    [self.view setNeedsLayout]; [self.view layoutIfNeeded];
+    if (gesture.state == UIGestureRecognizerStateEnded) {
+        // Start the next gesture at the actual on-screen size, even after a limit.
+        self.requestedZoom = self.displayedZoom;
+        NSLog(@"[TypeX][FloatingApp] resize zoom=%.3f", (double)self.displayedZoom);
+    }
+}
+- (void)placeCard:(CGSize)size available:(CGRect)available {
+    self.displayedZoom = DXFloatingAppZoom(size, available, self.requestedZoom);
+    CGPoint center = CGPointMake(CGRectGetMinX(self.view.bounds) + self.view.bounds.size.width * self.normalizedCenter.x,
+                                 CGRectGetMinY(self.view.bounds) + self.view.bounds.size.height * self.normalizedCenter.y);
+    CGRect frame = DXFloatingAppFrame(size, available, self.displayedZoom, center,
+                                     self.horizontalAlignment, self.horizontalCustomized);
+    self.card.transform = CGAffineTransformIdentity;
+    self.card.bounds = (CGRect){CGPointZero, size};
+    self.card.center = CGPointMake(CGRectGetMidX(frame), CGRectGetMidY(frame));
+    self.card.transform = CGAffineTransformMakeScale(self.displayedZoom, self.displayedZoom);
+    if (self.horizontalCustomized) {
+        self.normalizedCenter = CGPointMake((self.card.center.x - CGRectGetMinX(self.view.bounds)) / MAX(1, self.view.bounds.size.width),
+                                            (self.card.center.y - CGRectGetMinY(self.view.bounds)) / MAX(1, self.view.bounds.size.height));
+    }
+}
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     CGRect bounds = self.view.bounds;
+    if (CGRectIsEmpty(bounds)) return;
     UIEdgeInsets safe = self.view.safeAreaInsets;
     CGSize size = self.canvasSize;
     if (size.width < 1 || size.height < 1) size = UIScreen.mainScreen.bounds.size;
     CGFloat cap = (self.maxScale >= 0.30 && self.maxScale <= 1.0) ? self.maxScale : 0.72;
     UIView *header = [self.card viewWithTag:41];
+    [self.card bringSubviewToFront:header];
     // 100% 视为全屏接管：卡片铺满整屏、内容铺满卡片，标题栏悬浮在安全区下方，
     // 保证关闭/最小化/拖动仍可用；其余比例保持留白小窗布局。
     if (cap >= 0.999) {
         CGFloat scale = MIN(1.0, MIN(bounds.size.width / size.width, bounds.size.height / size.height));
         CGFloat width = bounds.size.width, height = bounds.size.height;
         CGFloat headerY = MAX(0, safe.top);
-        self.card.layer.cornerRadius = 0;
-        self.card.frame = (CGRect){CGPointZero, bounds.size};
+        [self placeCard:bounds.size available:bounds];
+        self.card.layer.cornerRadius = self.displayedZoom >= 0.999 ? 0 : 16;
         header.frame = CGRectMake(0, headerY, width, 44);
         header.backgroundColor = [UIColor.secondarySystemBackgroundColor colorWithAlphaComponent:0.9];
         [header viewWithTag:42].frame = CGRectMake(width - 44, 0, 44, 44);
@@ -289,19 +351,12 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
         self.spinner.center = CGPointMake(width / 2, height / 2);
         return;
     }
-    CGRect available = UIEdgeInsetsInsetRect(bounds, UIEdgeInsetsMake(safe.top + 8, safe.left + 8, safe.bottom + 8, safe.right + 8));
+    CGRect available = UIEdgeInsetsInsetRect(bounds, UIEdgeInsetsMake(safe.top + 8, safe.left, safe.bottom + 8, safe.right));
+    if (CGRectIsEmpty(available)) return;
     CGFloat scale = MIN(cap, MIN(available.size.width / size.width, MAX(1, available.size.height - 44) / size.height));
     CGFloat width = size.width * scale, height = size.height * scale + 44;
-    CGPoint center = CGPointMake(bounds.size.width * self.normalizedCenter.x, bounds.size.height * self.normalizedCenter.y);
-    if (!self.horizontalCustomized) {
-        // 未拖动时按设置页的默认停靠位置落位；拖动后由 normalizedCenter 接管。
-        if (self.horizontalAlignment == 0) center.x = CGRectGetMinX(available) + width / 2;
-        else if (self.horizontalAlignment == 2) center.x = CGRectGetMaxX(available) - width / 2;
-        else center.x = CGRectGetMidX(available);
-    }
-    center.x = MAX(CGRectGetMinX(available) + width / 2, MIN(CGRectGetMaxX(available) - width / 2, center.x));
-    center.y = MAX(CGRectGetMinY(available) + height / 2, MIN(CGRectGetMaxY(available) - height / 2, center.y));
-    self.card.frame = CGRectMake(center.x - width / 2, center.y - height / 2, width, height);
+    self.card.layer.cornerRadius = 16;
+    [self placeCard:CGSizeMake(width, height) available:available];
     header.frame = CGRectMake(0, 0, width, 44);
     header.backgroundColor = UIColor.clearColor;
     [header viewWithTag:42].frame = CGRectMake(width - 44, 0, 44, 44);
@@ -379,7 +434,26 @@ static void DXFloatForegroundSettings(id settings, BOOL foreground) {
         return mutableSettings;
     } @catch (__unused NSException *exception) { return settings; }
 }
-- (void)close { [self cleanup:DXSystemOpenFailed reason:@"close-button"]; }
+- (void)close {
+    if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ [self close]; }); return; }
+    NSString *identifier = self.session.bundleIdentifier;
+    pid_t pid = identifier.length ? DXFloatPID(identifier) : 0;
+    [self cleanup:DXSystemOpenFailed reason:@"close-button"];
+    // Resolve before and after releasing the lease: never signal a stale PID,
+    // the underlying foreground app, SpringBoard, or a newly reopened session.
+    if (!DXIsValidBundleIdentifier(identifier) || [identifier isEqual:@"com.apple.springboard"]) return;
+    if (pid <= 1 || DXFloatPID(identifier) != pid) {
+        NSLog(@"[TypeX][FloatingApp] close process absent or changed bundleID=%@", identifier);
+        return;
+    }
+    if ([DXFloatFrontmostIdentifier() isEqual:identifier] || [self.session.bundleIdentifier isEqual:identifier]) {
+        NSLog(@"[TypeX][FloatingApp] close skipped takeover/reopen bundleID=%@", identifier);
+        return;
+    }
+    int result = kill(pid, SIGKILL);
+    int error = result == 0 ? 0 : errno;
+    NSLog(@"[TypeX][FloatingApp] close terminate bundleID=%@ pid=%d result=%d errno=%d", identifier, pid, result, error);
+}
 - (void)minimize {
     if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ [self minimize]; }); return; }
     NSString *identifier = self.session.bundleIdentifier;
@@ -413,7 +487,8 @@ static void DXFloatForegroundSettings(id settings, BOOL foreground) {
     }
     @try {
         // A user-initiated full-screen takeover keeps its system foreground
-        // state. Closing the card otherwise backgrounds, never kills, the app.
+        // state. General cleanup backgrounds the app; only the close button
+        // explicitly terminates its captured process after the lease is released.
         if (self.scene && ![DXFloatFrontmostIdentifier() isEqual:identifier]) {
             id settings = DXFloatObject(self.originalSettings, @"mutableCopy") ?: DXFloatObject(self.scene, @"mutableSettings");
             DXFloatForegroundSettings(settings, NO);
