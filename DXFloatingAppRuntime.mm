@@ -155,6 +155,7 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
 
 @interface DXFloatingAppWindow : UIWindow
 @property(nonatomic, weak) UIView *card;
+@property(nonatomic, weak) UIView *backdrop;
 @end
 @implementation DXFloatingAppWindow
 - (BOOL)canBecomeKeyWindow { return NO; }
@@ -162,13 +163,19 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     if (self.hidden || !self.card || self.card.hidden) return nil;
     CGPoint local = [self.card convertPoint:point fromView:self];
-    return [self.card pointInside:local withEvent:event] ? [self.card hitTest:local withEvent:event] : nil;
+    if ([self.card pointInside:local withEvent:event]) return [self.card hitTest:local withEvent:event];
+    // 外部点击由独立背景层接收；不在 hitTest 中改变窗口生命周期。
+    UIView *backdrop = self.backdrop;
+    if (!backdrop) return nil;
+    CGPoint backgroundPoint = [backdrop convertPoint:point fromView:self];
+    return [backdrop hitTest:backgroundPoint withEvent:event];
 }
 @end
 
 @interface DXFloatingAppCardController : UIViewController <UIGestureRecognizerDelegate>
 @property(nonatomic, weak) DXFloatingAppCoordinator *owner;
 @property(nonatomic, strong) UIView *card;
+@property(nonatomic, strong) UIView *backdrop;
 @property(nonatomic, strong) UIView *canvas;
 @property(nonatomic, strong) UIView *content;
 @property(nonatomic, strong) UILabel *titleLabel;
@@ -244,6 +251,11 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
 - (void)loadView {
     self.view = [[UIView alloc] initWithFrame:UIScreen.mainScreen.bounds];
     self.view.backgroundColor = UIColor.clearColor;
+    self.backdrop = [[UIView alloc] initWithFrame:self.view.bounds];
+    self.backdrop.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.backdrop.backgroundColor = UIColor.clearColor;
+    [self.backdrop addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(outsideTapped:)]];
+    [self.view addSubview:self.backdrop];
     self.card = [[UIView alloc] init];
     self.card.backgroundColor = UIColor.secondarySystemBackgroundColor;
     self.card.layer.cornerRadius = 16;
@@ -281,6 +293,14 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
 }
 - (void)closeTapped { [self.owner close]; }
 - (void)minimizeTapped { [self.owner minimize]; }
+- (void)outsideTapped:(UITapGestureRecognizer *)gesture {
+    DXFloatingAppCoordinator *owner = self.owner;
+    // 收起/替换窗口后，已经排队的旧点击不能影响新的悬浮会话。
+    if (gesture.state != UIGestureRecognizerStateEnded || !owner || owner.controller != self ||
+        owner.window.hidden || owner.window.card != self.card || owner.window.backdrop != gesture.view) return;
+    NSLog(@"[TypeX][FloatingApp] outside tap minimize");
+    [owner minimize];
+}
 - (void)setTitle:(NSString *)title { [self loadViewIfNeeded]; self.titleLabel.text = title; }
 - (void)drag:(UIPanGestureRecognizer *)gesture {
     CGPoint translation = [gesture translationInView:self.view];
@@ -728,6 +748,7 @@ static BOOL DXFloatRegisterSwitcherCard(NSString *identifier, id scene, id windo
     self.window.windowLevel = 100;
     self.window.rootViewController = self.controller;
     self.window.card = self.controller.card;
+    self.window.backdrop = self.controller.backdrop;
     self.window.hidden = NO;
     NSLog(@"[TypeX][FloatingApp] prepare bundleID=%@ generation=%lu scheme=%@", identifier, (unsigned long)generation, url.scheme ?: @"none");
     if (url ? ![self deliverURL:url generation:generation] : ![self prewarm:identifier]) {
