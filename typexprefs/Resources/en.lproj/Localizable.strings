@@ -522,7 +522,9 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "ICON_LIBRARY_ROW" = "Pick from Icon Library";
 "KEYBOARD_PANEL_ACTIONS" = "Configure panel actions";
 "PANEL_APPLICATIONS" = "All Applications";
-"PANEL_APPLICATIONS_FOOTER" = "Enable an app to add it to this panel, or disable it to remove it. Existing Open App actions also appear enabled. Newly added apps open in a floating window by default. Change their names and order in Configure Panel Actions.";
+"PANEL_APPLICATIONS_FOOTER" = "Enable an app to add it to this panel and move it to the top of the list, or disable it to remove it. Existing Open App actions also appear enabled. Newly added apps open in a floating window by default.";
+"PANEL_APPLICATIONS_SELECTED" = "Enabled Applications";
+"PANEL_APPLICATIONS_SELECTED_FOOTER" = "Drag the reorder handles to change the application order in the panel. Reordering is unavailable while searching.";
 "SF_SYMBOL_COLUMNS_ONE" = "One";
 "SF_SYMBOL_COLUMNS_TWO" = "Two";
 "SF_SYMBOL_COLUMNS_THREE" = "Three";
