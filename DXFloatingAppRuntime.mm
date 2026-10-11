@@ -153,6 +153,31 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
 
 @class DXFloatingAppCoordinator;
 
+static BOOL DXFloatConfigureBackdropHitTesting(id layer) {
+    // WindowServer 先选择触摸所属的渲染图层，再进入该进程的 UIKit hitTest。
+    // clearColor 的背景仅有 UIKit 点击层还不够：必须显式让透明边界参与命中。
+    for (NSString *getterName in @[@"allowsHitTesting", @"hitTestsAsOpaque"]) {
+        SEL getter = NSSelectorFromString(getterName);
+        NSString *setterName = [NSString stringWithFormat:@"set%@%@:",
+            [[getterName substringToIndex:1] uppercaseString], [getterName substringFromIndex:1]];
+        SEL setter = NSSelectorFromString(setterName);
+        NSMethodSignature *getSignature = [layer methodSignatureForSelector:getter];
+        NSMethodSignature *setSignature = [layer methodSignatureForSelector:setter];
+        if (![layer respondsToSelector:getter] || ![layer respondsToSelector:setter] ||
+            getSignature.numberOfArguments != 2 || setSignature.numberOfArguments != 3 ||
+            strcmp(setSignature.methodReturnType, "v")) return NO;
+        const char *result = getSignature.methodReturnType;
+        const char *argument = [setSignature getArgumentTypeAtIndex:2];
+        if ((strcmp(result, "B") && strcmp(result, "c")) ||
+            (strcmp(argument, "B") && strcmp(argument, "c"))) return NO;
+        @try {
+            ((void (*)(id, SEL, bool))objc_msgSend)(layer, setter, true);
+            if (!((bool (*)(id, SEL))objc_msgSend)(layer, getter)) return NO;
+        } @catch (__unused NSException *exception) { return NO; }
+    }
+    return YES;
+}
+
 @interface DXFloatingAppWindow : UIWindow
 @property(nonatomic, weak) UIView *card;
 @property(nonatomic, weak) UIView *backdrop;
@@ -254,6 +279,10 @@ NSString *DXFloatingBundleIdentifierForURL(NSURL *url) {
     self.backdrop = [[UIView alloc] initWithFrame:self.view.bounds];
     self.backdrop.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.backdrop.backgroundColor = UIColor.clearColor;
+    BOOL hitTestingConfigured = DXFloatConfigureBackdropHitTesting(self.backdrop.layer);
+    // 不支持显式图层命中的系统使用实际绘制的轻微遮罩，避免再次漏收 App 外部点击。
+    if (!hitTestingConfigured) self.backdrop.backgroundColor = [UIColor colorWithWhite:0 alpha:0.03];
+    NSLog(@"[TypeX][FloatingApp] backdrop routing configured=%d", hitTestingConfigured);
     [self.backdrop addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(outsideTapped:)]];
     [self.view addSubview:self.backdrop];
     self.card = [[UIView alloc] init];
