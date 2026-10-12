@@ -1,4 +1,6 @@
 #import "DXPLinkActionEditorController.h"
+#import "DXPActionGroups.h"
+#import "DXPActionOrganizationController.h"
 #import "DXPAppInfo.h"
 #import "DXPOpenAppPickerController.h"
 #import "DXPAppShortcutPickerController.h"
@@ -351,14 +353,17 @@ static NSInteger const DXLegacyRowLink = 2;
 
 #pragma mark - Table view
 
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+- (NSInteger)payloadSectionCount {
     if (self.isTextEntry) return 2;
     if (self.isJavaScriptEntry) return 3;
     if ([_displayedType isEqualToString:kCustomActionTypeURLScheme]) return 3;
     return [self usesLargePayloadBox] ? 2 : 1;
 }
 
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return self.payloadSectionCount + 1; }
+
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    if (section == self.payloadSectionCount) return 1;
     if (self.isTextEntry) return section == 0 ? DXActionRowPayload : self.textRecords.count + 1;
     if (self.isJavaScriptEntry && section == 2) return 3;
     if ([_displayedType isEqualToString:kCustomActionTypeURLScheme] && section == 2) return 1;
@@ -369,6 +374,7 @@ static NSInteger const DXLegacyRowLink = 2;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    if (section == self.payloadSectionCount) return LOCALIZED(@"ACTION_GROUP");
     if (self.isTextEntry) return section == 1 ? LOCALIZED(@"TEXT_RECORDS") : nil;
     if (self.isJavaScriptEntry && section == 1) return LOCALIZED(@"JS_SOURCE");
     if (self.isJavaScriptEntry && section == 2) return LOCALIZED(@"JS_BEHAVIOR");
@@ -418,6 +424,7 @@ static NSInteger const DXLegacyRowLink = 2;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+    if (section == self.payloadSectionCount) return nil;
     // The type hint describes the payload, so it follows the payload: on the
     // box section for box types, on the single section otherwise.
     if (self.isTextEntry || [self usesLargePayloadBox]) return section == 1 ? [self typeFooter] : nil;
@@ -427,6 +434,7 @@ static NSInteger const DXLegacyRowLink = 2;
 // Only the payload box gets a custom height; every other row (including the
 // 剪切替换 row that follows it) keeps the system self-sizing it used before.
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (indexPath.section == self.payloadSectionCount) return 44;
     if (self.isTextEntry && indexPath.section == 1) return indexPath.row < (NSInteger)self.textRecords.count ? 76 : 44;
     if (self.isJavaScriptEntry && indexPath.section == 1) return 260;
     if ([self usesLargePayloadBox] && indexPath.section == 1 && indexPath.row == 0) return 120.0;
@@ -472,6 +480,14 @@ static NSInteger const DXLegacyRowLink = 2;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (indexPath.section == self.payloadSectionCount) {
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPLinkActionValueCell" forIndexPath:indexPath];
+        cell.textLabel.text = LOCALIZED(@"ACTION_GROUP");
+        NSString *group = DXActionGroupNormalizedName(self.entry[kCustomActionGroupKey]);
+        cell.detailTextLabel.text = group.length ? group : LOCALIZED(@"UNGROUPED");
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        return cell;
+    }
     if ([_displayedType isEqualToString:kCustomActionTypeURLScheme] && indexPath.section == 2) {
         UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
         cell.textLabel.text = LOCALIZED(@"OPEN_FLOATING_APP");
@@ -588,6 +604,23 @@ static NSInteger const DXLegacyRowLink = 2;
 #pragma mark - Row actions
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (indexPath.section == self.payloadSectionCount) {
+        [self.view endEditing:YES];
+        NSDictionary *prefs = [DXPrefsManager.sharedInstance readPrefs];
+        NSMutableArray *groups = [DXActionGroupNames(prefs, DXActionMutableDefinitions(prefs)) mutableCopy];
+        for (NSString *name in self.pendingGroupNames) if (![groups containsObject:name]) [groups addObject:name];
+        __weak typeof(self) weakSelf = self;
+        DXPPresentActionGroupChooser(self, groups, DXActionGroupNormalizedName(self.entry[kCustomActionGroupKey]),
+            ^(NSString *group, BOOL created) {
+                __strong typeof(weakSelf) owner = weakSelf;
+                if (!owner) return;
+                if (group.length) owner.entry[kCustomActionGroupKey] = group;
+                else [owner.entry removeObjectForKey:kCustomActionGroupKey];
+                if (created) owner.pendingGroupNames = [(owner.pendingGroupNames ?: @[]) arrayByAddingObject:group];
+                [owner.tableView reloadData];
+            });
+        return;
+    }
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if ([_displayedType isEqualToString:kCustomActionTypeURLScheme] && indexPath.section == 2) return;
     if (self.isTextEntry && indexPath.section == 1) {
@@ -849,6 +882,10 @@ static NSInteger const DXLegacyRowLink = 2;
     }
 
     NSMutableDictionary *updated = [self.entry mutableCopy] ?: [NSMutableDictionary dictionary];
+    NSDictionary *live = [DXPrefsManager.sharedInstance readPrefs];
+    NSString *group = DXActionValidatedDraftGroup(live, updated[kCustomActionGroupKey], self.pendingGroupNames);
+    if (group.length) updated[kCustomActionGroupKey] = group;
+    else [updated removeObjectForKey:kCustomActionGroupKey];
     updated[@"name"] = name;
     updated[@"icon"] = icon;
     updated[@"link"] = link;
@@ -1028,13 +1065,13 @@ static NSInteger const DXLegacyRowLink = 2;
     }
 
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
-    self.tableView.delegate = self;
-    self.tableView.dataSource = self;
     self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPLinkActionFieldCell"];
     [self.tableView registerClass:[DXPLinkActionValueCell class] forCellReuseIdentifier:@"DXPLinkActionValueCell"];
     [self.tableView registerClass:[DXPLinkActionTextCell class] forCellReuseIdentifier:@"DXPLinkActionTextCell"];
+    self.tableView.delegate = self;
+    self.tableView.dataSource = self;
     self.view = self.tableView;
     self.keyboardAvoider = [[DXPKeyboardAvoider alloc] initWithTableView:self.tableView];
     [self.keyboardAvoider start];

@@ -255,8 +255,6 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 
 /* Custom actions management page (KayokoX-style layout) */
 "NO_CUSTOM_ACTIONS" = "No custom actions yet";
-"MANAGE_HINT_TAP_EDIT" = "When not editing, tap an action to edit it";
-"MANAGE_HINT_EDIT_DELETE" = "While editing, tap an action to delete it, or drag to reorder";
 "UNGROUPED" = "Ungrouped";
 "GROUP_ACTIONS_COUNT" = "%lu actions";
 "MOVE_TO_GROUP" = "Move to Group…";
@@ -595,3 +593,22 @@ NOTE: If you experiencing any issue or shortcuts not showing correctly, please r
 "FLOATING_APP_POSITION_RIGHT" = "Right";
 
 "FLOATING_APP_OPEN_ERROR" = "Could not open the floating app. Check the target or try again.";
+
+"ACTION_GROUP" = "Group";
+"ACTION_GROUP_GONE" = "This group no longer exists. Please choose another group.";
+"ACTION_GROUP_MANAGER" = "Manage Groups";
+"ACTION_GROUP_NAME_INVALID" = "Enter a group name of up to 32 characters.";
+"ACTION_TYPE_FILTER" = "Type";
+"ACTION_ALL_TYPES" = "All Types";
+"ACTION_SELECT" = "Select";
+"ACTION_MORE" = "More";
+"ACTION_SELECT_ALL" = "Select Results";
+"ACTION_MOVE_SHORT" = "Move";
+"ACTION_UNGROUP_SHORT" = "Ungroup";
+"ACTION_SELECTED_COUNT" = "%lu Selected";
+"ACTION_DELETE_CONFIRM" = "Delete %lu selected actions and their toolbar, gesture, panel and sub-action references?";
+"ACTION_COLLAPSE_ALL" = "Collapse All";
+"ACTION_EXPAND_ALL" = "Expand All";
+"ACTION_SORT" = "Reorder Actions";
+"ACTION_SEARCH_RESULTS" = "Search / Filter Results";
+"ACTION_ORGANIZE_HINT" = "Tap an action to edit it. Tap a group to expand or collapse it. Select actions to organize them together.";

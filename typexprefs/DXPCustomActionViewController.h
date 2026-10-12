@@ -33,9 +33,17 @@
 @property (nonatomic, assign) BOOL allowsCreatingCustomActions;
 @property (nonatomic, strong) NSMutableDictionary *prefs;
 // Ordered user-defined action definitions (kLinkActionskey). Public so the
-// standalone management page can render its own two-section layout on top of
+// standalone management page can render its grouped layout on top of
 // the shared storage helpers.
 @property (nonatomic, strong) NSMutableArray<NSMutableDictionary *> *linkActions;
+@property (nonatomic, copy) NSString *actionQuery;
+@property (nonatomic, copy) NSString *actionTypeFilter;
+@property (nonatomic, copy) NSString *defaultActionGroup;
+@property (nonatomic, strong) UISearchController *actionSearchController;
+- (void)configureActionSearch;
+- (void)actionFilterDidChange;
+- (void)showActionTypeFilter;
+- (void)toggleActionGroup:(NSString *)group;
 
 // Shared storage helpers for the management page.
 // Configure cells before attaching the data source or publishing the table.
@@ -54,10 +62,7 @@
 // 添加 flow on a fixed type: creates a PENDING entry and pushes the editor;
 // the store is only touched when the editor reports the saved entry.
 - (void)startAddFlowForType:(NSString *)type;
-// Editor-save table refresh hooks. Flat layouts keep the animated row update;
-// pages whose sections are derived from the store (grouped management page)
-// MUST override both with a full reload — a targeted index path cannot
-// address their sections and crashes as an out-of-bounds row update.
+// Editor-save refresh hooks rebuild derived groups/search rows before reload.
 - (void)linkActionListDidChange;
 - (void)linkActionRowDidUpdate:(NSInteger)row;
 // 分区布局助手（子类可覆写 shows* 关分区）：隐藏分区返回 -1。

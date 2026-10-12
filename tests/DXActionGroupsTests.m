@@ -91,6 +91,31 @@ int main(void) {
               @"grouped and ungrouped buckets hold the right positions");
         check(DXActionGroupSectionIndexes(@[], @[]).count == 1, @"empty state still yields the 未分组 bucket");
 
+        NSMutableDictionary *registry = [@{@"linkactions": [@[
+            [@{@"selector": @"a", @"name": @"Alpha", @"type": @"openapp", @"group": @"Work"} mutableCopy],
+            [@{@"selector": @"b", @"name": @"Beta", @"type": @"text", @"group": @"Work"} mutableCopy],
+            [@{@"selector": @"c", @"name": @"Other", @"link": @"HTTPS://example.com"} mutableCopy]
+        ] mutableCopy], kLinkActionGroupsKey: @[@"Work", @"Empty"], kLinkActionCollapsedGroupsKey: @[@"Work"]} mutableCopy];
+        NSArray *defs = registry[@"linkactions"];
+        check([DXActionFilteredIndexes(defs, @"work", @"openapp", nil) isEqual:@[@0]], @"group query and type filter intersect");
+        check([DXActionDisplayType(defs[2]) isEqual:@"url"], @"legacy web links remain filterable");
+        NSArray *rows = DXActionPickerRows(defs, registry, @"", @"", nil, YES);
+        check([rows[0][@"kind"] isEqual:@"group"] && [rows[0][@"collapsed"] boolValue], @"picker respects persisted collapse state");
+        check([rows.lastObject[@"kind"] isEqual:@"add"], @"picker add row remains accessible");
+        check(DXActionPickerRows(defs, registry, @"alpha", @"", nil, NO).count == 1, @"search reveals collapsed actions");
+        NSArray *order = [defs valueForKey:@"selector"];
+        check(DXActionMoveSelectors(registry, [NSSet setWithObjects:@"a", @"gone", nil], @"Empty") == 1, @"batch move ignores a missing selector");
+        check([[registry[@"linkactions"] valueForKey:@"selector"] isEqual:order], @"grouping keeps definition order");
+        check(DXActionChangeGroup(registry, @"Work", @"Renamed"), @"group rename succeeds");
+        check([DXActionCollapsedGroups(registry) containsObject:@"Renamed"], @"rename preserves collapsed state");
+        check(DXActionChangeGroup(registry, @"Renamed", @""), @"group removal succeeds");
+        check([registry[@"linkactions"] count] == 3 && !registry[@"linkactions"][1][@"group"], @"group removal preserves definitions");
+        check([DXActionValidatedDraftGroup(registry, @"Renamed", @[]) isEqual:@""], @"removed draft group does not resurrect");
+        check([DXActionValidatedDraftGroup(registry, @"New", @[@"New"]) isEqual:@"New"], @"new draft group is accepted only when explicitly created");
+        check(DXActionMoveSelectors(registry, [NSSet setWithObject:@"a"], @"Missing") == 0, @"stale destination group is rejected");
+        registry[@"linkactions"] = @[@42, @{@"selector": @"valid", @"group": @"Discovered"}];
+        check([DXActionGroupNames(registry, DXActionMutableDefinitions(registry)) containsObject:@"Discovered"], @"group discovery tolerates malformed definitions");
+
         printf("PASS: %lu custom-action group checks\n", (unsigned long)checks);
     }
     return 0;

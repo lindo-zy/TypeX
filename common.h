@@ -43,10 +43,11 @@
 // top and bottom toolbar configurations.
 #define kLinkActionskey @"linkactions"
 #define kLinkActionSelectorPrefix @"__typex_link_action_"
-// 自定义动作分组：条目上的可选组名 + 有序分组注册表（管理页展示专用，
+// 自定义动作分组：条目上的可选组名 + 有序分组注册表（管理与选择页展示专用，
 // 执行路径不读取）。
 #define kLinkActionGroupsKey @"linkactiongroups"
 #define kCustomActionGroupKey @"group"
+#define kLinkActionCollapsedGroupsKey @"linkactioncollapsedgroups"
 
 // Custom action types, stored on each linkactions entry under "type".  An
 // entry without a type is a legacy definition and keeps the old behavior of

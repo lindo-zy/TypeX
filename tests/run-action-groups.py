@@ -9,6 +9,7 @@ root = pathlib.Path(__file__).resolve().parent.parent
 defines = {
     "kLinkActionGroupsKey": "linkactiongroups",
     "kCustomActionGroupKey": "group",
+    "kLinkActionCollapsedGroupsKey": "linkactioncollapsedgroups",
 }
 common = (root / "common.h").read_text()
 for name, value in defines.items():

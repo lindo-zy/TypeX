@@ -161,6 +161,8 @@ typedef NS_ENUM(NSInteger, UIControlEvents) { UIControlEventTouchUpInside = 1 <<
 typedef NS_ENUM(NSInteger, UIButtonType) { UIButtonTypeCustom, UIButtonTypeSystem };
 typedef NS_ENUM(NSInteger, UIContextualActionStyle) { UIContextualActionStyleDefault, UIContextualActionStyleDestructive };
 typedef NS_ENUM(NSInteger, UIBarButtonItemStyle) { UIBarButtonItemStylePlain, UIBarButtonItemStyleDone };
+typedef NS_ENUM(NSInteger, UIBarButtonSystemItem) { UIBarButtonSystemItemAdd };
+typedef NS_ENUM(NSInteger, UIControlContentHorizontalAlignment) { UIControlContentHorizontalAlignmentLeft };
 static const NSInteger UIFontWeightSemibold = 4;
 static const NSInteger UITableViewCellSelectionStyleNone = 0;
 static BOOL RenderOnDataSourceAssignment;
@@ -247,15 +249,23 @@ navigation_replacement = '''@class UITableView;
 @property(nonatomic, strong) id searchController;
 @property(nonatomic) BOOL hidesSearchBarWhenScrolling;
 @property(nonatomic, strong) id rightBarButtonItem;
+@property(nonatomic, copy) NSArray *rightBarButtonItems;
 @end
 @implementation UINavigationItem @end
 @interface UIBarButtonItem : NSObject
 @property(nonatomic, copy) NSString *title;
+@property(nonatomic) BOOL enabled;
 - (instancetype)initWithTitle:(NSString *)title style:(NSInteger)style target:(id)target action:(SEL)action;
+- (instancetype)initWithBarButtonSystemItem:(NSInteger)item target:(id)target action:(SEL)action;
 @end
 @implementation UIBarButtonItem
 - (instancetype)initWithTitle:(NSString *)title style:(NSInteger)style target:(id)target action:(SEL)action {
-    (void)title; (void)style; (void)target; (void)action; return [self init];
+    (void)style; (void)target; (void)action;
+    if ((self = [super init])) { _title = title; _enabled = YES; }
+    return self;
+}
+- (instancetype)initWithBarButtonSystemItem:(NSInteger)item target:(id)target action:(SEL)action {
+    (void)item; return [self initWithTitle:@"+" style:0 target:target action:action];
 }
 @end
 @interface PSViewController : NSObject {
@@ -269,8 +279,13 @@ navigation_replacement = '''@class UITableView;
 @property(nonatomic, strong) UIView *view;
 @property(nonatomic, strong) UINavigationItem *navigationItem;
 @property(nonatomic) BOOL definesPresentationContext;
+@property(nonatomic, copy) NSArray *toolbarItems;
+@property(nonatomic, strong) UIBarButtonItem *editButtonItem;
+@property(nonatomic, getter=isEditing) BOOL editing;
 - (void)viewDidLoad;
 - (void)viewWillAppear:(BOOL)animated;
+- (void)viewWillDisappear:(BOOL)animated;
+- (void)setEditing:(BOOL)editing animated:(BOOL)animated;
 - (void)viewDidAppear:(BOOL)animated;
 - (void)pushController:(PSViewController *)controller;
 - (void)presentViewController:(id)controller animated:(BOOL)animated completion:(void (^)(void))completion;
@@ -279,8 +294,14 @@ navigation_replacement = '''@class UITableView;
 - (UIView *)view { if (!_harnessView) _harnessView = [[UIView alloc] init]; return _harnessView; }
 - (void)setView:(UIView *)view { _harnessView = view; }
 - (UINavigationItem *)navigationItem { if (!_navigationItem) _navigationItem = [UINavigationItem new]; return _navigationItem; }
+- (UIBarButtonItem *)editButtonItem {
+    if (!_editButtonItem) _editButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Edit" style:0 target:self action:NULL];
+    return _editButtonItem;
+}
 - (void)viewDidLoad {}
 - (void)viewWillAppear:(BOOL)animated { (void)animated; }
+- (void)viewWillDisappear:(BOOL)animated { (void)animated; }
+- (void)setEditing:(BOOL)editing animated:(BOOL)animated { (void)animated; _editing = editing; }
 - (void)viewDidAppear:(BOOL)animated { (void)animated; }
 - (void)pushController:(PSViewController *)controller {
     controller.navigationController = self.navigationController;
@@ -293,6 +314,31 @@ navigation_replacement = '''@class UITableView;
 '''
 
 extra_uikit = '''
+@interface UINavigationController (OrganizationHarness)
+- (void)setToolbarHidden:(BOOL)hidden animated:(BOOL)animated;
+- (void)pushViewController:(PSViewController *)controller animated:(BOOL)animated;
+@end
+@implementation UINavigationController (OrganizationHarness)
+- (void)setToolbarHidden:(BOOL)hidden animated:(BOOL)animated { (void)hidden; (void)animated; }
+- (void)pushViewController:(PSViewController *)controller animated:(BOOL)animated {
+    (void)animated; controller.navigationController = self;
+    self.viewControllers = [self.viewControllers arrayByAddingObject:controller];
+}
+@end
+#define UIViewController PSViewController
+@interface UITableViewController : PSViewController
+@property(nonatomic, strong) UITableView *tableView;
+- (instancetype)initWithStyle:(UITableViewStyle)style;
+@end
+@implementation UITableViewController
+- (instancetype)initWithStyle:(UITableViewStyle)style { (void)style; return [super init]; }
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStyleInsetGrouped];
+    self.tableView.dataSource = self;
+    self.tableView.delegate = self;
+}
+@end
 @implementation UIColor (HarnessColors)
 + (UIColor *)systemBlueColor { return (id)@"blue"; }
 + (UIColor *)systemGreenColor { return (id)@"green"; }
@@ -307,13 +353,17 @@ extra_uikit = '''
 @interface UIButton : UIView
 @property(nonatomic, strong) UIColor *tintColor;
 @property(nonatomic) NSInteger tag;
+@property(nonatomic) UIControlContentHorizontalAlignment contentHorizontalAlignment;
+@property(nonatomic, copy) NSString *buttonTitle;
 + (instancetype)buttonWithType:(NSInteger)type;
 - (void)setImage:(UIImage *)image forState:(NSInteger)state;
+- (void)setTitle:(NSString *)title forState:(NSInteger)state;
 - (void)addTarget:(id)target action:(SEL)action forControlEvents:(UIControlEvents)events;
 @end
 @implementation UIButton
 + (instancetype)buttonWithType:(NSInteger)type { (void)type; return [[self alloc] init]; }
 - (void)setImage:(UIImage *)image forState:(NSInteger)state { (void)image; (void)state; }
+- (void)setTitle:(NSString *)title forState:(NSInteger)state { (void)state; self.buttonTitle = title; }
 - (void)addTarget:(id)target action:(SEL)action forControlEvents:(UIControlEvents)events { (void)target; (void)action; (void)events; }
 @end
 @interface UIImage (Harness)
@@ -579,6 +629,8 @@ with tempfile.TemporaryDirectory(prefix="typex-custom-actions-page-") as directo
         strip_imports("DXPanelRegistry.h"),
         strip_imports("typexprefs/DXPBatchOpenAppEntries.h"),
         strip_imports("typexprefs/DXPActionGroups.h"),
+        strip_imports("typexprefs/DXPActionOrganizationController.h"),
+        strip_imports("typexprefs/DXPActionOrganizationController.m"),
         strip_imports("typexprefs/DXPCustomActionViewController.h"),
         strip_imports("typexprefs/DXPCustomActionsController.h"),
         strip_imports("typexprefs/DXPCustomActionViewController.m").replace("tweakBundle", "tweakBundleBase"),

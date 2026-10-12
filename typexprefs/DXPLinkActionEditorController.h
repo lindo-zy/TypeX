@@ -8,6 +8,7 @@
 @interface DXPLinkActionEditorController : PSViewController <UITableViewDelegate, UITableViewDataSource, UITextFieldDelegate, UITextViewDelegate>
 @property (nonatomic, strong) NSMutableDictionary *entry;
 @property (nonatomic, copy) void (^completion)(NSDictionary *entry);
+@property (nonatomic, copy) NSArray<NSString *> *pendingGroupNames;
 
 // Type chooser shared with the custom-actions management page: an alert
 // listing every action type. Sub-action-only types are annotated; the order
