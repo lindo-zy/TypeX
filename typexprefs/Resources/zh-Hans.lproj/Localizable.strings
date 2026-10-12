@@ -520,10 +520,6 @@
 
 "ICON_LIBRARY_ROW" = "从图标库选择";
 "KEYBOARD_PANEL_ACTIONS" = "配置面板动作";
-"PANEL_APPLICATIONS" = "全部应用";
-"PANEL_APPLICATIONS_FOOTER" = "开启后将应用加入当前面板，并置于列表顶部；关闭后从当前面板移除。已有的“打开应用”动作也会显示为开启。新添加的应用默认悬浮打开。";
-"PANEL_APPLICATIONS_SELECTED" = "已开启应用";
-"PANEL_APPLICATIONS_SELECTED_FOOTER" = "拖动右侧排序把手可调整应用顺序，面板中的图标顺序也会同步更新。搜索时暂不支持排序。";
 "SF_SYMBOL_COLUMNS_ONE" = "单列";
 "SF_SYMBOL_COLUMNS_TWO" = "双列";
 "SF_SYMBOL_COLUMNS_THREE" = "三列";

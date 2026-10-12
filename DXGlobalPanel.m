@@ -188,7 +188,11 @@ static BOOL DXGlobalPanelHasForegroundApplication(BOOL *known) {
 - (NSDictionary *)definition:(NSString *)selector {
     NSDictionary *panel = DXPanelDisplayDefinition(DXPrefsManager.sharedInstance.prefs, selector);
     if (panel && [panel[@"kind"] isEqual:DXPanelGestureKind]) return panel;
-    return DXPanelActionDefinition(DXPrefsManager.sharedInstance.prefs, selector);
+    id definitions = DXPrefsManager.sharedInstance.prefs[kLinkActionskey];
+    if (![definitions isKindOfClass:NSArray.class]) return nil;
+    for (id entry in definitions)
+        if ([entry isKindOfClass:NSDictionary.class] && [entry[@"selector"] isEqual:selector]) return entry;
+    return nil;
 }
 - (void)presentPanelSelector:(NSString *)selector fromWindow:(UIWindow *)sourceWindow origin:(NSString *)origin {
     if (!NSThread.isMainThread || ![NSProcessInfo.processInfo.processName isEqual:@"SpringBoard"]) return;

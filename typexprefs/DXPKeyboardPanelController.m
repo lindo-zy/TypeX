@@ -4,7 +4,6 @@
 #import "DXPPanelSliderCell.h"
 #import "DXPLinkActionEditorController.h"
 #import "DXPPanelActionCatalog.h"
-#import "DXPPanelApplicationsController.h"
 #import "../DXKeyboardPanelPreferences.h"
 #import "../DXHelper.h"
 #import "../common.h"
@@ -100,14 +99,6 @@ static NSString *DXPanelLocalized(NSString *key) {
     [items addObject:[self setting:@"KEYBOARD_PANEL_SYSTEM_SLIDERS" key:kDXPanelSystemSlidersVisible defaultValue:@YES cell:PSSwitchCell]];
     PSSpecifier *actions = [PSSpecifier preferenceSpecifierNamed:DXPanelLocalized(@"KEYBOARD_PANEL_ACTIONS") target:self set:nil get:nil detail:DXPKeyboardPanelItemsController.class cell:PSLinkCell edit:nil];
     [actions setProperty:selector forKey:@"panelSelector"]; [items addObject:actions];
-    PSSpecifier *applications = [PSSpecifier preferenceSpecifierNamed:DXPanelLocalized(@"PANEL_APPLICATIONS") target:self set:nil get:nil detail:DXPPanelApplicationsController.class cell:PSLinkCell edit:nil];
-    [applications setProperty:selector forKey:@"panelSelector"];
-    [applications setProperty:@[@{@"sectionType": @"User"}, @{@"sectionType": @"System"}] forKey:@"sections"];
-    for (NSString *key in @[@"useSearchBar", @"includeIdentifiersInSearch", @"showIdentifiersAsSubtitle"])
-        [applications setProperty:@YES forKey:key];
-    [applications setProperty:@NO forKey:@"hideSearchBarWhileScrolling"];
-    [applications setProperty:bundlePath forKey:@"localizationBundlePath"];
-    [items addObject:applications];
     [items addObject:[PSSpecifier groupSpecifierWithName:DXPanelLocalized(@"KEYBOARD_PANEL_APPEARANCE")]];
     [items addObject:[self setting:@"KEYBOARD_PANEL_DARK" key:kDXPanelDark defaultValue:@YES cell:PSSwitchCell]];
     for (NSArray *row in @[@[@"KEYBOARD_PANEL_COLUMNS", kDXPanelColumns, @4, @3, @5], @[@"KEYBOARD_PANEL_SCALE", kDXPanelScale, @100, @70, @120]]) {
