@@ -207,9 +207,9 @@ static BOOL DXFloatConfigureBackdropHitTesting(id layer) {
 @property(nonatomic, strong) UIActivityIndicatorView *spinner;
 @property(nonatomic) CGSize canvasSize;
 @property(nonatomic) CGPoint normalizedCenter;
-// 悬浮设置页写入的默认最大占屏比例；每次打开卡片时由协调器注入。
+// 悬浮设置页写入的最大占屏比例；打开时注入，悬浮期间随 prefs 变更热更。
 @property(nonatomic) CGFloat maxScale;
-// 悬浮设置页写入的默认水平停靠位置（0=居左 1=居中 2=居右）；拖动后以拖动为准。
+// 悬浮设置页写入的水平停靠位置（0=居左 1=居中 2=居右）；拖动后以拖动为准。
 @property(nonatomic) NSInteger horizontalAlignment;
 @property(nonatomic) BOOL horizontalCustomized;
 @property(nonatomic) CGFloat requestedZoom;
@@ -254,6 +254,7 @@ static BOOL DXFloatConfigureBackdropHitTesting(id layer) {
 - (void)open:(NSString *)identifier url:(NSURL *)url deadline:(NSDate *)deadline reply:(DXSystemOpenReply)reply;
 - (void)close;
 - (void)minimize;
+- (void)applyPreferencesChanged;
 - (void)cleanup:(DXSystemOpenResult)result reason:(NSString *)reason;
 - (void)poll:(NSUInteger)generation;
 - (void)publishLayers;
@@ -624,6 +625,18 @@ static BOOL DXFloatRegisterSwitcherCard(NSString *identifier, id scene, id windo
         BOOL parked = [self prewarm:identifier];
         NSLog(@"[TypeX][FloatingApp] minimize bundleID=%@ parked=%d switcherRequested=%d", identifier, parked, switcherRequested);
     }
+}
+- (void)applyPreferencesChanged {
+    // 折叠动作分组、切换任意开关等所有 writePrefs 都会广播 kPrefsChangedIdentifier；
+    // 悬浮卡片不该因此被拆掉，只把卡片消费的两项设置（比例/停靠位）热更进当前会话。
+    if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ [self applyPreferencesChanged]; }); return; }
+    if (self.session.state == DXFloatingAppIdle || !self.controller) return;
+    DXPrefsManager *manager = DXPrefsManager.sharedInstance;
+    [manager reload];
+    NSDictionary *preferences = manager.readPrefs;
+    self.controller.maxScale = DXFloatingCardMaxScaleFromPreferences(preferences);
+    self.controller.horizontalAlignment = DXFloatingCardPositionFromPreferences(preferences);
+    [self.controller.view setNeedsLayout];
 }
 - (void)cleanup:(DXSystemOpenResult)result reason:(NSString *)reason {
     if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ [self cleanup:result reason:reason]; }); return; }
@@ -1024,7 +1037,7 @@ void DXStartFloatingAppHost(void) {
             int token = NOTIFY_TOKEN_INVALID;
             if (notify_register_dispatch(name.UTF8String, &token, dispatch_get_main_queue(), ^(__unused int notificationToken) {
                 if (host.session.state == DXFloatingAppIdle) return;
-                if ([name isEqual:kPrefsChangedIdentifier]) [host cleanup:DXSystemOpenUnavailable reason:@"preferences-changed"];
+                if ([name isEqual:kPrefsChangedIdentifier]) [host applyPreferencesChanged];
                 else if ([name isEqual:@"com.apple.springboard.hasBlankedScreen"] || ![DXGlobalPanel deviceUnlocked])
                     [host cleanup:DXSystemOpenUnavailable reason:@"screen-locked"];
                 else if ([name isEqual:@"com.apple.springboard.frontmostapplicationchanged"] &&
