@@ -10,3 +10,7 @@ obj
 # 本地私有配置（Bark 推送 token 等），永不入库
 build-notify.local.conf
 
+# 本地文档与测试，永不入库（不允许推送到 GitHub）
+docs/
+tests/
+
