@@ -155,6 +155,24 @@ int main(void) {
         [page updateSearchResultsForSearchController:search];
         check([page numberOfSectionsInTableView:table] == 2, @"clearing search restores the grouped sections");
 
+        // Edit-mode tap-to-delete: dead on device until
+        // allowsSelectionDuringEditing was set. During a search the tap must
+        // fall through to the editor instead of deleting a filtered row.
+        // The harness drives the delegate with its own table, so the editing
+        // flag goes there (on device the EDIT button flags the page's table).
+        [table setEditing:YES animated:NO];
+        NSUInteger countBeforeTap = page.linkActions.count;
+        [page tableView:table didSelectRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
+        check(page.linkActions.count == countBeforeTap - 1, @"tapping a row in edit mode deletes it");
+        search.searchBar.text = @"two";
+        [page updateSearchResultsForSearchController:search];
+        [page tableView:table didSelectRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
+        check(page.linkActions.count == countBeforeTap - 1, @"searching blocks the edit-tap delete");
+        check(nav.viewControllers.count == 1, @"searching edit-tap opens the editor instead");
+        nav.viewControllers = [NSMutableArray array];
+        search.searchBar.text = @"";
+        [page updateSearchResultsForSearchController:search];
+
         // Edit-mode delete down to empty: the flat layout crashed right here
         // when the placeholder row appeared (DXPCustomActionsController :227).
         [page toggleEditing:nil];

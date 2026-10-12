@@ -165,6 +165,7 @@ static const NSInteger UITableViewCellSelectionStyleNone = 0;
 @property(nonatomic) UIScrollViewKeyboardDismissMode keyboardDismissMode;
 @property(nonatomic, strong) UIView *backgroundView;
 @property(nonatomic, getter=isEditing) BOOL editing;
+@property(nonatomic) BOOL allowsSelectionDuringEditing;
 @property(nonatomic) NSUInteger deselections;
 @property(nonatomic) NSMutableArray *reloads, *inserts, *deletes, *moves;
 @property(nonatomic) NSInteger reloadAllCount;

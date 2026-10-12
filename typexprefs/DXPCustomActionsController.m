@@ -73,6 +73,9 @@ static NSBundle *tweakBundle;
     [self.tableView registerClass:[DXPManagedActionCell class] forCellReuseIdentifier:@"DXPManagedActionCell"];
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPManagedTypeCell"];
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPManagedEmptyCell"];
+    // Rows stay tappable while editing (the sub-actions page's reference
+    // layout): a tap deletes instead of being swallowed by UIKit.
+    self.tableView.allowsSelectionDuringEditing = YES;
     self.view = self.tableView;
 
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:LOCALIZED(@"EDIT")
@@ -267,8 +270,9 @@ static NSBundle *tweakBundle;
     }
     NSInteger global = [self globalIndexAtIndexPath:indexPath];
     if (global == NSNotFound) return;
-    if (tableView.editing) {
-        // Per the reference layout: tapping a row in edit mode deletes it.
+    // A tap deletes in edit mode; a search is a filter view, so the tap
+    // falls through to the editor instead.
+    if (tableView.editing && [self tableView:tableView canEditRowAtIndexPath:indexPath]) {
         [self tableView:tableView commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:indexPath];
         return;
     }
@@ -455,6 +459,7 @@ static NSBundle *tweakBundle;
 
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
     if (editingStyle != UITableViewCellEditingStyleDelete) return;
+    if (self.isSearching) return; // search results are a filter — no structural edits
     NSInteger global = [self globalIndexAtIndexPath:indexPath];
     if (global == NSNotFound) return;
     NSString *selector = self.linkActions[global][@"selector"];
