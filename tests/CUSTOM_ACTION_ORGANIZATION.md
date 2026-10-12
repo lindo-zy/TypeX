@@ -72,3 +72,17 @@ UI 使用主线程 UIKit 生命周期；不增加 Observer、Timer 或设备日�
 
 预期 syslog：[TypeX][CustomActions] load actions=… groups=… 和 grouped count=…，
 只记录数量。编译和包检查不代替安装卸载、冷/热启动及真实 UI 验收。
+
+## 构建检查记录
+
+源码提交 1a74301 已本地合并到 dev；未 push。
+./build.sh 双平台成功，版本自动从 4.6.8 推进至 4.6.9，Bark 通知已发送。
+DEB 版本/依赖/设置入口、分组控制器与折叠状态符号、中英资源均已核对；
+TypeX 和 TypeXPrefs 均包含 arm64/arm64e，最低系统按脚本分别为 16.0/15.0。
+安装卸载脚本内容及 bash 语法检查通过，实际设备安装卸载未验证。
+构建只有工具链已有的 -multiply_defined is obsolete 链接告警。
+
+| 平台 | DEB SHA-256 |
+| --- | --- |
+| iOS 16 | bfc115fccdfbfd70ff15a223851722b61deed788c55fb0f249ff7634952f4213 |
+| iOS 17 | aa295cdb060d213183bca3813eeb9e1c23e31d5e4cf92aebf12fc844285af128 |
