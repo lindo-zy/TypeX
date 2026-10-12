@@ -52,6 +52,23 @@ static inline NSArray<NSString *> *DXActionGroupNames(NSDictionary *preferences,
     return groups;
 }
 
+// Section index map for the management page: one bucket per group plus the
+// trailing 未分组 bucket, each listing the action's flat-array position in
+// display order. Global row indices stay the single source of truth — row
+// gestures resolve through this map instead of addressing sections directly.
+static inline NSArray<NSArray<NSNumber *> *> *DXActionGroupSectionIndexes(NSArray *actions, NSArray<NSString *> *groupNames) {
+    NSMutableArray<NSMutableArray<NSNumber *> *> *buckets = [NSMutableArray array];
+    for (NSUInteger index = 0; index <= groupNames.count; index++) [buckets addObject:[NSMutableArray array]];
+    [actions enumerateObjectsUsingBlock:^(NSDictionary *entry, NSUInteger index, __unused BOOL *stop) {
+        NSString *name = DXActionGroupNormalizedName(entry[kCustomActionGroupKey]);
+        // NSNotFound is NSIntegerMax on 64-bit — a positive value, so an
+        // `>= 0` guard never catches it. Compare against NSNotFound directly.
+        NSInteger slot = name.length ? (NSInteger)[groupNames indexOfObject:name] : NSNotFound;
+        [buckets[slot == NSNotFound ? (NSInteger)groupNames.count : slot] addObject:@(index)];
+    }];
+    return buckets;
+}
+
 // Assign or clear one action's group by selector (empty group clears the key;
 // entries fall back to 未分组). Every matching entry updates — the registry has
 // never enforced selector uniqueness. Returns whether anything changed.

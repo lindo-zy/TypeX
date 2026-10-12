@@ -66,6 +66,31 @@ int main(void) {
         check([DXActionsMatchingQuery(actions, @"s4", rawType) isEqual:@[actions[3]]], @"link participates");
         check(DXActionsMatchingQuery(@[@"junk", @{}], @"a", rawType).count == 0, @"malformed entries never match or crash");
 
+        // Section index map: the table's safety contract — buckets = groups+1,
+        // every flat index appears exactly once, buckets keep array order.
+        // Fresh entries again: the assign block above mutated shared elements.
+        NSArray *placed = @[entry(@"s1", @"A", @"工作"), entry(@"s2", @"B", @"  "),
+                            entry(@"s3", @"C", nil), entry(@"s4", @"D", @"出行")];
+        NSArray<NSString *> *names = DXActionGroupNames(@{}, placed);
+        NSArray<NSArray<NSNumber *> *> *sections = DXActionGroupSectionIndexes(placed, names);
+        check(sections.count == names.count + 1, @"one bucket per group plus the trailing 未分组 bucket");
+        NSMutableSet *seen = [NSMutableSet set];
+        BOOL ordered = YES;
+        for (NSArray *bucket in sections) {
+            NSUInteger previous = 0;
+            for (NSNumber *value in bucket) {
+                if (value.unsignedIntegerValue < previous) ordered = NO;
+                previous = value.unsignedIntegerValue;
+                [seen addObject:value];
+            }
+        }
+        check(ordered && seen.count == placed.count &&
+              [seen isEqualToSet:[NSSet setWithArray:@[@0, @1, @2, @3]]],
+              @"every flat index maps exactly once and in ascending order");
+        check([sections[0] isEqual:@[@0]] && [sections[1] isEqual:@[@3]] && [sections[2] isEqual:@[@1, @2]],
+              @"grouped and ungrouped buckets hold the right positions");
+        check(DXActionGroupSectionIndexes(@[], @[]).count == 1, @"empty state still yields the 未分组 bucket");
+
         printf("PASS: %lu custom-action group checks\n", (unsigned long)checks);
     }
     return 0;

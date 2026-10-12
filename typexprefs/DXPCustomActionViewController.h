@@ -51,6 +51,12 @@
 // 添加 flow on a fixed type: creates a PENDING entry and pushes the editor;
 // the store is only touched when the editor reports the saved entry.
 - (void)startAddFlowForType:(NSString *)type;
+// Editor-save table refresh hooks. Flat layouts keep the animated row update;
+// pages whose sections are derived from the store (grouped management page)
+// MUST override both with a full reload — a targeted index path cannot
+// address their sections and crashes as an out-of-bounds row update.
+- (void)linkActionListDidChange;
+- (void)linkActionRowDidUpdate:(NSInteger)row;
 // 分区布局助手（子类可覆写 shows* 关分区）：隐藏分区返回 -1。
 - (BOOL)showsBuiltInActionsSection;
 - (NSInteger)builtInSection;

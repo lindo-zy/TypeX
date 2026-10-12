@@ -66,6 +66,27 @@ static NSBundle *tweakBundle;
     [self writePreferences];
 }
 
+// Table refresh hooks after an editor save. The flat picker layouts address
+// rows by their linkactions position; derived-section layouts (the standalone
+// management page groups) override both with a full reload because a targeted
+// index path can no longer address the visible sections — a stale one crashes
+// with an out-of-bounds row update.
+- (void)linkActionListDidChange {
+    BOOL listWasEmpty = self.linkActions.count == 1; // the add already landed
+    if (listWasEmpty) {
+        [self.tableView reloadData];
+    } else {
+        NSIndexPath *newPath = [NSIndexPath indexPathForRow:self.linkActions.count - 1
+                                                  inSection:self.customActionsSection];
+        [self.tableView insertRowsAtIndexPaths:@[newPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+    }
+}
+
+- (void)linkActionRowDidUpdate:(NSInteger)row {
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:row inSection:self.customActionsSection]]
+                          withRowAnimation:UITableViewRowAnimationNone];
+}
+
 - (void)persistSelectedSelector:(NSString *)selector {
     self.prefs = [[DXPrefsManager.sharedInstance readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
     if (selector.length && !DXPanelItemAllowed(self.prefs, selector, self.actionContextKind ?: DXPanelKeyboardKind)) return;
@@ -172,19 +193,9 @@ static NSBundle *tweakBundle;
     editor.completion = ^(NSDictionary *savedEntry) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf) return;
-        // The management page shows one placeholder row while the list is
-        // empty, so the first added action replaces that row 1:1 — inserting
-        // there contradicts the data source and crashes the update.
-        BOOL listWasEmpty = strongSelf.linkActions.count == 0;
         [strongSelf.linkActions addObject:[savedEntry mutableCopy]];
         [strongSelf persistLinkActions];
-        if (listWasEmpty) {
-            [strongSelf.tableView reloadData];
-        } else {
-            NSIndexPath *newPath = [NSIndexPath indexPathForRow:strongSelf.linkActions.count - 1
-                                                      inSection:strongSelf.customActionsSection];
-            [strongSelf.tableView insertRowsAtIndexPaths:@[newPath] withRowAnimation:UITableViewRowAnimationAutomatic];
-        }
+        [strongSelf linkActionListDidChange];
         // Hosts that allow in-place creation fold the new selector into their
         // pending selection here (both paths: an empty starting list returns
         // early above).
@@ -235,8 +246,7 @@ static NSBundle *tweakBundle;
         if (!strongSelf || row >= (NSInteger)strongSelf.linkActions.count) return;
         strongSelf.linkActions[row] = [entry mutableCopy];
         [strongSelf persistLinkActions];
-        [strongSelf.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:row inSection:strongSelf.customActionsSection]]
-                                    withRowAnimation:UITableViewRowAnimationNone];
+        [strongSelf linkActionRowDidUpdate:row];
     };
     [editor setRootController:[self rootController]];
     [editor setParentController:[self parentController]];

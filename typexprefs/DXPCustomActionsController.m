@@ -116,14 +116,7 @@ static NSBundle *tweakBundle;
 // linkactions positions without duplicating storage.
 - (void)refreshSections {
     self.groupNames = DXActionGroupNames(self.prefs, self.linkActions);
-    NSMutableArray<NSMutableArray<NSNumber *> *> *buckets = [NSMutableArray array];
-    for (NSUInteger index = 0; index <= self.groupNames.count; index++) [buckets addObject:[NSMutableArray array]];
-    [self.linkActions enumerateObjectsUsingBlock:^(NSDictionary *entry, NSUInteger index, BOOL *stop) {
-        NSString *name = DXActionGroupNormalizedName(entry[kCustomActionGroupKey]);
-        NSInteger slot = name.length ? (NSInteger)[self.groupNames indexOfObject:name] : NSNotFound;
-        [buckets[(slot >= 0 ? slot : (NSInteger)self.groupNames.count)] addObject:@(index)];
-    }];
-    self.groupIndexes = buckets;
+    self.groupIndexes = DXActionGroupSectionIndexes(self.linkActions, self.groupNames);
 }
 
 // Global (flat-array) index for an action row; NSNotFound for placeholder rows.
@@ -283,6 +276,18 @@ static NSBundle *tweakBundle;
 }
 
 #pragma mark - Grouping
+
+// The grouped sections are derived from the flat array, so a targeted row
+// update cannot address them — any store change reloads the whole table
+// through the rebuilt section index map (a stale index path here was the
+// 4.6.4 editor-save crash).
+- (void)linkActionListDidChange {
+    [self reloadDataKeepingSelection];
+}
+
+- (void)linkActionRowDidUpdate:(NSInteger)row {
+    [self reloadDataKeepingSelection];
+}
 
 // Registry = the full visible group list: persisting it also absorbs groups
 // discovered on entries but missing from storage, so what you see is what is
