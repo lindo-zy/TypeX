@@ -170,7 +170,7 @@
 "URL_SETTINGS" = "网页链接设置";
 "OPEN_IN_APP" = "应用内打开";
 "CUT_REPLACE_FIELD" = "剪切替换";
-"TYPE_FOOTER_URL_SCHEME" = "默认将 URL Scheme 对应的应用悬浮打开，并投递原始链接。可直接操作小窗，点击关闭按钮结束悬浮。关闭悬浮开关可正常跳转；不对应应用的系统命令需要关闭该开关。支持 @@@ 传入输入框内容。";
+"TYPE_FOOTER_URL_SCHEME" = "默认关闭悬浮，按 URL Scheme 正常跳转。开启“悬浮打开应用”后，将对应应用悬浮打开并投递原始链接。不对应应用的系统命令请保持悬浮关闭。支持 @@@ 传入输入框内容。";
 "TYPE_FOOTER_TEXT" = "管理多条纯文本记录。一条时直接插入，多条时打开悬浮列表，点选记录后插入并关闭。原样保留文本、空格和换行。点击“编辑”可删除记录或拖动排序。";
 "TYPE_FOOTER_URL" = "点击后打开该网址，可选择在 APP 内或 APP 外打开；url 支持入参替换，使用 @@@ 传入当前输入框的内容。开启「剪切替换」后，@@@ 传入内容的同时清空输入框；关闭则保留输入框内容。";
 "TYPE_FOOTER_OPEN_APP" = "默认以 TypeX 小窗悬浮打开所选应用，可直接操作、拖动标题栏，并点击关闭按钮结束悬浮。关闭此开关可正常全屏打开。无需安装 PullOver-X。";
@@ -254,8 +254,20 @@
 
 /* Custom actions management page (KayokoX-style layout) */
 "NO_CUSTOM_ACTIONS" = "暂无自定义动作";
-"MANAGE_HINT_TAP_EDIT" = "非编辑状态下，点按编辑动作";
-"MANAGE_HINT_EDIT_DELETE" = "编辑状态下，点按删除动作，拖动调整顺序";
+"UNGROUPED" = "未分组";
+"GROUP_ACTIONS_COUNT" = "%lu 个动作";
+"MOVE_TO_GROUP" = "移动到分组…";
+"REMOVE_FROM_GROUP" = "从分组移除";
+"NEW_GROUP" = "新建分组";
+"GROUP_NAME" = "分组名称";
+"RENAME_GROUP" = "重命名分组";
+"DELETE_GROUP" = "删除分组";
+"DELETE_GROUP_CONFIRM" = "删除后，组内动作将移回「未分组」。";
+"GROUP_EXISTS" = "已存在同名分组";
+"SEARCH_NO_MATCH" = "没有匹配的动作";
+"BATCH_ADD_APPLICATIONS" = "批量添加应用";
+"BATCH_ADD_RESULT" = "已添加 %lu 个动作，跳过 %lu 个重复项";
+"BATCH_ADD_ALL_DUPLICATES" = "所选应用均已存在，未新增动作";
 "ADD_TYPE_HINT" = "选择一种类型即可创建新动作";
 
 /* AI 问答 */
@@ -559,7 +571,7 @@
 
 "FLOATING_APP_MINIMIZE" = "最小化悬浮应用";
 
-"FLOATING_APP_SETTINGS" = "悬浮面板";
+"FLOATING_APP_SETTINGS" = "应用悬浮";
 
 "FLOATING_APP_SIZE_GROUP" = "默认大小";
 
@@ -580,3 +592,22 @@
 "FLOATING_APP_POSITION_RIGHT" = "居右";
 
 "FLOATING_APP_OPEN_ERROR" = "悬浮打开失败，请检查目标应用或重试";
+
+"ACTION_GROUP" = "所属分组";
+"ACTION_GROUP_GONE" = "目标分组已不存在，请重新选择分组。";
+"ACTION_GROUP_MANAGER" = "分组管理";
+"ACTION_GROUP_NAME_INVALID" = "分组名称不能为空，且最多 32 个字符。";
+"ACTION_TYPE_FILTER" = "类型";
+"ACTION_ALL_TYPES" = "全部类型";
+"ACTION_SELECT" = "选择";
+"ACTION_MORE" = "更多";
+"ACTION_SELECT_ALL" = "全选结果";
+"ACTION_MOVE_SHORT" = "移入分组";
+"ACTION_UNGROUP_SHORT" = "移出分组";
+"ACTION_SELECTED_COUNT" = "已选择 %lu 项";
+"ACTION_DELETE_CONFIRM" = "删除选中的 %lu 个动作，并清除其工具栏、手势、面板和子动作引用？";
+"ACTION_COLLAPSE_ALL" = "全部折叠";
+"ACTION_EXPAND_ALL" = "全部展开";
+"ACTION_SORT" = "调整动作顺序";
+"ACTION_SEARCH_RESULTS" = "搜索／筛选结果";
+"ACTION_ORGANIZE_HINT" = "点击动作编辑；点击分组标题展开或折叠；选择多个动作后可批量归类。";

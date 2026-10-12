@@ -5,6 +5,7 @@
 #import "DXKeyboardPanelPreferences.h"
 #import "DXPanelRegistry.h"
 #import "DXKeyboardPanelLayout.h"
+#import "DXPanelPagedGridView.h"
 #import "DXPanelSystemControlsView.h"
 #import "DXPanelControlSession.h"
 #import "DXSystemOpenBroker.h"
@@ -35,6 +36,7 @@
 @property(nonatomic, strong) DXGlobalPanelWindow *window;
 @property(nonatomic, strong) UIView *panel;
 @property(nonatomic, strong) UIScrollView *scroll;
+@property(nonatomic, strong) DXPanelPagedGridView *grid;
 @property(nonatomic, strong) UILabel *title;
 @property(nonatomic, strong) UILabel *message;
 @property(nonatomic, strong) UIButton *closeButton;
@@ -277,6 +279,7 @@ static BOOL DXGlobalPanelHasForegroundApplication(BOOL *known) {
     [self.panel addSubview:self.message];
     self.scroll = [UIScrollView new];
     self.scroll.showsVerticalScrollIndicator = NO;
+    self.scroll.directionalLockEnabled = YES;
     [self.panel addSubview:self.scroll];
     self.blank = [UIControl new];
     [self.blank addTarget:self action:@selector(dismiss) forControlEvents:UIControlEventTouchUpInside];
@@ -303,6 +306,14 @@ static BOOL DXGlobalPanelHasForegroundApplication(BOOL *known) {
             [owner.controlSession enqueueAction:action value:value];
         };
     }
+    self.grid = [DXPanelPagedGridView new];
+    self.grid.diagnosticName = @"gesture";
+    __weak DXPanelPagedGridView *grid = self.grid;
+    self.grid.blankAction = ^{
+        DXGlobalPanel *owner = weakSelf;
+        if (owner.grid == grid) [owner dismiss];
+    };
+    [self.scroll addSubview:self.grid];
     NSMutableArray *buttons = [NSMutableArray array];
     for (NSDictionary *entry in entries) {
         NSDictionary *definition = [self definition:entry[@"selector"]];
@@ -331,10 +342,10 @@ static BOOL DXGlobalPanelHasForegroundApplication(BOOL *known) {
         [button addSubview:button.name];
         button.accessibilityLabel = button.name.text;
         [button addTarget:self action:@selector(itemTapped:) forControlEvents:UIControlEventTouchUpInside];
-        [self.scroll addSubview:button];
         [buttons addObject:button];
     }
     self.items = buttons;
+    [self.grid configureWithItems:buttons columns:self.columns scale:self.scale];
     self.window.hidden = NO;
     [self.window layoutIfNeeded];
     [self layout];
@@ -350,7 +361,7 @@ static BOOL DXGlobalPanelHasForegroundApplication(BOOL *known) {
     CGFloat contentWidth = MAX(0, width - 16);
     CGFloat messageHeight = self.message.text.length ? 44 : 0;
     CGFloat controlsHeight = [self.controls preferredHeightForWidth:contentWidth];
-    CGFloat gridHeight = self.items.count ? DXKeyboardPanelContentHeight(self.items.count, contentWidth, self.columns, self.scale) : 0;
+    CGFloat gridHeight = [self.grid preferredHeightForWidth:contentWidth];
     // Header plus the scroll's 8pt bottom inset wrap the scrollable content.
     CGFloat contentHeight = 46 + messageHeight + controlsHeight + gridHeight + 8;
     CGRect frame = DXGlobalPanelFrame(bounds, MAX(self.window.safeAreaInsets.top, root.safeAreaInsets.top),
@@ -366,13 +377,12 @@ static BOOL DXGlobalPanelHasForegroundApplication(BOOL *known) {
     self.message.frame = CGRectMake(10, 46, width - 20, messageHeight);
     self.scroll.frame = CGRectMake(8, 46 + messageHeight, contentWidth, MAX(0, height - 54 - messageHeight));
     self.controls.frame = CGRectMake(0, 0, contentWidth, controlsHeight);
+    self.grid.frame = CGRectMake(0, controlsHeight, contentWidth, gridHeight);
+    [self.grid layoutIfNeeded];
     CGFloat circle = DXKeyboardPanelCircle(contentWidth, self.columns, self.scale);
     for (NSUInteger index = 0; index < self.items.count; index++) {
         DXGlobalPanelItem *button = self.items[index];
-        CGRect frame = DXKeyboardPanelItemFrame(index, contentWidth, self.columns, self.scale);
-        frame.origin.y += controlsHeight;
-        button.frame = frame;
-        CGFloat slot = frame.size.width;
+        CGFloat slot = button.bounds.size.width;
         button.circle.frame = CGRectMake((slot - circle) / 2, 4, circle, circle);
         button.circle.layer.cornerRadius = circle / 2;
         CGFloat icon = circle * 0.52;
@@ -430,6 +440,7 @@ static BOOL DXGlobalPanelHasForegroundApplication(BOOL *known) {
     self.controls.actionHandler = nil; self.controls = nil;
     self.window.hidden = YES;
     self.window.rootViewController = nil; self.window = nil;
+    self.grid.blankAction = nil; self.grid = nil;
     self.panel = nil; self.scroll = nil; self.items = nil; self.snapshot = nil;
     self.dockPresentation = NO;
     self.title = nil; self.message = nil; self.closeButton = nil; self.header = nil; self.blank = nil;

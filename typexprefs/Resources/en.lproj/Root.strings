@@ -35,6 +35,7 @@
 "BACKUP_FOOTER" = "Export all settings to a file and keep it safe in the Files app; restoring a backup overwrites the entire current configuration. Backup files contain the full configuration (including AI engine API keys) — do not share them.";
 
 "KEYBOARD_PANEL_SETTINGS" = "Panel settings";
+"FLOATING_APP_SETTINGS" = "Floating Apps";
 "GESTURE_SETTINGS" = "Gesture Settings";
 
 // Independent status-bar gesture entries.

@@ -1,20 +1,15 @@
 #import "DXPCustomActionsController.h"
 #import "DXPLinkActionEditorController.h"
+#import "DXPAppInfo.h"
+#import "DXPBatchOpenAppEntries.h"
+#import "DXPActionGroups.h"
+#import "DXPActionOrganizationController.h"
+#import "DXPOpenAppPickerController.h"
 #import "../DXHelper.h"
 #import "../common.h"
+#import <objc/runtime.h>
 
 static NSBundle *tweakBundle;
-
-// Standalone 自定义动作 management page, laid out after the KayokoX reference:
-// a 已选择 group listing every action as a large icon + name + detail row with
-// a disclosure chevron, a 选择动作 group of fixed type entries that start the
-// add flow, an 编辑/完成 nav button toggling delete mode, and usage-hint
-// footers under both groups.
-
-// Subtitle cell rendering icons at their natural size — SF Symbols and the
-// 24pt rounded app-icon slot alike — so 已选择 rows match the 选择动作 type
-// rows below instead of showing enlarged 40pt glyphs. Re-pinning origin.y in
-// layoutSubviews keeps the small icon vertically centered in the taller row.
 @interface DXPManagedActionCell : UITableViewCell
 @end
 @implementation DXPManagedActionCell
@@ -32,105 +27,164 @@ static NSBundle *tweakBundle;
 }
 @end
 
+// Register on the rendering table itself, once per instance. The base table
+// is configured before its data source is attached; this also protects any
+// additional table that asks the controller to render a cell.
+static char kDXManagedCellsRegisteredKey;
+static void DXRegisterManagedCellsIfNeeded(UITableView *table) {
+    if (!table || objc_getAssociatedObject(table, &kDXManagedCellsRegisteredKey)) return;
+    [table registerClass:[DXPManagedActionCell class] forCellReuseIdentifier:@"DXPManagedActionCell"];
+    [table registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPManagedEmptyCell"];
+    objc_setAssociatedObject(table, &kDXManagedCellsRegisteredKey, @YES, OBJC_ASSOCIATION_RETAIN);
+}
+
+
+@interface DXPCustomActionsController ()
+@property(nonatomic, copy) NSArray<NSString *> *groupNames;
+@property(nonatomic, copy) NSArray<NSArray<NSNumber *> *> *groupIndexes;
+@property(nonatomic, copy) NSArray<NSNumber *> *searchIndexes;
+@property(nonatomic) BOOL isSearching;
+@property(nonatomic) BOOL selectingActions;
+@property(nonatomic) BOOL sortingActions;
+@property(nonatomic, strong) NSMutableSet<NSString *> *batchSelectors;
+@property(nonatomic, copy) NSString *filterSignature;
+@end
+
 @implementation DXPCustomActionsController
-
-static NSInteger const DXSectionSelected = 0;
-static NSInteger const DXSectionAddType = 1;
-
-#pragma mark - Lifecycle
-
 - (void)viewDidLoad {
     tweakBundle = [NSBundle bundleWithPath:bundlePath];
     [tweakBundle load];
-
     self.customActionsOnly = YES;
-    // No selection on this page; also suppresses the base's 默认 reset button.
     self.selectionManagedExternally = YES;
-
     [super viewDidLoad];
     self.title = LOCALIZED(@"CUSTOM_ACTIONS");
-
-    // The base built its plain table in viewDidLoad; swap in our own so rows
-    // can use subtitle style and taller layout.
-    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
-    self.tableView.delegate = self;
-    self.tableView.dataSource = self;
-    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [self.tableView registerClass:[DXPManagedActionCell class] forCellReuseIdentifier:@"DXPManagedActionCell"];
-    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPManagedTypeCell"];
-    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPManagedEmptyCell"];
-    self.view = self.tableView;
-
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:LOCALIZED(@"EDIT")
-                                                                              style:UIBarButtonItemStylePlain
-                                                                             target:self
-                                                                             action:@selector(toggleEditing:)];
+    [self configureActionSearch];
+    [self updateControls];
+    NSLog(@"[TypeX][CustomActions] load actions=%lu groups=%lu",
+        (unsigned long)self.linkActions.count, (unsigned long)self.groupNames.count);
 }
-
-- (void)reloadDataKeepingSelection {
-    [self.tableView reloadData];
+- (void)configureActionTableView:(UITableView *)tableView {
+    DXRegisterManagedCellsIfNeeded(tableView);
+    tableView.allowsSelectionDuringEditing = YES;
 }
-
+- (void)reloadPreferences {
+    [super reloadPreferences];
+    [self refreshSections];
+}
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    [self reloadPreferences];
+    [self updateControls];
+    [self.navigationController setToolbarHidden:NO animated:animated];
+}
+- (void)refreshSections {
+    if (!self.batchSelectors) self.batchSelectors = [NSMutableSet set];
+    self.groupNames = DXActionGroupNames(self.prefs, self.linkActions);
+    self.groupIndexes = DXActionGroupSectionIndexes(self.linkActions, self.groupNames);
+    self.searchIndexes = DXActionFilteredIndexes(self.linkActions, self.actionQuery, self.actionTypeFilter,
+        ^NSString *(NSDictionary *entry) { return [DXPLinkActionEditorController displayNameForType:DXActionDisplayType(entry)]; });
+    self.isSearching = [self.actionQuery stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].length || self.actionTypeFilter.length;
+    NSMutableSet *live = [NSMutableSet set];
+    for (NSDictionary *entry in self.linkActions) [live addObject:entry[@"selector"]];
+    [self.batchSelectors intersectSet:live];
+}
+- (void)reloadDataKeepingSelection {
+    [self refreshSections];
     [self.tableView reloadData];
+    [self updateControls];
 }
-
-- (void)toggleEditing:(UIBarButtonItem *)sender {
-    BOOL editing = !self.tableView.editing;
-    [self.tableView setEditing:editing animated:YES];
-    sender.title = LOCALIZED(editing ? @"DONE" : @"EDIT");
-    // Chevrons hide while editing; refresh the visible action rows.
-    [self.tableView reloadRowsAtIndexPaths:[self.tableView indexPathsForVisibleRows]
-                          withRowAnimation:UITableViewRowAnimationAutomatic];
-}
-
-#pragma mark - Table view
-
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 2;
-}
-
-- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    return section == DXSectionSelected ? LOCALIZED(@"SELECTED") : LOCALIZED(@"CHOOSE_ACTION");
-}
-
-- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    if (section == DXSectionSelected) {
-        return [NSString stringWithFormat:@"• %@\n• %@",
-                LOCALIZED(@"MANAGE_HINT_TAP_EDIT"), LOCALIZED(@"MANAGE_HINT_EDIT_DELETE")];
+- (void)linkActionListDidChange { [self reloadDataKeepingSelection]; }
+- (void)linkActionRowDidUpdate:(NSInteger)row { [self reloadDataKeepingSelection]; }
+- (void)actionFilterDidChange {
+    NSString *signature = [NSString stringWithFormat:@"%@|%@", self.actionQuery ?: @"", self.actionTypeFilter ?: @""];
+    if (![self.filterSignature isEqual:signature]) {
+        [self.batchSelectors removeAllObjects];
+        self.sortingActions = NO;
+        [self.tableView setEditing:NO animated:NO];
     }
-    return LOCALIZED(@"ADD_TYPE_HINT");
+    self.filterSignature = signature;
+    [self reloadDataKeepingSelection];
 }
-
+- (NSInteger)ungroupedSection { return self.groupNames.count; }
+- (NSString *)groupAtSection:(NSInteger)section {
+    return section >= 0 && section < (NSInteger)self.groupNames.count ? self.groupNames[section] : @"";
+}
+- (NSInteger)globalIndexAtIndexPath:(NSIndexPath *)path {
+    if (!path || path.row < 0 || path.section < 0) return NSNotFound;
+    NSArray *indexes = self.isSearching ? (path.section == 0 ? self.searchIndexes : nil) :
+        (path.section < (NSInteger)self.groupIndexes.count ? self.groupIndexes[path.section] : nil);
+    if (path.row >= (NSInteger)indexes.count) return NSNotFound;
+    NSInteger global = [indexes[path.row] integerValue];
+    return global >= 0 && global < (NSInteger)self.linkActions.count ? global : NSNotFound;
+}
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return self.isSearching ? 1 : self.groupIndexes.count; }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (section == DXSectionSelected) return MAX(1, (NSInteger)self.linkActions.count);
-    return self.addTypeList.count;
+    if (self.isSearching) return MAX(1, (NSInteger)self.searchIndexes.count);
+    if (section < 0 || section >= (NSInteger)self.groupIndexes.count) return 0;
+    if ([DXActionCollapsedGroups(self.prefs) containsObject:[self groupAtSection:section]]) return 0;
+    return MAX(1, (NSInteger)self.groupIndexes[section].count);
 }
-
-- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    return (indexPath.section == DXSectionSelected && self.linkActions.count > 0) ? 60.0 : 44.0;
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)path {
+    return [self globalIndexAtIndexPath:path] == NSNotFound ? 44 : 60;
 }
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.section == DXSectionAddType) return [self typeCellForIndexPath:indexPath];
-    if (self.linkActions.count == 0) {
-        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPManagedEmptyCell" forIndexPath:indexPath];
-        cell.textLabel.text = LOCALIZED(@"NO_CUSTOM_ACTIONS");
-        cell.textLabel.textColor = [UIColor secondaryLabelColor];
-        cell.detailTextLabel.text = nil;
-        cell.imageView.image = nil;
-        cell.accessoryType = UITableViewCellAccessoryNone;
-        cell.selectionStyle = UITableViewCellSelectionStyleNone;
-        return cell;
-    }
-    return [self actionCellForIndexPath:indexPath];
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    return self.isSearching ? LOCALIZED(@"ACTION_SEARCH_RESULTS") : nil;
 }
-
-- (UITableViewCell *)actionCellForIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:@"DXPManagedActionCell" forIndexPath:indexPath];
-    NSDictionary *entry = self.linkActions[indexPath.row];
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+    return section == 0 ? LOCALIZED(@"ACTION_ORGANIZE_HINT") : nil;
+}
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+    if (self.isSearching || section < 0 || section >= (NSInteger)self.groupIndexes.count) return nil;
+    NSString *group = [self groupAtSection:section];
+    BOOL collapsed = [DXActionCollapsedGroups(self.prefs) containsObject:group];
+    UIView *header = [[UIView alloc] initWithFrame:CGRectZero];
+    UIButton *toggle = [UIButton buttonWithType:UIButtonTypeSystem];
+    NSString *title = [NSString stringWithFormat:@"%@ %@ · %lu", collapsed ? @"▸" : @"▾",
+        group.length ? group : LOCALIZED(@"UNGROUPED"), (unsigned long)self.groupIndexes[section].count];
+    [toggle setTitle:title forState:UIControlStateNormal];
+    toggle.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+    toggle.tag = section;
+    [toggle addTarget:self action:@selector(groupToggleTapped:) forControlEvents:UIControlEventTouchUpInside];
+    toggle.translatesAutoresizingMaskIntoConstraints = NO;
+    [header addSubview:toggle];
+    UIButton *menu = [UIButton buttonWithType:UIButtonTypeSystem];
+    [menu setImage:[UIImage systemImageNamed:@"ellipsis.circle"] forState:UIControlStateNormal];
+    menu.tag = section;
+    [menu addTarget:self action:@selector(groupHeaderTapped:) forControlEvents:UIControlEventTouchUpInside];
+    menu.translatesAutoresizingMaskIntoConstraints = NO;
+    [header addSubview:menu];
+    [NSLayoutConstraint activateConstraints:@[
+        [toggle.leadingAnchor constraintEqualToAnchor:header.layoutMarginsGuide.leadingAnchor],
+        [toggle.centerYAnchor constraintEqualToAnchor:header.centerYAnchor],
+        [toggle.trailingAnchor constraintLessThanOrEqualToAnchor:menu.leadingAnchor constant:-8],
+        [menu.trailingAnchor constraintEqualToAnchor:header.layoutMarginsGuide.trailingAnchor],
+        [menu.centerYAnchor constraintEqualToAnchor:header.centerYAnchor],
+        [menu.widthAnchor constraintEqualToConstant:36],
+        [menu.heightAnchor constraintEqualToConstant:36],
+    ]];
+    return header;
+}
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+    return self.isSearching ? UITableViewAutomaticDimension : 44;
+}
+- (void)groupToggleTapped:(UIButton *)sender {
+    if (self.sortingActions || self.isSearching) return;
+    [self toggleActionGroup:[self groupAtSection:sender.tag]];
+    [self updateControls];
+}
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)path {
+    DXRegisterManagedCellsIfNeeded(tableView);
+    NSInteger global = [self globalIndexAtIndexPath:path];
+    if (global != NSNotFound) return [self actionCellForRowAtIndexPath:path global:global table:tableView];
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPManagedEmptyCell" forIndexPath:path];
+    cell.textLabel.text = LOCALIZED(self.isSearching ? @"SEARCH_NO_MATCH" : @"NO_CUSTOM_ACTIONS");
+    cell.textLabel.textColor = UIColor.secondaryLabelColor;
+    cell.accessoryType = UITableViewCellAccessoryNone;
+    cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    return cell;
+}
+- (UITableViewCell *)actionCellForRowAtIndexPath:(NSIndexPath *)indexPath global:(NSInteger)global table:(UITableView *)table {
+    UITableViewCell *cell = [table dequeueReusableCellWithIdentifier:@"DXPManagedActionCell" forIndexPath:indexPath];
+    NSDictionary *entry = self.linkActions[global];
     NSString *type = [entry[kCustomActionTypeKey] isKindOfClass:[NSString class]] ? entry[kCustomActionTypeKey] : @"";
     NSString *name = [entry[@"name"] isKindOfClass:[NSString class]] ? entry[@"name"] : @"";
     NSString *link = [entry[@"link"] isKindOfClass:[NSString class]] ? entry[@"link"] : @"";
@@ -153,127 +207,291 @@ static NSInteger const DXSectionAddType = 1;
     // Same explicit tint as the 选择动作 rows; app icons are AlwaysOriginal and
     // unaffected, so both sections draw symbols in the same blue.
     cell.imageView.tintColor = [UIColor systemBlueColor];
-    cell.accessoryType = self.tableView.editing ? UITableViewCellAccessoryNone : UITableViewCellAccessoryDisclosureIndicator;
+    NSString *group = DXActionGroupNormalizedName(entry[kCustomActionGroupKey]);
+    if (self.isSearching) cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ · %@", group.length ? group : LOCALIZED(@"UNGROUPED"), cell.detailTextLabel.text ?: @""];
+    cell.accessoryType = self.selectingActions ? ([self.batchSelectors containsObject:entry[@"selector"]] ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone) :
+        (self.sortingActions ? UITableViewCellAccessoryNone : UITableViewCellAccessoryDisclosureIndicator);
     cell.editingAccessoryType = UITableViewCellAccessoryNone;
     return cell;
 }
 
-- (UITableViewCell *)typeCellForIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:@"DXPManagedTypeCell" forIndexPath:indexPath];
-    NSString *type = [self typeAtIndex:indexPath.row];
-    cell.textLabel.text = [DXPLinkActionEditorController displayNameForType:type];
-    cell.textLabel.textColor = [UIColor labelColor];
-    cell.detailTextLabel.text = nil;
-    cell.imageView.image = [UIImage systemImageNamed:[DXPLinkActionEditorController defaultIconForType:type]];
-    cell.imageView.tintColor = [UIColor systemBlueColor];
-    cell.accessoryType = UITableViewCellAccessoryNone;
-    cell.editingAccessoryType = UITableViewCellAccessoryNone;
-    return cell;
-}
 
-// 管理页「选择动作」分区的类型清单：与添加弹窗（presentTypeChooserFrom-
-// Controller）保持同一集合与顺序——网页链接已退役，系统动作在此直选。
-- (NSArray<NSString *> *)addTypeList {
-    static NSArray<NSString *> *types;
-    if (!types) types = @[
-        kCustomActionTypeURLScheme,
-        kCustomActionTypeText,
-        kCustomActionTypeOpenApp,
-        kCustomActionTypeShortcut,
-        kCustomActionTypeSystem,
-        kCustomActionTypeJavaScript,
-    ];
-    return types;
-}
-
-- (NSString *)typeAtIndex:(NSInteger)row {
-    return self.addTypeList[row];
-}
-
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    if (indexPath.section == DXSectionAddType) {
-        [self startAddFlowForType:[self typeAtIndex:indexPath.row]];
-        return;
-    }
-    if (self.linkActions.count == 0) return;
-    if (tableView.editing) {
-        // Per the reference layout: tapping a row in edit mode deletes it.
-        [self tableView:tableView commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:indexPath];
-        return;
-    }
-    [self pushEditorForCustomRow:indexPath.row];
-}
-
-#pragma mark - Edit and delete
-
-- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
-    return indexPath.section == DXSectionSelected && indexPath.row < (NSInteger)self.linkActions.count;
-}
-
-- (UITableViewCellEditingStyle)tableView:(UITableView *)tableView editingStyleForRowAtIndexPath:(NSIndexPath *)indexPath {
-    return [self tableView:tableView canEditRowAtIndexPath:indexPath]
-        ? UITableViewCellEditingStyleDelete : UITableViewCellEditingStyleNone;
-}
-
-- (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (editingStyle != UITableViewCellEditingStyleDelete || indexPath.section != DXSectionSelected ||
-        indexPath.row >= (NSInteger)self.linkActions.count) return;
-    NSString *selector = self.linkActions[indexPath.row][@"selector"];
-    [self.linkActions removeObjectAtIndex:indexPath.row];
-    self.prefs[kLinkActionskey] = self.linkActions;
-    [self removeReferencesToSelector:selector fromPreferences:self.prefs];
-    [self writePreferences];
-    if (self.linkActions.count == 0 && !self.tableView.editing) {
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path {
+    [tableView deselectRowAtIndexPath:path animated:YES];
+    NSInteger global = [self globalIndexAtIndexPath:path];
+    if (global == NSNotFound || self.sortingActions) return;
+    if (self.selectingActions) {
+        NSString *selector = self.linkActions[global][@"selector"];
+        if ([self.batchSelectors containsObject:selector]) [self.batchSelectors removeObject:selector];
+        else [self.batchSelectors addObject:selector];
         [self.tableView reloadData];
+        [self updateControls];
+    } else [self pushEditorForCustomRow:global];
+}
+- (UIBarButtonItem *)button:(NSString *)key action:(SEL)action {
+    return [[UIBarButtonItem alloc] initWithTitle:LOCALIZED(key) style:UIBarButtonItemStylePlain target:self action:action];
+}
+- (void)updateControls {
+    self.navigationItem.rightBarButtonItems = @[
+        [self button:(self.selectingActions || self.sortingActions) ? @"DONE" : @"ACTION_SELECT" action:@selector(toggleEditing:)],
+        [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addTapped)],
+        [self button:@"ACTION_MORE" action:@selector(moreTapped)]];
+    if (self.selectingActions) {
+        self.title = [NSString stringWithFormat:LOCALIZED(@"ACTION_SELECTED_COUNT"), (unsigned long)self.batchSelectors.count];
+        UIBarButtonItem *move = [self button:@"ACTION_MOVE_SHORT" action:@selector(moveSelected)];
+        UIBarButtonItem *ungroup = [self button:@"ACTION_UNGROUP_SHORT" action:@selector(ungroupSelected)];
+        UIBarButtonItem *delete = [self button:@"DELETE" action:@selector(deleteSelected)];
+        move.enabled = ungroup.enabled = delete.enabled = self.batchSelectors.count > 0;
+        self.toolbarItems = @[[self button:@"ACTION_SELECT_ALL" action:@selector(selectAllVisible)], move, ungroup, delete];
     } else {
-        [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+        self.title = LOCALIZED(@"CUSTOM_ACTIONS");
+        NSString *type = self.actionTypeFilter.length ? [DXPLinkActionEditorController displayNameForType:self.actionTypeFilter] : LOCALIZED(@"ACTION_ALL_TYPES");
+        UIBarButtonItem *filter = [[UIBarButtonItem alloc] initWithTitle:[NSString stringWithFormat:@"%@: %@", LOCALIZED(@"ACTION_TYPE_FILTER"), type]
+            style:UIBarButtonItemStylePlain target:self action:@selector(showActionTypeFilter)];
+        self.toolbarItems = @[filter, [self button:@"ACTION_GROUP_MANAGER" action:@selector(showGroupManager)]];
     }
 }
-
-// Edit-mode drag reorder. The array order is the display order everywhere the
-// actions are offered, so persist it immediately like deletion does.
-- (BOOL)tableView:(UITableView *)tableView canMoveRowAtIndexPath:(NSIndexPath *)indexPath {
-    return [self tableView:tableView canEditRowAtIndexPath:indexPath];
+- (void)toggleEditing:(UIBarButtonItem *)sender {
+    if (self.sortingActions) {
+        self.sortingActions = NO;
+        [self.tableView setEditing:NO animated:YES];
+    } else self.selectingActions = !self.selectingActions;
+    [self.batchSelectors removeAllObjects];
+    [self updateControls];
+    [self.tableView reloadData];
 }
-
-- (NSIndexPath *)tableView:(UITableView *)tableView targetIndexPathForMoveFromRowAtIndexPath:(NSIndexPath *)source toProposedIndexPath:(NSIndexPath *)destination {
-    // Keep moves inside the action list: never onto the empty placeholder row
-    // or the add-action section.
-    if (destination.section != DXSectionSelected || destination.row >= (NSInteger)self.linkActions.count) {
-        return source;
+- (NSSet<NSString *> *)visibleSelectors {
+    NSMutableSet *selectors = [NSMutableSet set];
+    for (NSNumber *index in self.searchIndexes)
+        if (index.unsignedIntegerValue < self.linkActions.count) [selectors addObject:self.linkActions[index.unsignedIntegerValue][@"selector"]];
+    return selectors;
+}
+- (void)selectAllVisible {
+    NSSet *visible = [self visibleSelectors];
+    if (visible.count && [visible isSubsetOfSet:self.batchSelectors]) [self.batchSelectors minusSet:visible];
+    else [self.batchSelectors unionSet:visible];
+    [self updateControls];
+    [self.tableView reloadData];
+}
+- (void)applySelectors:(NSSet *)selectors toGroup:(NSString *)group {
+    NSMutableDictionary *prefs = [[DXPrefsManager.sharedInstance readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
+    if (group.length && ![DXActionGroupNames(prefs, DXActionMutableDefinitions(prefs)) containsObject:group]) {
+        [self reloadPreferences];
+        [self reloadDataKeepingSelection];
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil message:LOCALIZED(@"ACTION_GROUP_GONE")
+            preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK") style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+        return;
     }
-    return destination;
+    NSUInteger count = DXActionMoveSelectors(prefs, selectors, group);
+    if (count) [DXPrefsManager.sharedInstance writePrefs:prefs];
+    [self.batchSelectors removeAllObjects];
+    [self reloadPreferences];
+    [self reloadDataKeepingSelection];
+    NSLog(@"[TypeX][CustomActions] grouped count=%lu", (unsigned long)count);
 }
-
-- (void)tableView:(UITableView *)tableView moveRowAtIndexPath:(NSIndexPath *)sourceIndexPath toIndexPath:(NSIndexPath *)destinationIndexPath {
-    if (sourceIndexPath.section != DXSectionSelected || destinationIndexPath.section != DXSectionSelected ||
-        sourceIndexPath.row >= (NSInteger)self.linkActions.count ||
-        destinationIndexPath.row >= (NSInteger)self.linkActions.count ||
-        sourceIndexPath.row == destinationIndexPath.row) return;
-    NSMutableDictionary *entry = self.linkActions[sourceIndexPath.row];
-    [self.linkActions removeObjectAtIndex:sourceIndexPath.row];
-    [self.linkActions insertObject:entry atIndex:destinationIndexPath.row];
-    self.prefs[kLinkActionskey] = self.linkActions;
-    [self writePreferences];
+- (void)chooseGroup:(void (^)(NSString *group))completion {
+    NSDictionary *prefs = [DXPrefsManager.sharedInstance readPrefs];
+    NSArray *groups = DXActionGroupNames(prefs, DXActionMutableDefinitions(prefs));
+    DXPPresentActionGroupChooser(self, groups, self.defaultActionGroup ?: @"", ^(NSString *group, BOOL created) {
+        if (created) {
+            NSMutableDictionary *live = [[DXPrefsManager.sharedInstance readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
+            NSArray *names = DXActionGroupNames(live, DXActionMutableDefinitions(live));
+            if (![names containsObject:group]) {
+                live[kLinkActionGroupsKey] = [names arrayByAddingObject:group];
+                [DXPrefsManager.sharedInstance writePrefs:live];
+            }
+        }
+        if (completion) completion(group);
+    });
 }
-
-// Swipe delete stays reachable outside edit mode as well.
-- (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (![self tableView:tableView canEditRowAtIndexPath:indexPath]) return nil;
+- (void)moveSelected {
+    NSSet *selectors = [self.batchSelectors copy];
     __weak typeof(self) weakSelf = self;
-    UIContextualAction *delete = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive
-                                                                         title:LOCALIZED(@"DELETE")
-                                                                       handler:^(__unused UIContextualAction *action,
-                                                                                 __unused UIView *sourceView,
-                                                                                 void (^completionHandler)(BOOL)) {
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (strongSelf) [strongSelf tableView:strongSelf.tableView
-                            commitEditingStyle:UITableViewCellEditingStyleDelete
-                             forRowAtIndexPath:indexPath];
-        completionHandler(strongSelf != nil);
-    }];
-    return [UISwipeActionsConfiguration configurationWithActions:@[delete]];
+    [self chooseGroup:^(NSString *group) { [weakSelf applySelectors:selectors toGroup:group]; }];
 }
-
+- (void)ungroupSelected { [self applySelectors:[self.batchSelectors copy] toGroup:@""]; }
+- (void)deleteSelectors:(NSSet *)selectors {
+    NSMutableDictionary *prefs = [[DXPrefsManager.sharedInstance readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
+    NSMutableArray *definitions = DXActionMutableDefinitions(prefs);
+    NSIndexSet *removed = [definitions indexesOfObjectsPassingTest:^BOOL(id entry, NSUInteger index, BOOL *stop) {
+        return [entry isKindOfClass:NSDictionary.class] && [selectors containsObject:entry[@"selector"] ?: @""];
+    }];
+    [definitions removeObjectsAtIndexes:removed];
+    prefs[kLinkActionskey] = definitions;
+    for (NSString *selector in selectors) [self removeReferencesToSelector:selector fromPreferences:prefs];
+    [DXPrefsManager.sharedInstance writePrefs:prefs];
+    [self.batchSelectors removeAllObjects];
+    [self reloadPreferences];
+    [self reloadDataKeepingSelection];
+}
+- (void)deleteSelected {
+    NSSet *selectors = [self.batchSelectors copy];
+    if (!selectors.count) return;
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:LOCALIZED(@"DELETE")
+        message:[NSString stringWithFormat:LOCALIZED(@"ACTION_DELETE_CONFIRM"), (unsigned long)selectors.count] preferredStyle:UIAlertControllerStyleAlert];
+    __weak typeof(self) weakSelf = self;
+    [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"DELETE") style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
+        [weakSelf deleteSelectors:selectors];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"CANCEL") style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+- (void)showGroupManager {
+    DXPActionOrganizationController *manager = [DXPActionOrganizationController new];
+    manager.managesGroups = YES;
+    [self.navigationController pushViewController:manager animated:YES];
+}
+- (void)addTapped {
+    self.defaultActionGroup = @"";
+    [self showAddMenu];
+}
+- (void)showAddMenu {
+    UIAlertController *menu = [UIAlertController alertControllerWithTitle:LOCALIZED(@"ADD") message:nil preferredStyle:UIAlertControllerStyleAlert];
+    __weak typeof(self) weakSelf = self;
+    for (NSString *type in @[kCustomActionTypeURLScheme, kCustomActionTypeText, kCustomActionTypeOpenApp,
+                            kCustomActionTypeShortcut, kCustomActionTypeSystem, kCustomActionTypeJavaScript])
+        [menu addAction:[UIAlertAction actionWithTitle:[DXPLinkActionEditorController displayNameForType:type] style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            [weakSelf startAddFlowForType:type];
+        }]];
+    [menu addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"BATCH_ADD_APPLICATIONS") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [weakSelf startBatchAddApplicationsFlow];
+    }]];
+    [menu addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"CANCEL") style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:menu animated:YES completion:nil];
+}
+- (void)groupHeaderTapped:(UIButton *)sender {
+    NSString *group = [self groupAtSection:sender.tag];
+    self.defaultActionGroup = group;
+    [self showAddMenu];
+}
+- (void)setAllCollapsed:(BOOL)collapsed {
+    NSMutableDictionary *prefs = [[DXPrefsManager.sharedInstance readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
+    prefs[kLinkActionCollapsedGroupsKey] = collapsed ? [DXActionGroupNames(prefs, DXActionMutableDefinitions(prefs)) arrayByAddingObject:@""] : @[];
+    [DXPrefsManager.sharedInstance writePrefs:prefs];
+    [self reloadPreferences];
+    [self reloadDataKeepingSelection];
+}
+- (void)startSorting {
+    self.selectingActions = NO;
+    [self.batchSelectors removeAllObjects];
+    self.actionQuery = @"";
+    self.actionTypeFilter = @"";
+    self.filterSignature = @"|";
+    self.actionSearchController.searchBar.text = @"";
+    [self setAllCollapsed:NO];
+    self.sortingActions = YES;
+    [self.tableView setEditing:YES animated:YES];
+    [self updateControls];
+}
+- (void)moreTapped {
+    UIAlertController *menu = [UIAlertController alertControllerWithTitle:nil message:nil preferredStyle:UIAlertControllerStyleAlert];
+    __weak typeof(self) weakSelf = self;
+    NSArray *keys = @[@"ACTION_COLLAPSE_ALL", @"ACTION_EXPAND_ALL", @"ACTION_SORT", @"ACTION_GROUP_MANAGER"];
+    for (NSUInteger index = 0; index < keys.count; index++) {
+        NSUInteger operation = index;
+        [menu addAction:[UIAlertAction actionWithTitle:LOCALIZED(keys[index]) style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            if (operation < 2) [weakSelf setAllCollapsed:operation == 0];
+            else if (operation == 2) [weakSelf startSorting];
+            else [weakSelf showGroupManager];
+        }]];
+    }
+    [menu addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"CANCEL") style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:menu animated:YES completion:nil];
+}
+- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)path {
+    return self.sortingActions && [self globalIndexAtIndexPath:path] != NSNotFound;
+}
+- (UITableViewCellEditingStyle)tableView:(UITableView *)tableView editingStyleForRowAtIndexPath:(NSIndexPath *)path { return UITableViewCellEditingStyleNone; }
+- (BOOL)tableView:(UITableView *)tableView canMoveRowAtIndexPath:(NSIndexPath *)path {
+    return self.sortingActions && !self.isSearching && [self globalIndexAtIndexPath:path] != NSNotFound;
+}
+- (NSIndexPath *)tableView:(UITableView *)tableView targetIndexPathForMoveFromRowAtIndexPath:(NSIndexPath *)source toProposedIndexPath:(NSIndexPath *)destination {
+    return source.section == destination.section && [self tableView:tableView canMoveRowAtIndexPath:destination] ? destination : source;
+}
+- (void)tableView:(UITableView *)tableView moveRowAtIndexPath:(NSIndexPath *)source toIndexPath:(NSIndexPath *)destination {
+    NSInteger from = [self globalIndexAtIndexPath:source], to = [self globalIndexAtIndexPath:destination];
+    if (source.section != destination.section || from == NSNotFound || to == NSNotFound) { [self.tableView reloadData]; return; }
+    NSString *moving = self.linkActions[from][@"selector"], *target = self.linkActions[to][@"selector"];
+    NSMutableDictionary *prefs = [[DXPrefsManager.sharedInstance readPrefs] mutableCopy] ?: [NSMutableDictionary dictionary];
+    NSMutableArray *definitions = DXActionMutableDefinitions(prefs);
+    NSUInteger a = NSNotFound, b = NSNotFound;
+    for (NSUInteger index = 0; index < definitions.count; index++) {
+        id entry = definitions[index];
+        if (![entry isKindOfClass:NSDictionary.class]) continue;
+        if ([entry[@"selector"] isEqual:moving]) a = index;
+        if ([entry[@"selector"] isEqual:target]) b = index;
+    }
+    if (a != NSNotFound && b != NSNotFound && [DXActionGroupNormalizedName(definitions[a][kCustomActionGroupKey]) isEqual:DXActionGroupNormalizedName(definitions[b][kCustomActionGroupKey])]) {
+        id entry = definitions[a];
+        [definitions removeObjectAtIndex:a];
+        [definitions insertObject:entry atIndex:b];
+        prefs[kLinkActionskey] = definitions;
+        [DXPrefsManager.sharedInstance writePrefs:prefs];
+    }
+    [self reloadPreferences];
+    [self reloadDataKeepingSelection];
+}
+- (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)path {
+    NSInteger global = [self globalIndexAtIndexPath:path];
+    if (global == NSNotFound || self.selectingActions || self.sortingActions) return nil;
+    NSString *selector = self.linkActions[global][@"selector"];
+    __weak typeof(self) weakSelf = self;
+    UIContextualAction *action = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:LOCALIZED(@"DELETE")
+        handler:^(UIContextualAction *action, UIView *view, void (^completion)(BOOL)) {
+            __strong typeof(weakSelf) owner = weakSelf;
+            if (owner) [owner deleteSelectors:[NSSet setWithObject:selector]];
+            completion(owner != nil);
+        }];
+    UISwipeActionsConfiguration *configuration = [UISwipeActionsConfiguration configurationWithActions:@[action]];
+    configuration.performsFirstActionWithFullSwipe = NO;
+    return configuration;
+}
+- (UIContextMenuConfiguration *)tableView:(UITableView *)tableView contextMenuConfigurationForRowAtIndexPath:(NSIndexPath *)path point:(CGPoint)point {
+    NSInteger global = [self globalIndexAtIndexPath:path];
+    if (global == NSNotFound || self.selectingActions || self.sortingActions) return nil;
+    NSString *selector = self.linkActions[global][@"selector"];
+    __weak typeof(self) weakSelf = self;
+    return [UIContextMenuConfiguration configurationWithIdentifier:nil previewProvider:nil actionProvider:^UIMenu *(NSArray *suggested) {
+        UIAction *move = [UIAction actionWithTitle:LOCALIZED(@"MOVE_TO_GROUP") image:[UIImage systemImageNamed:@"folder"] identifier:nil handler:^(UIAction *action) {
+            [weakSelf chooseGroup:^(NSString *group) { [weakSelf applySelectors:[NSSet setWithObject:selector] toGroup:group]; }];
+        }];
+        return [UIMenu menuWithTitle:@"" children:@[move]];
+    }];
+}
+- (void)startBatchAddApplicationsFlow {
+    __weak typeof(self) weakSelf = self;
+    [self chooseGroup:^(NSString *group) {
+        __strong typeof(weakSelf) owner = weakSelf;
+        if (!owner) return;
+        DXPOpenAppPickerController *picker = [DXPOpenAppPickerController new];
+        picker.allowsMultipleSelection = YES;
+        picker.multiSelectionCompletion = ^(NSArray<DXPAppInfo *> *apps) { [weakSelf addOpenAppActionsForApps:apps group:group]; };
+        [picker setRootController:owner.rootController];
+        [picker setParentController:owner.parentController];
+        [owner pushController:picker];
+    }];
+}
+- (void)addOpenAppActionsForApps:(NSArray<DXPAppInfo *> *)apps group:(NSString *)group {
+    [self reloadPreferences];
+    NSMutableArray *picks = [NSMutableArray array];
+    for (DXPAppInfo *app in apps) [picks addObject:@{@"bundleID": app.bundleID ?: @"", @"name": app.name ?: @""}];
+    NSUInteger skipped = 0;
+    NSArray *entries = DXBatchOpenAppEntries(self.linkActions, picks, &skipped);
+    BOOL validGroup = [self.groupNames containsObject:group];
+    for (NSMutableDictionary *entry in entries) if (validGroup && group.length) entry[kCustomActionGroupKey] = group;
+    if (entries.count) {
+        [self.linkActions addObjectsFromArray:entries];
+        [self persistLinkActions];
+        [self reloadDataKeepingSelection];
+    }
+    if (skipped) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil
+            message:[NSString stringWithFormat:LOCALIZED(@"BATCH_ADD_RESULT"), (unsigned long)entries.count, (unsigned long)skipped]
+            preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK") style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+    }
+}
 @end
