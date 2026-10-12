@@ -31,6 +31,10 @@ typedef NS_ENUM(NSInteger, DXOpenAppSection) {
 @property (nonatomic, assign) BOOL isSearching;
 @property (nonatomic, assign) BOOL isLoading;
 @property (nonatomic, assign) NSUInteger loadGeneration;
+// Batch mode: the pending picks keyed by bundle ID keep tap order and stay
+// consistent across search filtering, which re-renders pools in new orders.
+@property (nonatomic, strong) NSMutableOrderedSet<NSString *> *pendingBundleIDs;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, DXPAppInfo *> *pendingApps;
 @end
 
 @implementation DXPOpenAppPickerController
@@ -57,6 +61,35 @@ typedef NS_ENUM(NSInteger, DXOpenAppSection) {
 
     [self setupSearchController];
     [self startLoadingInstalledApps];
+    if (self.allowsMultipleSelection) {
+        self.pendingBundleIDs = [NSMutableOrderedSet orderedSet];
+        self.pendingApps = [NSMutableDictionary dictionary];
+        self.title = LOCALIZED(@"BATCH_ADD_APPLICATIONS");
+        self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:LOCALIZED(@"DONE")
+                                                                                 style:UIBarButtonItemStyleDone
+                                                                                target:self
+                                                                                action:@selector(confirmMultiSelection)];
+    }
+}
+
+// Checkmark source for both modes: the batch pending set or the single
+// configured anchor.
+- (BOOL)isAppSelected:(NSString *)bundleID {
+    if (bundleID.length == 0) return NO;
+    return self.allowsMultipleSelection
+        ? [self.pendingBundleIDs containsObject:bundleID]
+        : [bundleID isEqualToString:self.selectedBundleIdentifier];
+}
+
+// 完成 reports the picks in tap order and pops; an empty pick pops silently
+// and the host treats it as a no-op.
+- (void)confirmMultiSelection {
+    if (self.multiSelectionCompletion) {
+        NSMutableArray<DXPAppInfo *> *apps = [NSMutableArray array];
+        for (NSString *bundleID in self.pendingBundleIDs) [apps addObject:self.pendingApps[bundleID]];
+        self.multiSelectionCompletion(apps);
+    }
+    [self.navigationController popViewControllerAnimated:YES];
 }
 
 #pragma mark - Data loading
@@ -268,7 +301,7 @@ typedef NS_ENUM(NSInteger, DXOpenAppSection) {
     cell.textLabel.text = app.name;
     cell.detailTextLabel.text = app.bundleID;
     cell.imageView.image = app ? [DXPAppInfo iconForBundleID:app.bundleID] : nil;
-    cell.accessoryType = [app.bundleID isEqualToString:self.selectedBundleIdentifier]
+    cell.accessoryType = [self isAppSelected:app.bundleID]
         ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
     return cell;
 }
@@ -279,6 +312,24 @@ typedef NS_ENUM(NSInteger, DXOpenAppSection) {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     DXPAppInfo *app = [self appAtIndexPath:indexPath];
     if (!app) return;
+
+    if (self.allowsMultipleSelection) {
+        NSString *bundleID = app.bundleID;
+        if (bundleID.length == 0) return;
+        BOOL selected;
+        if ([self.pendingBundleIDs containsObject:bundleID]) {
+            [self.pendingBundleIDs removeObject:bundleID];
+            [self.pendingApps removeObjectForKey:bundleID];
+            selected = NO;
+        } else {
+            [self.pendingBundleIDs addObject:bundleID];
+            self.pendingApps[bundleID] = app;
+            selected = YES;
+        }
+        UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
+        cell.accessoryType = selected ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+        return;
+    }
 
     self.selectedBundleIdentifier = app.bundleID;
     if (self.completion) self.completion(app);

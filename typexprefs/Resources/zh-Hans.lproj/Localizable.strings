@@ -256,6 +256,9 @@
 "NO_CUSTOM_ACTIONS" = "暂无自定义动作";
 "MANAGE_HINT_TAP_EDIT" = "非编辑状态下，点按编辑动作";
 "MANAGE_HINT_EDIT_DELETE" = "编辑状态下，点按删除动作，拖动调整顺序";
+"BATCH_ADD_APPLICATIONS" = "批量添加应用";
+"BATCH_ADD_RESULT" = "已添加 %lu 个动作，跳过 %lu 个重复项";
+"BATCH_ADD_ALL_DUPLICATES" = "所选应用均已存在，未新增动作";
 "ADD_TYPE_HINT" = "选择一种类型即可创建新动作";
 
 /* AI 问答 */

@@ -1,5 +1,8 @@
 #import "DXPCustomActionsController.h"
 #import "DXPLinkActionEditorController.h"
+#import "DXPAppInfo.h"
+#import "DXPBatchOpenAppEntries.h"
+#import "DXPOpenAppPickerController.h"
 #import "../DXHelper.h"
 #import "../common.h"
 
@@ -106,7 +109,8 @@ static NSInteger const DXSectionAddType = 1;
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == DXSectionSelected) return MAX(1, (NSInteger)self.linkActions.count);
-    return self.addTypeList.count;
+    // The fixed type entries plus one trailing 批量添加应用 row.
+    return self.addTypeList.count + 1;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -160,11 +164,19 @@ static NSInteger const DXSectionAddType = 1;
 
 - (UITableViewCell *)typeCellForIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:@"DXPManagedTypeCell" forIndexPath:indexPath];
-    NSString *type = [self typeAtIndex:indexPath.row];
-    cell.textLabel.text = [DXPLinkActionEditorController displayNameForType:type];
+    NSInteger batchRow = (NSInteger)self.addTypeList.count;
+    if (indexPath.row == batchRow) {
+        // Kept outside addTypeList so the shared type chooser and this section
+        // never need to agree on a pseudo-type (the 3.10.3 sync trap).
+        cell.textLabel.text = LOCALIZED(@"BATCH_ADD_APPLICATIONS");
+        cell.imageView.image = [UIImage systemImageNamed:@"square.grid.2x2"];
+    } else {
+        NSString *type = [self typeAtIndex:indexPath.row];
+        cell.textLabel.text = [DXPLinkActionEditorController displayNameForType:type];
+        cell.imageView.image = [UIImage systemImageNamed:[DXPLinkActionEditorController defaultIconForType:type]];
+    }
     cell.textLabel.textColor = [UIColor labelColor];
     cell.detailTextLabel.text = nil;
-    cell.imageView.image = [UIImage systemImageNamed:[DXPLinkActionEditorController defaultIconForType:type]];
     cell.imageView.tintColor = [UIColor systemBlueColor];
     cell.accessoryType = UITableViewCellAccessoryNone;
     cell.editingAccessoryType = UITableViewCellAccessoryNone;
@@ -193,7 +205,8 @@ static NSInteger const DXSectionAddType = 1;
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if (indexPath.section == DXSectionAddType) {
-        [self startAddFlowForType:[self typeAtIndex:indexPath.row]];
+        if (indexPath.row == (NSInteger)self.addTypeList.count) [self startBatchAddApplicationsFlow];
+        else [self startAddFlowForType:[self typeAtIndex:indexPath.row]];
         return;
     }
     if (self.linkActions.count == 0) return;
@@ -274,6 +287,54 @@ static NSInteger const DXSectionAddType = 1;
         completionHandler(strongSelf != nil);
     }];
     return [UISwipeActionsConfiguration configurationWithActions:@[delete]];
+}
+
+#pragma mark - Batch add applications
+
+// 批量添加应用: one multi-select pass over installed apps, then a single
+// read-modify-write creating one openapp action per pick (in tap order).
+// Apps that already have an openapp action are skipped and reported; an
+// empty pick touches nothing.
+- (void)startBatchAddApplicationsFlow {
+    DXPOpenAppPickerController *picker = [[DXPOpenAppPickerController alloc] init];
+    picker.allowsMultipleSelection = YES;
+    __weak typeof(self) weakSelf = self;
+    picker.multiSelectionCompletion = ^(NSArray<DXPAppInfo *> *apps) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (strongSelf) [strongSelf addOpenAppActionsForApps:apps];
+    };
+    [picker setRootController:[self rootController]];
+    [picker setParentController:[self parentController]];
+    [self pushController:picker];
+}
+
+- (void)addOpenAppActionsForApps:(NSArray<DXPAppInfo *> *)apps {
+    NSMutableArray<NSDictionary *> *picks = [NSMutableArray array];
+    for (DXPAppInfo *app in apps)
+        [picks addObject:@{@"bundleID": app.bundleID ?: @"", @"name": app.name ?: @""}];
+
+    NSUInteger skipped = 0;
+    NSArray<NSMutableDictionary *> *entries = DXBatchOpenAppEntries(self.linkActions, picks, &skipped);
+    if (entries.count == 0) {
+        if (skipped > 0) [self showBatchAddResult:0 skipped:skipped];
+        return;
+    }
+    [self.linkActions addObjectsFromArray:entries];
+    [self persistLinkActions];
+    // The empty-list placeholder row swaps for real rows, so the table
+    // always reloads whole (same reason as startAddFlowForType:).
+    [self.tableView reloadData];
+    if (skipped > 0) [self showBatchAddResult:entries.count skipped:skipped];
+}
+
+- (void)showBatchAddResult:(NSUInteger)added skipped:(NSUInteger)skipped {
+    NSString *message = added > 0
+        ? [NSString stringWithFormat:LOCALIZED(@"BATCH_ADD_RESULT"), (unsigned long)added, (unsigned long)skipped]
+        : LOCALIZED(@"BATCH_ADD_ALL_DUPLICATES");
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil message:message
+                                                                 preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK") style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 @end
