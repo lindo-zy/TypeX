@@ -40,11 +40,9 @@ static NSBundle *tweakBundle;
 }
 @end
 
-// iOS 16.x search/presentation can drive this data source with a table other
-// than self.tableView — dequeueing a never-registered identifier on it aborts
-// the process (the 4.6.6 device crash: emptyCell from the rendering table
-// succeeded, then DXPManagedActionCell from self.tableView threw). Register
-// on the rendering table itself, exactly once per instance.
+// Register on the rendering table itself, once per instance. The base table
+// is configured before its data source is attached; this also protects any
+// additional table that asks the controller to render a cell.
 static char kDXManagedCellsRegisteredKey;
 static void DXRegisterManagedCellsIfNeeded(UITableView *table) {
     if (!table || objc_getAssociatedObject(table, &kDXManagedCellsRegisteredKey)) return;
@@ -61,6 +59,7 @@ static void DXRegisterManagedCellsIfNeeded(UITableView *table) {
 @property (nonatomic, strong) NSArray<NSArray<NSNumber *> *> *groupIndexes;
 @property (nonatomic, strong) NSArray<NSNumber *> *searchIndexes;
 @property (nonatomic, strong) UISearchController *searchController;
+@property (nonatomic, copy) NSString *searchQuery;
 @property (nonatomic, assign) BOOL isSearching;
 @end
 
@@ -79,18 +78,6 @@ static void DXRegisterManagedCellsIfNeeded(UITableView *table) {
     [super viewDidLoad];
     self.title = LOCALIZED(@"CUSTOM_ACTIONS");
 
-    // The base built its plain table in viewDidLoad; swap in our own so rows
-    // can use subtitle style and taller layout.
-    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
-    self.tableView.delegate = self;
-    self.tableView.dataSource = self;
-    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    DXRegisterManagedCellsIfNeeded(self.tableView);
-    // Rows stay tappable while editing (the sub-actions page's reference
-    // layout): a tap deletes instead of being swallowed by UIKit.
-    self.tableView.allowsSelectionDuringEditing = YES;
-    self.view = self.tableView;
-
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:LOCALIZED(@"EDIT")
                                                                               style:UIBarButtonItemStylePlain
                                                                              target:self
@@ -102,16 +89,23 @@ static void DXRegisterManagedCellsIfNeeded(UITableView *table) {
     self.navigationItem.searchController = self.searchController;
     self.navigationItem.hidesSearchBarWhenScrolling = NO;
     self.definesPresentationContext = YES;
+    NSLog(@"[TypeX][CustomActions] load actions=%lu groups=%lu",
+          (unsigned long)self.linkActions.count, (unsigned long)self.groupNames.count);
+}
+
+- (void)configureActionTableView:(UITableView *)tableView {
+    DXRegisterManagedCellsIfNeeded(tableView);
+    tableView.allowsSelectionDuringEditing = YES;
+}
+
+- (void)reloadPreferences {
+    [super reloadPreferences];
+    // The base reloads the table immediately after this call. Rebuild every
+    // index first, including on initial load and while search remains active.
+    [self refreshSections];
 }
 
 - (void)reloadDataKeepingSelection {
-    [self refreshSections];
-    [self.tableView reloadData];
-}
-
-- (void)viewWillAppear:(BOOL)animated {
-    [super viewWillAppear:animated];
-    [self reloadPreferences];
     [self refreshSections];
     [self.tableView reloadData];
 }
@@ -133,15 +127,23 @@ static void DXRegisterManagedCellsIfNeeded(UITableView *table) {
 - (void)refreshSections {
     self.groupNames = DXActionGroupNames(self.prefs, self.linkActions);
     self.groupIndexes = DXActionGroupSectionIndexes(self.linkActions, self.groupNames);
+    [self refreshSearchIndexes];
 }
 
 // Global (flat-array) index for an action row; NSNotFound for placeholder rows.
 - (NSInteger)globalIndexAtIndexPath:(NSIndexPath *)indexPath {
-    if (self.isSearching)
-        return indexPath.row < (NSInteger)self.searchIndexes.count ? self.searchIndexes[indexPath.row].integerValue : NSNotFound;
-    if (indexPath.section < 0 || indexPath.section >= (NSInteger)self.groupIndexes.count) return NSNotFound;
-    NSArray<NSNumber *> *indexes = self.groupIndexes[indexPath.section];
-    return indexPath.row < (NSInteger)indexes.count ? indexes[indexPath.row].integerValue : NSNotFound;
+    if (!indexPath || indexPath.row < 0 || indexPath.section < 0) return NSNotFound;
+    NSArray<NSNumber *> *indexes;
+    if (self.isSearching) {
+        if (indexPath.section != 0) return NSNotFound;
+        indexes = self.searchIndexes;
+    } else {
+        if (indexPath.section >= (NSInteger)self.groupIndexes.count) return NSNotFound;
+        indexes = self.groupIndexes[indexPath.section];
+    }
+    if (indexPath.row >= (NSInteger)indexes.count) return NSNotFound;
+    NSInteger global = indexes[indexPath.row].integerValue;
+    return global >= 0 && global < (NSInteger)self.linkActions.count ? global : NSNotFound;
 }
 
 - (NSInteger)addSection {
@@ -162,6 +164,7 @@ static void DXRegisterManagedCellsIfNeeded(UITableView *table) {
     if (self.isSearching) return nil;
     if (section == self.addSection) return LOCALIZED(@"CHOOSE_ACTION");
     if (section == self.ungroupedSection) return LOCALIZED(@"UNGROUPED");
+    if (section < 0 || section >= (NSInteger)self.groupNames.count) return nil;
     return self.groupNames[section];
 }
 
@@ -177,6 +180,7 @@ static void DXRegisterManagedCellsIfNeeded(UITableView *table) {
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (self.isSearching) return MAX(1, (NSInteger)self.searchIndexes.count);
     if (section == self.addSection) return self.addTypeList.count + 1;
+    if (section < 0 || section >= (NSInteger)self.groupIndexes.count) return 0;
     NSInteger count = (NSInteger)self.groupIndexes[section].count;
     // The empty-list placeholder row lives in the trailing 未分组 section.
     if (self.linkActions.count == 0 && section == self.ungroupedSection) count = MAX(count, 1);
@@ -192,8 +196,8 @@ static void DXRegisterManagedCellsIfNeeded(UITableView *table) {
     DXRegisterManagedCellsIfNeeded(tableView);
     if (indexPath.section == self.addSection) return [self typeCellForIndexPath:indexPath table:tableView];
     NSInteger global = [self globalIndexAtIndexPath:indexPath];
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPManagedEmptyCell" forIndexPath:indexPath];
     if (global == NSNotFound) {
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPManagedEmptyCell" forIndexPath:indexPath];
         cell.textLabel.text = LOCALIZED(self.isSearching ? @"SEARCH_NO_MATCH" : @"NO_CUSTOM_ACTIONS");
         cell.textLabel.textColor = [UIColor secondaryLabelColor];
         cell.detailTextLabel.text = nil;
@@ -230,7 +234,7 @@ static void DXRegisterManagedCellsIfNeeded(UITableView *table) {
     // Same explicit tint as the 选择动作 rows; app icons are AlwaysOriginal and
     // unaffected, so both sections draw symbols in the same blue.
     cell.imageView.tintColor = [UIColor systemBlueColor];
-    cell.accessoryType = self.tableView.editing ? UITableViewCellAccessoryNone : UITableViewCellAccessoryDisclosureIndicator;
+    cell.accessoryType = table.editing ? UITableViewCellAccessoryNone : UITableViewCellAccessoryDisclosureIndicator;
     cell.editingAccessoryType = UITableViewCellAccessoryNone;
     return cell;
 }
@@ -419,6 +423,7 @@ static void DXRegisterManagedCellsIfNeeded(UITableView *table) {
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
     if (self.isSearching || section == self.addSection) return nil; // title-based header fallback
+    if (section < 0 || section >= (NSInteger)self.groupIndexes.count) return nil;
     NSString *name = section == self.ungroupedSection ? LOCALIZED(@"UNGROUPED") : self.groupNames[section];
     NSString *detail = [NSString stringWithFormat:LOCALIZED(@"GROUP_ACTIONS_COUNT"),
                         (unsigned long)self.groupIndexes[section].count];
@@ -612,8 +617,8 @@ static void DXRegisterManagedCellsIfNeeded(UITableView *table) {
 
 #pragma mark - Search
 
-- (void)updateSearchResultsForSearchController:(UISearchController *)controller {
-    NSString *query = controller.searchBar.text;
+- (void)refreshSearchIndexes {
+    NSString *query = self.searchQuery;
     self.isSearching = [query stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].length > 0;
     if (self.isSearching) {
         NSArray *hits = DXActionsMatchingQuery(self.linkActions, query, ^NSString *(NSDictionary *entry) {
@@ -628,6 +633,11 @@ static void DXRegisterManagedCellsIfNeeded(UITableView *table) {
     } else {
         self.searchIndexes = @[];
     }
+}
+
+- (void)updateSearchResultsForSearchController:(UISearchController *)controller {
+    self.searchQuery = controller.searchBar.text;
+    [self refreshSearchIndexes];
     [self.tableView reloadData];
 }
 

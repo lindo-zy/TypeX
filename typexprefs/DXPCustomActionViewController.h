@@ -38,6 +38,9 @@
 @property (nonatomic, strong) NSMutableArray<NSMutableDictionary *> *linkActions;
 
 // Shared storage helpers for the management page.
+// Configure cells before attaching the data source or publishing the table.
+// Derived layouts use the same table throughout the controller's lifecycle.
+- (void)configureActionTableView:(UITableView *)tableView;
 - (void)reloadPreferences;
 - (void)persistLinkActions;
 - (void)writePreferences;

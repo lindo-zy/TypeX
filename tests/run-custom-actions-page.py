@@ -59,7 +59,11 @@ stub_extensions = '''
 @optional
 - (void)updateSearchResultsForSearchController:(UISearchController *)searchController;
 @end
+@class UITableView, UITableViewCell;
 @protocol UITableViewDataSource
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView;
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section;
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath;
 @end
 @protocol UITableViewDelegate
 @end
@@ -159,6 +163,7 @@ typedef NS_ENUM(NSInteger, UIContextualActionStyle) { UIContextualActionStyleDef
 typedef NS_ENUM(NSInteger, UIBarButtonItemStyle) { UIBarButtonItemStylePlain, UIBarButtonItemStyleDone };
 static const NSInteger UIFontWeightSemibold = 4;
 static const NSInteger UITableViewCellSelectionStyleNone = 0;
+static BOOL RenderOnDataSourceAssignment;
 @interface UITableView : UIView
 @property(nonatomic, weak) id delegate, dataSource;
 @property(nonatomic) UITableViewStyle style;
@@ -171,6 +176,9 @@ static const NSInteger UITableViewCellSelectionStyleNone = 0;
 @property(nonatomic) NSMutableArray *reloads, *inserts, *deletes, *moves;
 @property(nonatomic) NSInteger reloadAllCount;
 @property(nonatomic) NSMutableArray *registeredCellIDs;
+@property(nonatomic) NSMutableDictionary *registeredCellClasses;
+@property(nonatomic) NSUInteger dequeueCount;
+@property(nonatomic) BOOL renderRowsOnReload;
 @property(nonatomic, strong) UITableViewCell *reusableCell;
 - (instancetype)initWithFrame:(CGRect)frame style:(UITableViewStyle)style;
 - (void)registerClass:(Class)cellClass forCellReuseIdentifier:(NSString *)identifier;
@@ -192,15 +200,18 @@ static const NSInteger UITableViewCellSelectionStyleNone = 0;
     return self;
 }
 - (void)registerClass:(Class)cellClass forCellReuseIdentifier:(NSString *)identifier {
-    (void)cellClass;
     if (!self.registeredCellIDs) self.registeredCellIDs = [NSMutableArray array];
+    if (!self.registeredCellClasses) self.registeredCellClasses = [NSMutableDictionary dictionary];
     [self.registeredCellIDs addObject:identifier];
+    self.registeredCellClasses[identifier] = cellClass;
 }
 - (UITableViewCell *)dequeueReusableCellWithIdentifier:(NSString *)identifier forIndexPath:(NSIndexPath *)indexPath {
     // Mirror UIKit: dequeue-by-indexPath throws when the identifier was never
     // registered on THIS table instance (the 4.6.6 device crash class).
     NSCAssert([self.registeredCellIDs containsObject:identifier], @"dequeue unregistered cell %@", identifier);
-    return self.reusableCell;
+    self.dequeueCount++;
+    Class cellClass = self.registeredCellClasses[identifier];
+    return [[cellClass alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:identifier];
 }
 - (UITableViewCell *)dequeueReusableCellWithIdentifier:(NSString *)identifier { (void)identifier; return self.reusableCell; }
 - (void)deselectRowAtIndexPath:(NSIndexPath *)indexPath animated:(BOOL)animated { (void)indexPath; (void)animated; self.deselections++; }
@@ -209,7 +220,24 @@ static const NSInteger UITableViewCellSelectionStyleNone = 0;
 - (void)reloadRowsAtIndexPaths:(NSArray *)indexPaths withRowAnimation:(UITableViewRowAnimation)animation { (void)animation; [self.reloads addObjectsFromArray:indexPaths]; }
 - (void)insertRowsAtIndexPaths:(NSArray *)indexPaths withRowAnimation:(UITableViewRowAnimation)animation { (void)animation; [self.inserts addObjectsFromArray:indexPaths]; }
 - (void)deleteRowsAtIndexPaths:(NSArray *)indexPaths withRowAnimation:(UITableViewRowAnimation)animation { (void)animation; [self.deletes addObjectsFromArray:indexPaths]; }
-- (void)reloadData { self.reloadAllCount++; }
+- (void)setDataSource:(id)dataSource {
+    _dataSource = dataSource;
+    if (RenderOnDataSourceAssignment) {
+        self.renderRowsOnReload = YES;
+        [self reloadData];
+    }
+}
+- (void)reloadData {
+    self.reloadAllCount++;
+    if (!self.renderRowsOnReload) return;
+    for (NSInteger section = 0; section < [self.dataSource numberOfSectionsInTableView:self]; section++) {
+        NSInteger rows = [self.dataSource tableView:self numberOfRowsInSection:section];
+        for (NSInteger row = 0; row < rows; row++) {
+            UITableViewCell *cell = [self.dataSource tableView:self cellForRowAtIndexPath:[NSIndexPath indexPathForRow:row inSection:section]];
+            NSCAssert(cell != nil, @"data source must return a cell");
+        }
+    }
+}
 - (NSIndexPath *)indexPathForCell:(UITableViewCell *)cell { (void)cell; return nil; }
 @end
 '''
@@ -556,6 +584,8 @@ with tempfile.TemporaryDirectory(prefix="typex-custom-actions-page-") as directo
         strip_imports("typexprefs/DXPCustomActionViewController.m").replace("tweakBundle", "tweakBundleBase"),
         strip_imports("typexprefs/DXPCustomActionsController.m"),
     ])
+    # Foundation loads CoreAutoLayout on macOS; avoid shadowing its real class.
+    harness = harness.replace("NSLayoutConstraint", "HarnessLayoutConstraint")
     (tmp / "CustomActionsPageHarness.h").write_text(harness)
     if os.environ.get("TYPEX_DUMP_HARNESS"):
         import shutil

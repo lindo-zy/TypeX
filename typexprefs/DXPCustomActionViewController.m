@@ -590,6 +590,13 @@ static NSBundle *tweakBundle;
     [self.tableView reloadData];
 }
 
+- (void)configureActionTableView:(UITableView *)tableView {
+    [tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"TypeXLPItemCell"];
+    [tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"TypeXCustomLinkActionCell"];
+    [tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPActionAddCell"];
+    [tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPActionGroupCell"];
+}
+
 - (void)viewDidLoad {
     tweakBundle = [NSBundle bundleWithPath:bundlePath];
     [tweakBundle load];
@@ -597,13 +604,10 @@ static NSBundle *tweakBundle;
     [self reloadPreferences];
 
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self configureActionTableView:self.tableView];
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
-    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"TypeXLPItemCell"];
-    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"TypeXCustomLinkActionCell"];
-    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPActionAddCell"];
-    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPActionGroupCell"];
     self.view = self.tableView;
 
     if (!self.selectionManagedExternally) {

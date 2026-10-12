@@ -77,6 +77,54 @@ int main(void) {
         check(page.groupNames.count == 0, @"no groups registered yet");
         renderEverything(page, table, @"ungrouped page renders end to end");
 
+        // Returning to an existing controller can reload a shorter store.
+        // Render synchronously at reloadData, before viewWillAppear returns:
+        // the base used to reload against the previous section index map.
+        NSDictionary *initialPreferences = manager.preferences;
+        page.tableView.renderRowsOnReload = YES;
+        manager.preferences = @{};
+        [page viewWillAppear:YES];
+        check(page.linkActions.count == 0, @"returning to an emptied store renders its placeholder");
+        manager.preferences = initialPreferences;
+        [page viewWillAppear:YES];
+        check(page.linkActions.count == 3, @"returning to the populated store rebuilds every row");
+        page.tableView.renderRowsOnReload = NO;
+
+        NSUInteger dequeues = table.dequeueCount;
+        UITableViewCell *actionCell = [page tableView:table cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
+        check(table.dequeueCount == dequeues + 1 && actionCell.detailTextLabel != nil,
+              @"an action row dequeues one subtitle cell");
+
+        // Data-source callbacks can arrive during table setup. Each instance
+        // must already have its cells and section model when exposed to UIKit.
+        RenderOnDataSourceAssignment = YES;
+        DXPCustomActionsController *initialPage = [DXPCustomActionsController new];
+        [initialPage viewDidLoad];
+        RenderOnDataSourceAssignment = NO;
+        check(initialPage.view == initialPage.tableView && initialPage.groupIndexes.firstObject.count == 3,
+              @"first page load publishes a configured table and complete sections");
+
+        NSMutableArray *groupedActions = actions(@[@"grouped", @"ungrouped"]);
+        groupedActions[0][kCustomActionGroupKey] = @"工作";
+        manager.preferences = @{kLinkActionskey: groupedActions, kLinkActionGroupsKey: @[@"工作"]};
+        RenderOnDataSourceAssignment = YES;
+        DXPCustomActionsController *groupedPage = [DXPCustomActionsController new];
+        [groupedPage viewDidLoad];
+        RenderOnDataSourceAssignment = NO;
+        check([groupedPage numberOfSectionsInTableView:groupedPage.tableView] == 3 &&
+              [groupedPage tableView:groupedPage.tableView numberOfRowsInSection:0] == 1,
+              @"a fresh grouped page renders its stored groups during setup");
+        manager.preferences = initialPreferences;
+
+        RenderOnDataSourceAssignment = YES;
+        DXPCustomActionViewController *actionPicker = [DXPCustomActionViewController new];
+        actionPicker.selectionManagedExternally = YES;
+        actionPicker.customActionsOnly = YES;
+        [actionPicker viewDidLoad];
+        RenderOnDataSourceAssignment = NO;
+        check([actionPicker tableView:actionPicker.tableView numberOfRowsInSection:0] == 4,
+              @"the shared picker keeps its action and add rows with early rendering");
+
         // iOS 16.x search/presentation can drive the data source with a table
         // other than self.tableView (the 4.6.6 device abort): every render
         // table must register its own cells before dequeueing.
@@ -159,6 +207,22 @@ int main(void) {
         [page tableView:table didSelectRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
         check(nav.viewControllers.count == 1, @"tapping a result opens its editor");
         nav.viewControllers = [NSMutableArray array];
+
+        // The saved search query must be reapplied when the store changes:
+        // its previous global row can disappear or refer to another action.
+        NSDictionary *searchPreferences = manager.preferences;
+        manager.preferences = @{kLinkActionskey: actions(@[@"com.b.two"])};
+        page.tableView.renderRowsOnReload = YES;
+        [page viewWillAppear:YES];
+        check(page.searchIndexes.count == 1 && page.searchIndexes.firstObject.integerValue == 0,
+              @"returning with search active resolves the result's current index");
+        manager.preferences = @{};
+        [page viewWillAppear:YES];
+        check(page.searchIndexes.count == 0 && [page tableView:page.tableView numberOfRowsInSection:0] == 1,
+              @"a removed search result becomes a safe empty placeholder");
+        manager.preferences = searchPreferences;
+        [page viewWillAppear:YES];
+        page.tableView.renderRowsOnReload = NO;
         search.searchBar.text = @"";
         [page updateSearchResultsForSearchController:search];
         check([page numberOfSectionsInTableView:table] == 2, @"clearing search restores the grouped sections");
