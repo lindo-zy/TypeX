@@ -98,12 +98,15 @@
     CGFloat contentWidth = self.scroll.bounds.size.width;
     CGFloat gridHeight = [self.grid preferredHeightForWidth:contentWidth];
     self.grid.frame = CGRectMake(0, controlsHeight, contentWidth, gridHeight);
+    // setFrame 只标记父视图需要布局；栅格若已在更早的零宽轮次消费掉 needsLayout，
+    // 这里不强制置脏就会跳过 item 定位，图标错位且标签宽度归零。
+    [self.grid setNeedsLayout];
     [self.grid layoutIfNeeded];
     CGFloat circleSize = DXKeyboardPanelCircle(contentWidth, self.columns, self.scale);
     [self.items enumerateObjectsUsingBlock:^(UIView *item, NSUInteger index, BOOL *stop) {
         (void)index;
         (void)stop;
-        CGFloat itemWidth = item.bounds.size.width;
+        CGFloat itemWidth = contentWidth / MAX(1, self.columns);
         UIView *circle = [item viewWithTag:1];
         circle.frame = CGRectMake((itemWidth - circleSize) / 2, 4, circleSize, circleSize);
         circle.layer.cornerRadius = circleSize / 2;
