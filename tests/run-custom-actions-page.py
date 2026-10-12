@@ -53,6 +53,7 @@ common_block = "\n".join(macro_lines) + "\n" + common[scoped_start:scoped_end] +
 assert "DXCustomActionsKeyForGesture" in common_block and "DXPlaceCaretAtEnd" not in common_block
 
 stub_extensions = '''
+#import <objc/runtime.h>
 @class UISearchController;
 @protocol UISearchResultsUpdating
 @optional
@@ -169,6 +170,7 @@ static const NSInteger UITableViewCellSelectionStyleNone = 0;
 @property(nonatomic) NSUInteger deselections;
 @property(nonatomic) NSMutableArray *reloads, *inserts, *deletes, *moves;
 @property(nonatomic) NSInteger reloadAllCount;
+@property(nonatomic) NSMutableArray *registeredCellIDs;
 @property(nonatomic, strong) UITableViewCell *reusableCell;
 - (instancetype)initWithFrame:(CGRect)frame style:(UITableViewStyle)style;
 - (void)registerClass:(Class)cellClass forCellReuseIdentifier:(NSString *)identifier;
@@ -189,9 +191,16 @@ static const NSInteger UITableViewCellSelectionStyleNone = 0;
     if ((self = [super init])) { _reloads = [NSMutableArray array]; _inserts = [NSMutableArray array]; _deletes = [NSMutableArray array]; _moves = [NSMutableArray array]; }
     return self;
 }
-- (void)registerClass:(Class)cellClass forCellReuseIdentifier:(NSString *)identifier { (void)cellClass; (void)identifier; }
+- (void)registerClass:(Class)cellClass forCellReuseIdentifier:(NSString *)identifier {
+    (void)cellClass;
+    if (!self.registeredCellIDs) self.registeredCellIDs = [NSMutableArray array];
+    [self.registeredCellIDs addObject:identifier];
+}
 - (UITableViewCell *)dequeueReusableCellWithIdentifier:(NSString *)identifier forIndexPath:(NSIndexPath *)indexPath {
-    (void)identifier; (void)indexPath; return self.reusableCell;
+    // Mirror UIKit: dequeue-by-indexPath throws when the identifier was never
+    // registered on THIS table instance (the 4.6.6 device crash class).
+    NSCAssert([self.registeredCellIDs containsObject:identifier], @"dequeue unregistered cell %@", identifier);
+    return self.reusableCell;
 }
 - (UITableViewCell *)dequeueReusableCellWithIdentifier:(NSString *)identifier { (void)identifier; return self.reusableCell; }
 - (void)deselectRowAtIndexPath:(NSIndexPath *)indexPath animated:(BOOL)animated { (void)indexPath; (void)animated; self.deselections++; }

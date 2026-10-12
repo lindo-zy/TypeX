@@ -6,6 +6,7 @@
 #import "DXPOpenAppPickerController.h"
 #import "../DXHelper.h"
 #import "../common.h"
+#import <objc/runtime.h>
 
 static NSBundle *tweakBundle;
 
@@ -39,6 +40,20 @@ static NSBundle *tweakBundle;
 }
 @end
 
+// iOS 16.x search/presentation can drive this data source with a table other
+// than self.tableView — dequeueing a never-registered identifier on it aborts
+// the process (the 4.6.6 device crash: emptyCell from the rendering table
+// succeeded, then DXPManagedActionCell from self.tableView threw). Register
+// on the rendering table itself, exactly once per instance.
+static char kDXManagedCellsRegisteredKey;
+static void DXRegisterManagedCellsIfNeeded(UITableView *table) {
+    if (!table || objc_getAssociatedObject(table, &kDXManagedCellsRegisteredKey)) return;
+    [table registerClass:[DXPManagedActionCell class] forCellReuseIdentifier:@"DXPManagedActionCell"];
+    [table registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPManagedTypeCell"];
+    [table registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPManagedEmptyCell"];
+    objc_setAssociatedObject(table, &kDXManagedCellsRegisteredKey, @YES, OBJC_ASSOCIATION_RETAIN);
+}
+
 @interface DXPCustomActionsController () <UISearchResultsUpdating>
 // Ordered real groups (registry + discovered); groupIndexes has one index
 // bucket per group section plus the trailing 未分组 bucket.
@@ -70,9 +85,7 @@ static NSBundle *tweakBundle;
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
     self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [self.tableView registerClass:[DXPManagedActionCell class] forCellReuseIdentifier:@"DXPManagedActionCell"];
-    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPManagedTypeCell"];
-    [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"DXPManagedEmptyCell"];
+    DXRegisterManagedCellsIfNeeded(self.tableView);
     // Rows stay tappable while editing (the sub-actions page's reference
     // layout): a tap deletes instead of being swallowed by UIKit.
     self.tableView.allowsSelectionDuringEditing = YES;
@@ -176,7 +189,8 @@ static NSBundle *tweakBundle;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.section == self.addSection) return [self typeCellForIndexPath:indexPath];
+    DXRegisterManagedCellsIfNeeded(tableView);
+    if (indexPath.section == self.addSection) return [self typeCellForIndexPath:indexPath table:tableView];
     NSInteger global = [self globalIndexAtIndexPath:indexPath];
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPManagedEmptyCell" forIndexPath:indexPath];
     if (global == NSNotFound) {
@@ -188,11 +202,11 @@ static NSBundle *tweakBundle;
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
         return cell;
     }
-    return [self actionCellForRowAtIndexPath:indexPath global:global];
+    return [self actionCellForRowAtIndexPath:indexPath global:global table:tableView];
 }
 
-- (UITableViewCell *)actionCellForRowAtIndexPath:(NSIndexPath *)indexPath global:(NSInteger)global {
-    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:@"DXPManagedActionCell" forIndexPath:indexPath];
+- (UITableViewCell *)actionCellForRowAtIndexPath:(NSIndexPath *)indexPath global:(NSInteger)global table:(UITableView *)table {
+    UITableViewCell *cell = [table dequeueReusableCellWithIdentifier:@"DXPManagedActionCell" forIndexPath:indexPath];
     NSDictionary *entry = self.linkActions[global];
     NSString *type = [entry[kCustomActionTypeKey] isKindOfClass:[NSString class]] ? entry[kCustomActionTypeKey] : @"";
     NSString *name = [entry[@"name"] isKindOfClass:[NSString class]] ? entry[@"name"] : @"";
@@ -221,8 +235,8 @@ static NSBundle *tweakBundle;
     return cell;
 }
 
-- (UITableViewCell *)typeCellForIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:@"DXPManagedTypeCell" forIndexPath:indexPath];
+- (UITableViewCell *)typeCellForIndexPath:(NSIndexPath *)indexPath table:(UITableView *)table {
+    UITableViewCell *cell = [table dequeueReusableCellWithIdentifier:@"DXPManagedTypeCell" forIndexPath:indexPath];
     NSInteger batchRow = (NSInteger)self.addTypeList.count;
     if (indexPath.row == batchRow) {
         // Kept outside addTypeList so the shared type chooser and this section

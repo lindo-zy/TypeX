@@ -77,6 +77,14 @@ int main(void) {
         check(page.groupNames.count == 0, @"no groups registered yet");
         renderEverything(page, table, @"ungrouped page renders end to end");
 
+        // iOS 16.x search/presentation can drive the data source with a table
+        // other than self.tableView (the 4.6.6 device abort): every render
+        // table must register its own cells before dequeueing.
+        UITableView *foreign = [UITableView new];
+        foreign.reusableCell = [UITableViewCell new];
+        UITableViewCell *foreignCell = [page tableView:foreign cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
+        check(foreignCell != nil, @"a foreign render table registers and builds its own cells");
+
         // Tap an action row -> editor pushes; saving exercises the 4.6.4
         // editor-save hook path (was reloadRows with a global row index).
         [page tableView:table didSelectRowAtIndexPath:[NSIndexPath indexPathForRow:1 inSection:0]];
