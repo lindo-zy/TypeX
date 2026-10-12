@@ -2,6 +2,7 @@
 #import "DXPLinkActionEditorController.h"
 #import "DXPAppInfo.h"
 #import "DXPBatchOpenAppEntries.h"
+#import "DXPActionGroups.h"
 #import "DXPOpenAppPickerController.h"
 #import "../DXHelper.h"
 #import "../common.h"
@@ -9,10 +10,13 @@
 static NSBundle *tweakBundle;
 
 // Standalone 自定义动作 management page, laid out after the KayokoX reference:
-// a 已选择 group listing every action as a large icon + name + detail row with
-// a disclosure chevron, a 选择动作 group of fixed type entries that start the
-// add flow, an 编辑/完成 nav button toggling delete mode, and usage-hint
-// footers under both groups.
+// one section per 自定义分组 (header shows name + count and an ellipsis button
+// for rename/delete), the trailing 未分组 section for entries without a group,
+// a 选择动作 group of fixed type entries that start the add flow plus the
+// batch row, and a navigation-bar search that filters actions into one flat
+// result section. Groups are display-only metadata — the flat array order
+// remains the order every consumer sees; an in-section drag reorders the
+// global array through the section index map.
 
 // Subtitle cell rendering icons at their natural size — SF Symbols and the
 // 24pt rounded app-icon slot alike — so 已选择 rows match the 选择动作 type
@@ -35,10 +39,17 @@ static NSBundle *tweakBundle;
 }
 @end
 
-@implementation DXPCustomActionsController
+@interface DXPCustomActionsController () <UISearchResultsUpdating>
+// Ordered real groups (registry + discovered); groupIndexes has one index
+// bucket per group section plus the trailing 未分组 bucket.
+@property (nonatomic, copy) NSArray<NSString *> *groupNames;
+@property (nonatomic, strong) NSArray<NSArray<NSNumber *> *> *groupIndexes;
+@property (nonatomic, strong) NSArray<NSNumber *> *searchIndexes;
+@property (nonatomic, strong) UISearchController *searchController;
+@property (nonatomic, assign) BOOL isSearching;
+@end
 
-static NSInteger const DXSectionSelected = 0;
-static NSInteger const DXSectionAddType = 1;
+@implementation DXPCustomActionsController
 
 #pragma mark - Lifecycle
 
@@ -68,15 +79,24 @@ static NSInteger const DXSectionAddType = 1;
                                                                               style:UIBarButtonItemStylePlain
                                                                              target:self
                                                                              action:@selector(toggleEditing:)];
+
+    self.searchController = [[UISearchController alloc] initWithSearchResultsController:nil];
+    self.searchController.searchResultsUpdater = self;
+    self.searchController.obscuresBackgroundDuringPresentation = NO;
+    self.navigationItem.searchController = self.searchController;
+    self.navigationItem.hidesSearchBarWhenScrolling = NO;
+    self.definesPresentationContext = YES;
 }
 
 - (void)reloadDataKeepingSelection {
+    [self refreshSections];
     [self.tableView reloadData];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [self reloadPreferences];
+    [self refreshSections];
     [self.tableView reloadData];
 }
 
@@ -89,39 +109,82 @@ static NSInteger const DXSectionAddType = 1;
                           withRowAnimation:UITableViewRowAnimationAutomatic];
 }
 
+#pragma mark - Section model
+
+// One rebuild per data change: group sections mirror the flat array through
+// global index buckets, so every row gesture below works on the underlying
+// linkactions positions without duplicating storage.
+- (void)refreshSections {
+    self.groupNames = DXActionGroupNames(self.prefs, self.linkActions);
+    NSMutableArray<NSMutableArray<NSNumber *> *> *buckets = [NSMutableArray array];
+    for (NSUInteger index = 0; index <= self.groupNames.count; index++) [buckets addObject:[NSMutableArray array]];
+    [self.linkActions enumerateObjectsUsingBlock:^(NSDictionary *entry, NSUInteger index, BOOL *stop) {
+        NSString *name = DXActionGroupNormalizedName(entry[kCustomActionGroupKey]);
+        NSInteger slot = name.length ? (NSInteger)[self.groupNames indexOfObject:name] : NSNotFound;
+        [buckets[(slot >= 0 ? slot : (NSInteger)self.groupNames.count)] addObject:@(index)];
+    }];
+    self.groupIndexes = buckets;
+}
+
+// Global (flat-array) index for an action row; NSNotFound for placeholder rows.
+- (NSInteger)globalIndexAtIndexPath:(NSIndexPath *)indexPath {
+    if (self.isSearching)
+        return indexPath.row < (NSInteger)self.searchIndexes.count ? self.searchIndexes[indexPath.row].integerValue : NSNotFound;
+    if (indexPath.section < 0 || indexPath.section >= (NSInteger)self.groupIndexes.count) return NSNotFound;
+    NSArray<NSNumber *> *indexes = self.groupIndexes[indexPath.section];
+    return indexPath.row < (NSInteger)indexes.count ? indexes[indexPath.row].integerValue : NSNotFound;
+}
+
+- (NSInteger)addSection {
+    return self.isSearching ? -1 : (NSInteger)self.groupNames.count + 1;
+}
+
+- (NSInteger)ungroupedSection {
+    return (NSInteger)self.groupNames.count;
+}
+
 #pragma mark - Table view
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 2;
+    return self.isSearching ? 1 : self.groupNames.count + 2;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    return section == DXSectionSelected ? LOCALIZED(@"SELECTED") : LOCALIZED(@"CHOOSE_ACTION");
+    if (self.isSearching) return nil;
+    if (section == self.addSection) return LOCALIZED(@"CHOOSE_ACTION");
+    if (section == self.ungroupedSection) return LOCALIZED(@"UNGROUPED");
+    return self.groupNames[section];
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    if (section == DXSectionSelected) {
+    if (section == 0) {
         return [NSString stringWithFormat:@"• %@\n• %@",
                 LOCALIZED(@"MANAGE_HINT_TAP_EDIT"), LOCALIZED(@"MANAGE_HINT_EDIT_DELETE")];
     }
-    return LOCALIZED(@"ADD_TYPE_HINT");
+    if (section == self.addSection) return LOCALIZED(@"ADD_TYPE_HINT");
+    return nil;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (section == DXSectionSelected) return MAX(1, (NSInteger)self.linkActions.count);
-    // The fixed type entries plus one trailing 批量添加应用 row.
-    return self.addTypeList.count + 1;
+    if (self.isSearching) return MAX(1, (NSInteger)self.searchIndexes.count);
+    if (section == self.addSection) return self.addTypeList.count + 1;
+    NSInteger count = (NSInteger)self.groupIndexes[section].count;
+    // The empty-list placeholder row lives in the trailing 未分组 section.
+    if (self.linkActions.count == 0 && section == self.ungroupedSection) count = MAX(count, 1);
+    return count;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    return (indexPath.section == DXSectionSelected && self.linkActions.count > 0) ? 60.0 : 44.0;
+    if (indexPath.section == self.addSection) return 44.0;
+    return [self globalIndexAtIndexPath:indexPath] != NSNotFound ? 60.0 : 44.0;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.section == DXSectionAddType) return [self typeCellForIndexPath:indexPath];
-    if (self.linkActions.count == 0) {
-        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPManagedEmptyCell" forIndexPath:indexPath];
-        cell.textLabel.text = LOCALIZED(@"NO_CUSTOM_ACTIONS");
+    if (indexPath.section == self.addSection) return [self typeCellForIndexPath:indexPath];
+    NSInteger global = [self globalIndexAtIndexPath:indexPath];
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DXPManagedEmptyCell" forIndexPath:indexPath];
+    if (global == NSNotFound) {
+        cell.textLabel.text = LOCALIZED(self.isSearching ? @"SEARCH_NO_MATCH" : @"NO_CUSTOM_ACTIONS");
         cell.textLabel.textColor = [UIColor secondaryLabelColor];
         cell.detailTextLabel.text = nil;
         cell.imageView.image = nil;
@@ -129,12 +192,12 @@ static NSInteger const DXSectionAddType = 1;
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
         return cell;
     }
-    return [self actionCellForIndexPath:indexPath];
+    return [self actionCellForRowAtIndexPath:indexPath global:global];
 }
 
-- (UITableViewCell *)actionCellForIndexPath:(NSIndexPath *)indexPath {
+- (UITableViewCell *)actionCellForRowAtIndexPath:(NSIndexPath *)indexPath global:(NSInteger)global {
     UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:@"DXPManagedActionCell" forIndexPath:indexPath];
-    NSDictionary *entry = self.linkActions[indexPath.row];
+    NSDictionary *entry = self.linkActions[global];
     NSString *type = [entry[kCustomActionTypeKey] isKindOfClass:[NSString class]] ? entry[kCustomActionTypeKey] : @"";
     NSString *name = [entry[@"name"] isKindOfClass:[NSString class]] ? entry[@"name"] : @"";
     NSString *link = [entry[@"link"] isKindOfClass:[NSString class]] ? entry[@"link"] : @"";
@@ -204,24 +267,180 @@ static NSInteger const DXSectionAddType = 1;
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    if (indexPath.section == DXSectionAddType) {
+    if (indexPath.section == self.addSection) {
         if (indexPath.row == (NSInteger)self.addTypeList.count) [self startBatchAddApplicationsFlow];
         else [self startAddFlowForType:[self typeAtIndex:indexPath.row]];
         return;
     }
-    if (self.linkActions.count == 0) return;
+    NSInteger global = [self globalIndexAtIndexPath:indexPath];
+    if (global == NSNotFound) return;
     if (tableView.editing) {
         // Per the reference layout: tapping a row in edit mode deletes it.
         [self tableView:tableView commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:indexPath];
         return;
     }
-    [self pushEditorForCustomRow:indexPath.row];
+    [self pushEditorForCustomRow:global];
+}
+
+#pragma mark - Grouping
+
+// Registry = the full visible group list: persisting it also absorbs groups
+// discovered on entries but missing from storage, so what you see is what is
+// stored from here on.
+- (void)assignActionSelector:(NSString *)selector toGroup:(NSString *)group {
+    NSString *name = DXActionGroupNormalizedName(group);
+    NSMutableArray<NSString *> *registry = [self.groupNames mutableCopy];
+    if (name.length && ![registry containsObject:name]) [registry addObject:name];
+    if (!DXActionAssignGroup(self.linkActions, selector, name) && [registry isEqualToArray:self.groupNames]) return;
+    self.prefs[kLinkActionGroupsKey] = registry;
+    [self persistLinkActions];
+    [self refreshSections];
+    [self.tableView reloadData];
+}
+
+- (void)presentAssignGroupMenuForSelector:(NSString *)selector currentGroup:(NSString *)currentGroup {
+    UIAlertController *menu = [UIAlertController alertControllerWithTitle:LOCALIZED(@"MOVE_TO_GROUP")
+                                                                  message:nil preferredStyle:UIAlertControllerStyleAlert];
+    for (NSString *name in self.groupNames) {
+        if ([name isEqualToString:currentGroup]) continue;
+        [menu addAction:[UIAlertAction actionWithTitle:name style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+            [self assignActionSelector:selector toGroup:name];
+        }]];
+    }
+    [menu addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"NEW_GROUP") style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+        [self presentCreateGroupAlertForSelector:selector];
+    }]];
+    [menu addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_CANCEL") style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:menu animated:YES completion:nil];
+}
+
+- (void)presentCreateGroupAlertForSelector:(NSString *)selector {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:LOCALIZED(@"NEW_GROUP")
+                                                                   message:nil preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
+        textField.placeholder = LOCALIZED(@"GROUP_NAME");
+    }];
+    [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK") style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+        [self assignActionSelector:selector toGroup:alert.textFields.firstObject.text];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_CANCEL") style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)groupHeaderTapped:(UIButton *)sender {
+    NSInteger section = sender.tag;
+    if (section < 0 || section >= (NSInteger)self.groupNames.count) return; // the trailing 未分组 header has no button
+    NSString *name = self.groupNames[section];
+    UIAlertController *menu = [UIAlertController alertControllerWithTitle:name
+                                                                  message:nil preferredStyle:UIAlertControllerStyleAlert];
+    [menu addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"RENAME_GROUP") style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+        [self presentRenameGroupAlertForSection:section];
+    }]];
+    [menu addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"DELETE_GROUP") style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *action) {
+        [self presentDeleteGroupAlertForSection:section];
+    }]];
+    [menu addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_CANCEL") style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:menu animated:YES completion:nil];
+}
+
+- (void)presentRenameGroupAlertForSection:(NSInteger)section {
+    NSString *oldName = self.groupNames[section];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:LOCALIZED(@"RENAME_GROUP")
+                                                                   message:nil preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
+        textField.text = oldName;
+        textField.placeholder = LOCALIZED(@"GROUP_NAME");
+    }];
+    [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK") style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+        NSString *name = DXActionGroupNormalizedName(alert.textFields.firstObject.text);
+        if (!name.length || [name isEqualToString:oldName]) return;
+        NSMutableArray<NSString *> *registry = [self.groupNames mutableCopy];
+        if ([registry containsObject:name]) {
+            UIAlertController *taken = [UIAlertController alertControllerWithTitle:nil
+                                                                           message:LOCALIZED(@"GROUP_EXISTS")
+                                                                  preferredStyle:UIAlertControllerStyleAlert];
+            [taken addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK") style:UIAlertActionStyleDefault handler:nil]];
+            [self presentViewController:taken animated:YES completion:nil];
+            return;
+        }
+        registry[section] = name;
+        DXActionRenameGroup(self.linkActions, oldName, name);
+        self.prefs[kLinkActionGroupsKey] = registry;
+        [self persistLinkActions];
+        [self refreshSections];
+        [self.tableView reloadData];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_CANCEL") style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)presentDeleteGroupAlertForSection:(NSInteger)section {
+    NSString *name = self.groupNames[section];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:LOCALIZED(@"DELETE_GROUP")
+                                                                   message:[NSString stringWithFormat:LOCALIZED(@"DELETE_GROUP_CONFIRM"), name]
+                                                                  preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"DELETE") style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *action) {
+        NSMutableArray<NSString *> *registry = [self.groupNames mutableCopy];
+        [registry removeObject:name];
+        DXActionUngroupMembers(self.linkActions, name);
+        self.prefs[kLinkActionGroupsKey] = registry;
+        [self persistLinkActions];
+        [self refreshSections];
+        [self.tableView reloadData];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_CANCEL") style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+#pragma mark - Group header views
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+    if (self.isSearching || section == self.addSection) return nil; // title-based header fallback
+    NSString *name = section == self.ungroupedSection ? LOCALIZED(@"UNGROUPED") : self.groupNames[section];
+    NSString *detail = [NSString stringWithFormat:LOCALIZED(@"GROUP_ACTIONS_COUNT"),
+                        (unsigned long)self.groupIndexes[section].count];
+
+    UIView *header = [[UIView alloc] initWithFrame:CGRectZero];
+    UILabel *label = [[UILabel alloc] init];
+    label.text = [NSString stringWithFormat:@"%@ · %@", name, detail];
+    label.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightSemibold];
+    label.textColor = [UIColor secondaryLabelColor];
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    [header addSubview:label];
+    [NSLayoutConstraint activateConstraints:@[
+        [label.leadingAnchor constraintEqualToAnchor:header.layoutMarginsGuide.leadingAnchor],
+        [label.trailingAnchor constraintLessThanOrEqualToAnchor:header.layoutMarginsGuide.trailingAnchor],
+        [label.centerYAnchor constraintEqualToAnchor:header.centerYAnchor],
+    ]];
+    if (section != self.ungroupedSection) {
+        UIButton *menuButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        [menuButton setImage:[UIImage systemImageNamed:@"ellipsis.circle"] forState:UIControlStateNormal];
+        menuButton.tintColor = [UIColor secondaryLabelColor];
+        menuButton.tag = section;
+        [menuButton addTarget:self action:@selector(groupHeaderTapped:) forControlEvents:UIControlEventTouchUpInside];
+        menuButton.translatesAutoresizingMaskIntoConstraints = NO;
+        [header addSubview:menuButton];
+        [NSLayoutConstraint activateConstraints:@[
+            [menuButton.trailingAnchor constraintEqualToAnchor:header.layoutMarginsGuide.trailingAnchor],
+            [menuButton.centerYAnchor constraintEqualToAnchor:header.centerYAnchor],
+            [menuButton.widthAnchor constraintEqualToConstant:28.0],
+            [menuButton.heightAnchor constraintEqualToConstant:28.0],
+            [label.trailingAnchor constraintLessThanOrEqualToAnchor:menuButton.leadingAnchor constant:-8.0],
+        ]];
+    }
+    return header;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+    return (self.isSearching || section == self.addSection) ? UITableViewAutomaticDimension : 34.0;
 }
 
 #pragma mark - Edit and delete
 
 - (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
-    return indexPath.section == DXSectionSelected && indexPath.row < (NSInteger)self.linkActions.count;
+    // Searching rebuilds the visible order from a filter, so structural edits
+    // are disabled there (the same guard the panel lists use).
+    return !self.isSearching && [self globalIndexAtIndexPath:indexPath] != NSNotFound;
 }
 
 - (UITableViewCellEditingStyle)tableView:(UITableView *)tableView editingStyleForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -230,45 +449,47 @@ static NSInteger const DXSectionAddType = 1;
 }
 
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (editingStyle != UITableViewCellEditingStyleDelete || indexPath.section != DXSectionSelected ||
-        indexPath.row >= (NSInteger)self.linkActions.count) return;
-    NSString *selector = self.linkActions[indexPath.row][@"selector"];
-    [self.linkActions removeObjectAtIndex:indexPath.row];
+    if (editingStyle != UITableViewCellEditingStyleDelete) return;
+    NSInteger global = [self globalIndexAtIndexPath:indexPath];
+    if (global == NSNotFound) return;
+    NSString *selector = self.linkActions[global][@"selector"];
+    [self.linkActions removeObjectAtIndex:(NSUInteger)global];
     self.prefs[kLinkActionskey] = self.linkActions;
     [self removeReferencesToSelector:selector fromPreferences:self.prefs];
     [self writePreferences];
-    if (self.linkActions.count == 0 && !self.tableView.editing) {
-        [self.tableView reloadData];
-    } else {
-        [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
-    }
+    [self refreshSections];
+    [self.tableView reloadData];
 }
 
-// Edit-mode drag reorder. The array order is the display order everywhere the
-// actions are offered, so persist it immediately like deletion does.
+// Edit-mode drag reorder within one group section. The array order is the
+// display order everywhere the actions are offered, so a section drag is a
+// plain global-array move — other groups and their relative positions stay
+// untouched.
 - (BOOL)tableView:(UITableView *)tableView canMoveRowAtIndexPath:(NSIndexPath *)indexPath {
     return [self tableView:tableView canEditRowAtIndexPath:indexPath];
 }
 
 - (NSIndexPath *)tableView:(UITableView *)tableView targetIndexPathForMoveFromRowAtIndexPath:(NSIndexPath *)source toProposedIndexPath:(NSIndexPath *)destination {
-    // Keep moves inside the action list: never onto the empty placeholder row
-    // or the add-action section.
-    if (destination.section != DXSectionSelected || destination.row >= (NSInteger)self.linkActions.count) {
-        return source;
-    }
+    // Keep moves inside the action list and inside one group: never onto a
+    // placeholder row, another group, or the add-action section.
+    if (![self tableView:tableView canEditRowAtIndexPath:source] ||
+        ![self tableView:tableView canEditRowAtIndexPath:destination] ||
+        source.section != destination.section) return source;
     return destination;
 }
 
 - (void)tableView:(UITableView *)tableView moveRowAtIndexPath:(NSIndexPath *)sourceIndexPath toIndexPath:(NSIndexPath *)destinationIndexPath {
-    if (sourceIndexPath.section != DXSectionSelected || destinationIndexPath.section != DXSectionSelected ||
-        sourceIndexPath.row >= (NSInteger)self.linkActions.count ||
-        destinationIndexPath.row >= (NSInteger)self.linkActions.count ||
-        sourceIndexPath.row == destinationIndexPath.row) return;
-    NSMutableDictionary *entry = self.linkActions[sourceIndexPath.row];
-    [self.linkActions removeObjectAtIndex:sourceIndexPath.row];
-    [self.linkActions insertObject:entry atIndex:destinationIndexPath.row];
+    if (self.isSearching || sourceIndexPath.section != destinationIndexPath.section) return;
+    NSInteger from = [self globalIndexAtIndexPath:sourceIndexPath];
+    NSInteger to = [self globalIndexAtIndexPath:destinationIndexPath];
+    if (from == NSNotFound || to == NSNotFound || from == to) return;
+    NSMutableDictionary *entry = self.linkActions[from];
+    [self.linkActions removeObjectAtIndex:(NSUInteger)from];
+    [self.linkActions insertObject:entry atIndex:(NSUInteger)to];
     self.prefs[kLinkActionskey] = self.linkActions;
     [self writePreferences];
+    // The table applied the move visually; only the index map shifts.
+    [self refreshSections];
 }
 
 // Swipe delete stays reachable outside edit mode as well.
@@ -287,6 +508,35 @@ static NSInteger const DXSectionAddType = 1;
         completionHandler(strongSelf != nil);
     }];
     return [UISwipeActionsConfiguration configurationWithActions:@[delete]];
+}
+
+// Long-press a row to move it between groups (edit mode keeps drag = reorder,
+// so the menu is suppressed there).
+- (UIContextMenuConfiguration *)tableView:(UITableView *)tableView contextMenuConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath point:(CGPoint)point {
+    if (tableView.editing || self.isSearching || indexPath.section == self.addSection) return nil;
+    NSInteger global = [self globalIndexAtIndexPath:indexPath];
+    if (global == NSNotFound) return nil;
+    NSString *selector = self.linkActions[global][@"selector"];
+    NSString *currentGroup = DXActionGroupNormalizedName(self.linkActions[global][kCustomActionGroupKey]);
+    __weak typeof(self) weakSelf = self;
+    return [UIContextMenuConfiguration configurationWithIdentifier:nil previewProvider:nil actionProvider:^UIMenu *(NSArray *suggestedActions) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return [UIMenu menuWithTitle:@"" children:@[]];
+        NSMutableArray<UIAction *> *actions = [NSMutableArray array];
+        [actions addObject:[UIAction actionWithTitle:LOCALIZED(@"MOVE_TO_GROUP")
+                                               image:[UIImage systemImageNamed:@"folder.badge.plus"]
+                                          identifier:nil handler:^(__unused UIAction *action) {
+            [strongSelf presentAssignGroupMenuForSelector:selector currentGroup:currentGroup];
+        }]];
+        if (currentGroup.length) {
+            [actions addObject:[UIAction actionWithTitle:LOCALIZED(@"REMOVE_FROM_GROUP")
+                                                   image:[UIImage systemImageNamed:@"folder"]
+                                              identifier:nil handler:^(__unused UIAction *action) {
+                [strongSelf assignActionSelector:selector toGroup:@""];
+            }]];
+        }
+        return [UIMenu menuWithTitle:@"" children:actions];
+    }];
 }
 
 #pragma mark - Batch add applications
@@ -321,8 +571,7 @@ static NSInteger const DXSectionAddType = 1;
     }
     [self.linkActions addObjectsFromArray:entries];
     [self persistLinkActions];
-    // The empty-list placeholder row swaps for real rows, so the table
-    // always reloads whole (same reason as startAddFlowForType:).
+    [self refreshSections];
     [self.tableView reloadData];
     if (skipped > 0) [self showBatchAddResult:entries.count skipped:skipped];
 }
@@ -335,6 +584,27 @@ static NSInteger const DXSectionAddType = 1;
                                                                  preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:LOCALIZED(@"ANSWER_OK") style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
+}
+
+#pragma mark - Search
+
+- (void)updateSearchResultsForSearchController:(UISearchController *)controller {
+    NSString *query = controller.searchBar.text;
+    self.isSearching = [query stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].length > 0;
+    if (self.isSearching) {
+        NSArray *hits = DXActionsMatchingQuery(self.linkActions, query, ^NSString *(NSDictionary *entry) {
+            NSString *type = [entry[kCustomActionTypeKey] isKindOfClass:NSString.class] ? entry[kCustomActionTypeKey] : nil;
+            return type ? [DXPLinkActionEditorController displayNameForType:type] : nil;
+        });
+        NSMutableArray<NSNumber *> *indexes = [NSMutableArray array];
+        [self.linkActions enumerateObjectsUsingBlock:^(NSDictionary *entry, NSUInteger index, BOOL *stop) {
+            if ([hits containsObject:entry]) [indexes addObject:@(index)];
+        }];
+        self.searchIndexes = indexes;
+    } else {
+        self.searchIndexes = @[];
+    }
+    [self.tableView reloadData];
 }
 
 @end
