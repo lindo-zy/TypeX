@@ -20,6 +20,9 @@
 
 static NSString * const DXFloatRequester = @"com.lindo.typex.floating-app";
 static void *DXFloatLayerObservation = &DXFloatLayerObservation;
+static void *DXFloatContentObservation = &DXFloatContentObservation;
+// 卡片延迟显示窗口：期间挂接内容则直接带内容显示，超时才显示加载指示。
+static const NSTimeInterval DXFloatCardPresentDelay = 0.25;
 static NSBundle *tweakBundle;
 static BOOL DXFloatHooksReady;
 
@@ -247,6 +250,9 @@ static BOOL DXFloatConfigureBackdropHitTesting(id layer) {
 @property(nonatomic) BOOL sceneCreationAttempted;
 @property(nonatomic) BOOL loggedProcessWait;
 @property(nonatomic) BOOL loggedContentWait;
+@property(nonatomic) BOOL observingContent;
+@property(nonatomic) BOOL windowPresented;
+@property(nonatomic) CFAbsoluteTime prepareStartedAt;
 @property(nonatomic, strong) NSArray<NSNumber *> *notifyTokens;
 @property(nonatomic) int inputSessionToken;
 @property(nonatomic) int inputToken;
@@ -264,6 +270,9 @@ static BOOL DXFloatConfigureBackdropHitTesting(id layer) {
 - (void)finishShelfStartup;
 - (void)cleanup:(DXSystemOpenResult)result reason:(NSString *)reason;
 - (void)poll:(NSUInteger)generation;
+- (BOOL)evaluate:(NSUInteger)generation;
+- (BOOL)adoptScene:(id)scene pid:(pid_t)pid generation:(NSUInteger)generation;
+- (void)presentCardIfPending:(NSUInteger)generation;
 - (void)publishLayers;
 - (void)startInputRelay;
 - (void)receivePinchWord:(uint64_t)word nonce:(uint32_t)nonce;
@@ -692,6 +701,11 @@ static BOOL DXFloatRegisterSwitcherCard(NSString *identifier, id scene, id windo
         @catch (__unused NSException *exception) {}
     }
     self.observingLayers = NO;
+    if (self.observingContent && self.scene) {
+        @try { [self.scene removeObserver:self forKeyPath:@"contentState" context:DXFloatContentObservation]; }
+        @catch (__unused NSException *exception) {}
+    }
+    self.observingContent = NO;
     if (self.assertion && [self.assertion respondsToSelector:NSSelectorFromString(@"invalidate")]) {
         @try { ((void (*)(id, SEL))objc_msgSend)(self.assertion, NSSelectorFromString(@"invalidate")); }
         @catch (__unused NSException *exception) {}
@@ -718,6 +732,7 @@ static BOOL DXFloatRegisterSwitcherCard(NSString *identifier, id scene, id windo
     self.publishedLayers = nil; self.requestedURL = nil; self.urlAccepted = NO;
     self.hasContent = NO; self.processPID = 0; self.sceneCreationAttempted = NO;
     self.loggedProcessWait = NO; self.loggedContentWait = NO;
+    self.windowPresented = NO; self.prepareStartedAt = 0;
     if (identifier.length) NSLog(@"[TypeX][FloatingApp] release bundleID=%@ reason=%@", identifier, reason);
 }
 - (BOOL)prewarm:(NSString *)identifier {
@@ -834,10 +849,28 @@ static BOOL DXFloatRegisterSwitcherCard(NSString *identifier, id scene, id windo
     self.window.rootViewController = self.controller;
     self.window.card = self.controller.card;
     self.window.backdrop = self.controller.backdrop;
-    self.window.hidden = NO;
+    // 卡片先保持隐藏：内容在延迟窗口内挂接则直接带内容显示，超时才显示加载
+    // 指示；失败路径保持隐藏拆窗，不再闪现空转卡片。
+    self.window.hidden = YES;
+    self.prepareStartedAt = CFAbsoluteTimeGetCurrent();
     NSLog(@"[TypeX][FloatingApp] prepare bundleID=%@ generation=%lu scheme=%@", identifier, (unsigned long)generation, url.scheme ?: @"none");
-    if (url ? ![self deliverURL:url generation:generation] : ![self prewarm:identifier]) {
-        [self cleanup:DXSystemOpenUnavailable reason:@"suspended-launch-unavailable"]; return;
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(DXFloatCardPresentDelay * NSEC_PER_SEC)), dispatch_get_main_queue(),
+        ^{ [weakSelf presentCardIfPending:generation]; });
+    // 热恢复：进程存活且存在有效 Scene 时直接采纳托管，跳过挂起启动准备；
+    // URL 悬浮仍需投递请求，但托管先行挂接可省去整段轮询等待。
+    pid_t pid = DXFloatPID(identifier);
+    if (pid > 0) {
+        id scene = DXFloatFindScene(identifier);
+        if (scene && DXFloatInteger(scene, @"isValid", YES)) {
+            if (![self adoptScene:scene pid:pid generation:generation]) return;
+            NSLog(@"[TypeX][FloatingApp] hot resume bundleID=%@ pid=%d generation=%lu", identifier, pid, (unsigned long)generation);
+        }
+    }
+    if (!self.scene || url) {
+        if (url ? ![self deliverURL:url generation:generation] : ![self prewarm:identifier]) {
+            [self cleanup:DXSystemOpenUnavailable reason:@"suspended-launch-unavailable"]; return;
+        }
     }
     [self poll:generation];
 }
@@ -892,6 +925,7 @@ static BOOL DXFloatRegisterSwitcherCard(NSString *identifier, id scene, id windo
                 [main addObjectsFromArray:external];
                 [self.controller setHostViews:main canvasSize:[self canvasSize]];
                 self.publishedLayers = [layers copy]; self.hasContent = YES;
+                [self presentCardIfPending:self.session.generation];
                 return;
             }
         }
@@ -905,6 +939,7 @@ static BOOL DXFloatRegisterSwitcherCard(NSString *identifier, id scene, id windo
         UIView *view = ((id (*)(id, SEL, id, BOOL))objc_msgSend)(manager, get, DXFloatRequester, YES);
         if ([view isKindOfClass:UIView.class] && DXFloatInteger(view, @"isHosting", YES)) {
             [self.controller setHostViews:@[view] canvasSize:[self canvasSize]]; self.hasContent = YES;
+            [self presentCardIfPending:self.session.generation];
         }
     } @catch (NSException *exception) {
         NSLog(@"[TypeX][FloatingApp] layer publication exception=%@", exception.name);
@@ -956,13 +991,88 @@ static BOOL DXFloatRegisterSwitcherCard(NSString *identifier, id scene, id windo
         return ((id (*)(id, SEL, id, id))objc_msgSend)(manager, create, definition, parameters);
     } @catch (__unused NSException *exception) { return nil; }
 }
+// 卡片展示唯一入口：内容先到则直接带内容显示，延迟窗口超时兜底显示加载指示。
+- (void)presentCardIfPending:(NSUInteger)generation {
+    if (![self.session isCurrent:generation] || self.windowPresented || !self.window) return;
+    self.windowPresented = YES;
+    self.window.hidden = NO;
+    NSLog(@"[TypeX][FloatingApp] card presented bundleID=%@ generation=%lu content=%d elapsed=%dms",
+        self.session.bundleIdentifier, (unsigned long)generation, self.hasContent,
+        (int)((CFAbsoluteTimeGetCurrent() - self.prepareStartedAt) * 1000));
+}
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
-    if (context != DXFloatLayerObservation) { [super observeValueForKeyPath:keyPath ofObject:object change:change context:context]; return; }
+    BOOL layerObservation = context == DXFloatLayerObservation;
+    if (!layerObservation && context != DXFloatContentObservation) {
+        [super observeValueForKeyPath:keyPath ofObject:object change:change context:context]; return;
+    }
     NSUInteger generation = self.session.generation;
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (![self.session isCurrent:generation] || object != self.layerManager) return;
-        [self publishLayers];
+        if (![self.session isCurrent:generation]) return;
+        if (layerObservation ? object != self.layerManager : object != self.scene) return;
+        // Preparing 期间图层/内容状态变化立即评估并完成恢复，轮询只作兜底；
+        // Live 之后图层变化仍需刷新键盘等宿主视图。
+        if (self.session.state != DXFloatingAppPreparing) {
+            if (layerObservation) [self publishLayers];
+            return;
+        }
+        [self evaluate:generation];
     });
+}
+// 采纳一个已解析的目标场景：前台化设置、运行断言、图层与内容观察一次到位。
+// 失败分支内部已清理会话；返回 NO 表示会话已结束，调用方不得继续轮询。
+- (BOOL)adoptScene:(id)scene pid:(pid_t)pid generation:(NSUInteger)generation {
+    self.scene = scene; self.processPID = pid;
+    self.originalSettings = DXFloatObject(DXFloatObject(scene, @"settings"), @"copy");
+    self.activeLease = YES;
+    id settings = DXFloatObject(scene, @"mutableSettings") ?: DXFloatObject(self.originalSettings, @"mutableCopy");
+    @try {
+        DXFloatForegroundSettings(settings, YES); DXFloatApplySettings(scene, settings);
+    } @catch (__unused NSException *exception) { [self cleanup:DXSystemOpenFailed reason:@"scene-activation"]; return NO; }
+    if (![self acquireAssertion]) { [self cleanup:DXSystemOpenUnavailable reason:@"assertion-unavailable"]; return NO; }
+    self.layerManager = DXFloatObject(scene, @"layerManager");
+    if (self.layerManager) {
+        @try {
+            [self.layerManager addObserver:self forKeyPath:@"layers" options:NSKeyValueObservingOptionNew context:DXFloatLayerObservation];
+            self.observingLayers = YES;
+        } @catch (__unused NSException *exception) {}
+    }
+    // contentState 不是保证 KVO 的公开属性：注册失败不影响流程，轮询兜底读取。
+    @try {
+        [scene addObserver:self forKeyPath:@"contentState" options:NSKeyValueObservingOptionNew context:DXFloatContentObservation];
+        self.observingContent = YES;
+    } @catch (__unused NSException *exception) {}
+    NSLog(@"[TypeX][FloatingApp] scene acquired bundleID=%@ pid=%d generation=%lu", self.session.bundleIdentifier, pid, (unsigned long)generation);
+    return YES;
+}
+// 一次就绪评估：采纳/校验场景、接力输入、发布图层并尽快完成恢复。
+// open 的热路径、图层/内容观察与轮询 tick 共用，观察路径先于轮询完成。
+- (BOOL)evaluate:(NSUInteger)generation {
+    if (![self.session isCurrent:generation]) return NO;
+    NSString *identifier = self.session.bundleIdentifier;
+    pid_t pid = DXFloatPID(identifier);
+    if (self.processPID > 0 && pid != self.processPID) { [self cleanup:DXSystemOpenUnavailable reason:@"process-ended"]; return NO; }
+    if (!self.scene && pid > 0) {
+        id scene = DXFloatFindScene(identifier);
+        if (!scene && !self.sceneCreationAttempted && self.session.deadline.timeIntervalSinceNow < DXSystemOpenRequestTTL - 1.0) {
+            self.sceneCreationAttempted = YES;
+            scene = [self createDefaultSceneIfNeeded:identifier];
+        }
+        if (scene && ![self adoptScene:scene pid:pid generation:generation]) return NO;
+    }
+    if (self.scene && !DXFloatInteger(self.scene, @"isValid", YES)) { [self cleanup:DXSystemOpenUnavailable reason:@"scene-invalid"]; return NO; }
+    if (self.scene) [self startInputRelay];
+    [self publishLayers];
+    if (self.hasContent && self.urlAccepted && self.session.state == DXFloatingAppPreparing) {
+        NSLog(@"[TypeX][FloatingApp] live bundleID=%@ generation=%lu elapsed=%dms", identifier,
+            (unsigned long)generation, (int)((CFAbsoluteTimeGetCurrent() - self.prepareStartedAt) * 1000));
+        // Register only ready content; failed/expired preparations never consume a slot.
+        if ([self shelfEnabled] || [self.shelf contains:identifier]) {
+            [self.shelf activate:identifier title:self.controller.titleLabel.text];
+            [self publishShelf];
+        }
+        [self.session publishLive:generation];
+    }
+    return YES;
 }
 - (void)poll:(NSUInteger)generation {
     if (![self.session isCurrent:generation]) return;
@@ -978,46 +1088,10 @@ static BOOL DXFloatRegisterSwitcherCard(NSString *identifier, id scene, id windo
         self.loggedProcessWait = YES;
         NSLog(@"[TypeX][FloatingApp] waiting process bundleID=%@", identifier);
     }
-    if (self.processPID > 0 && pid != self.processPID) { [self cleanup:DXSystemOpenUnavailable reason:@"process-ended"]; return; }
-    if (!self.scene && pid > 0) {
-        id scene = DXFloatFindScene(identifier);
-        if (!scene && !self.sceneCreationAttempted && self.session.deadline.timeIntervalSinceNow < DXSystemOpenRequestTTL - 1.0) {
-            self.sceneCreationAttempted = YES;
-            scene = [self createDefaultSceneIfNeeded:identifier];
-        }
-        if (scene) {
-            self.scene = scene; self.processPID = pid;
-            self.originalSettings = DXFloatObject(DXFloatObject(scene, @"settings"), @"copy");
-            self.activeLease = YES;
-            id settings = DXFloatObject(scene, @"mutableSettings") ?: DXFloatObject(self.originalSettings, @"mutableCopy");
-            @try {
-                DXFloatForegroundSettings(settings, YES); DXFloatApplySettings(scene, settings);
-            } @catch (__unused NSException *exception) { [self cleanup:DXSystemOpenFailed reason:@"scene-activation"]; return; }
-            if (![self acquireAssertion]) { [self cleanup:DXSystemOpenUnavailable reason:@"assertion-unavailable"]; return; }
-            self.layerManager = DXFloatObject(scene, @"layerManager");
-            if (self.layerManager) {
-                @try {
-                    [self.layerManager addObserver:self forKeyPath:@"layers" options:NSKeyValueObservingOptionNew context:DXFloatLayerObservation];
-                    self.observingLayers = YES;
-                } @catch (__unused NSException *exception) {}
-            }
-            NSLog(@"[TypeX][FloatingApp] scene acquired bundleID=%@ pid=%d generation=%lu", identifier, pid, (unsigned long)generation);
-        }
+    if ([self evaluate:generation]) {
+        __weak typeof(self) weakSelf = self;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ [weakSelf poll:generation]; });
     }
-    if (self.scene && !DXFloatInteger(self.scene, @"isValid", YES)) { [self cleanup:DXSystemOpenUnavailable reason:@"scene-invalid"]; return; }
-    if (self.scene) [self startInputRelay];
-    [self publishLayers];
-    if (self.hasContent && self.urlAccepted && self.session.state == DXFloatingAppPreparing) {
-        NSLog(@"[TypeX][FloatingApp] live bundleID=%@ generation=%lu", identifier, (unsigned long)generation);
-        // Register only ready content; failed/expired preparations never consume a slot.
-        if ([self shelfEnabled] || [self.shelf contains:identifier]) {
-            [self.shelf activate:identifier title:self.controller.titleLabel.text];
-            [self publishShelf];
-        }
-        [self.session publishLive:generation];
-    }
-    __weak typeof(self) weakSelf = self;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ [weakSelf poll:generation]; });
 }
 @end
 
