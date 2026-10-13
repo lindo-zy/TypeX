@@ -269,7 +269,7 @@ async function roll() {
 }
 ```
 
-更多接口细节与限制见 [tests/JAVASCRIPT_ACTIONS.md](tests/JAVASCRIPT_ACTIONS.md)；引擎级回归可用 `python3 tests/run-javascript-engine.py` 验证。
+更多接口细节与限制、引擎级回归脚本保留在本地开发资料中，不随仓库发布。
 
 ### AI 问答
 
