@@ -857,8 +857,10 @@ static BOOL DXFloatRegisterSwitcherCard(NSString *identifier, id scene, id windo
     __weak typeof(self) weakSelf = self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(DXFloatCardPresentDelay * NSEC_PER_SEC)), dispatch_get_main_queue(),
         ^{ [weakSelf presentCardIfPending:generation]; });
-    // 热恢复：进程存活且存在有效 Scene 时直接采纳托管，跳过挂起启动准备；
-    // URL 悬浮仍需投递请求，但托管先行挂接可省去整段轮询等待。
+    // 热恢复：进程存活且存在有效 Scene 时先同步采纳托管，内容即刻挂接。
+    // 挂起启动请求仍然补发：最小化会释放运行断言并后台化目标（进程被系统挂
+    // 起），场景前台化设置只表达渲染意图，不能保证挂起进程被唤醒；这次请求
+    // 是确定性的唤醒源，也是冷启动时进程与场景的准备通道。
     pid_t pid = DXFloatPID(identifier);
     if (pid > 0) {
         id scene = DXFloatFindScene(identifier);
@@ -867,10 +869,8 @@ static BOOL DXFloatRegisterSwitcherCard(NSString *identifier, id scene, id windo
             NSLog(@"[TypeX][FloatingApp] hot resume bundleID=%@ pid=%d generation=%lu", identifier, pid, (unsigned long)generation);
         }
     }
-    if (!self.scene || url) {
-        if (url ? ![self deliverURL:url generation:generation] : ![self prewarm:identifier]) {
-            [self cleanup:DXSystemOpenUnavailable reason:@"suspended-launch-unavailable"]; return;
-        }
+    if (url ? ![self deliverURL:url generation:generation] : ![self prewarm:identifier]) {
+        [self cleanup:DXSystemOpenUnavailable reason:@"suspended-launch-unavailable"]; return;
     }
     [self poll:generation];
 }

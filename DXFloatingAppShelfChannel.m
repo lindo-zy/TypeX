@@ -35,7 +35,15 @@ BOOL DXPublishFloatingShelf(NSDictionary *snapshot) {
     // Random initial revision distinguishes a new SpringBoard lifetime.
     uint64_t revision = DXShelfRevision + 1;
     NSUInteger bank = revision & 1;
-    NSData *data = [NSPropertyListSerialization dataWithPropertyList:snapshot format:NSPropertyListBinaryFormat_v1_0 options:0 error:nil];
+    // 发布运行在 SpringBoard 主线程的清理与通知路径上：序列化遇到异常值必须
+    // 就地失败，绝不能把未捕获异常抛进主线程。
+    NSData *data = nil;
+    @try {
+        data = [NSPropertyListSerialization dataWithPropertyList:snapshot format:NSPropertyListBinaryFormat_v1_0 options:0 error:nil];
+    } @catch (NSException *exception) {
+        NSLog(@"[TypeX][FloatingShelf] snapshot serialization exception=%@", exception.name);
+        return NO;
+    }
     if (!data.length || data.length > DXFloatingShelfMaxBytes) return NO;
     for (NSUInteger offset = 0; offset < data.length; offset += 8) {
         uint64_t word = 0;

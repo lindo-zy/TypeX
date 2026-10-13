@@ -37,8 +37,17 @@ BOOL DXFloatingShelfSnapshotValid(id snapshot) {
     if (![self contains:identifier]) {
         // Capacity limits recovery entries only; eviction never touches the old app/process.
         if (self.records.count >= DXFloatingShelfCapacity) [self.records removeLastObject];
+        NSUInteger length = [title isKindOfClass:NSString.class] ? MIN(title.length, (NSUInteger)256) : 0;
+        // 截断点不落在代理对中间，避免产生非法字符串进入跨进程快照。
+        if ([title isKindOfClass:NSString.class]) {
+            while (length > 0) {
+                unichar last = [title characterAtIndex:length - 1];
+                if (last < 0xD800 || last > 0xDBFF) break;
+                length--;
+            }
+        }
         [self.records addObject:@{@"bundleID": identifier,
-            @"title": [title isKindOfClass:NSString.class] ? [title substringToIndex:MIN(title.length, (NSUInteger)256)] : identifier}];
+            @"title": [title isKindOfClass:NSString.class] ? [title substringToIndex:length] : identifier}];
     }
     self.activeIdentifier = identifier;
     return YES;
