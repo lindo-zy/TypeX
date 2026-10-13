@@ -204,10 +204,28 @@ static BOOL DXBottomShelfMode(void) {
     id value = prefs[kFloatingShelfEnabledKey];
     return [value isKindOfClass:NSNumber.class] && [value boolValue];
 }
+static BOOL DXStockDockRequiresHiding(UIKeyboardDockView *dock) {
+    // initWithFrame may run before the private dock-item tree is assembled.
+    // A source declaration is not proof that this getter exists on each iOS.
+    if (!dock.window) return NO;
+    SEL selector = NSSelectorFromString(@"centerDockItem");
+    NSMethodSignature *signature = [dock methodSignatureForSelector:selector];
+    if (![dock respondsToSelector:selector] || signature.numberOfArguments != 2 ||
+        strcmp(signature.methodReturnType, "@")) return NO;
+    @try {
+        id item = ((id (*)(id, SEL))objc_msgSend)(dock, selector);
+        selector = NSSelectorFromString(@"view");
+        signature = [item methodSignatureForSelector:selector];
+        if (![item respondsToSelector:selector] || signature.numberOfArguments != 2 ||
+            strcmp(signature.methodReturnType, "@")) return NO;
+        id view = ((id (*)(id, SEL))objc_msgSend)(item, selector);
+        return [view isKindOfClass:UIView.class] && !((UIView *)view).hidden;
+    } @catch (__unused NSException *exception) { return NO; }
+}
 static void DXApplyBottomToolbarVisibility(UIKeyboardDockView *dock) {
     if (!dock) return;
     BOOL shelfMode = DXBottomShelfMode();
-    BOOL stockHidden = dock.centerDockItem && !dock.centerDockItem.view.hidden;
+    BOOL stockHidden = DXStockDockRequiresHiding(dock);
     BOOL available = DXPrefsManager.sharedInstance.preferencesAvailable && preferencesBool(kEnabledkey, YES) &&
         toggledOn && !isLandscape && !isDictating && !stockHidden;
     dock.typex.hidden = !available || shelfMode || !DXToolbarHasShortcuts(dock.typex);

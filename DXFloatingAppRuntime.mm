@@ -225,6 +225,8 @@ static BOOL DXFloatConfigureBackdropHitTesting(id layer) {
 
 @interface DXFloatingAppCoordinator : NSObject
 @property(nonatomic, strong) DXFloatingAppShelfState *shelf;
+@property(nonatomic) BOOL shelfStartupReady;
+@property(nonatomic, strong) id shelfLaunchObserver;
 @property(nonatomic, strong) DXFloatingAppSession *session;
 @property(nonatomic, strong) DXFloatingAppWindow *window;
 @property(nonatomic, strong) DXFloatingAppCardController *controller;
@@ -259,6 +261,7 @@ static BOOL DXFloatConfigureBackdropHitTesting(id layer) {
 - (void)applyPreferencesChanged;
 - (BOOL)shelfEnabled;
 - (void)publishShelf;
+- (void)finishShelfStartup;
 - (void)cleanup:(DXSystemOpenResult)result reason:(NSString *)reason;
 - (void)poll:(NSUInteger)generation;
 - (void)publishLayers;
@@ -604,9 +607,23 @@ static BOOL DXFloatRegisterSwitcherCard(NSString *identifier, id scene, id windo
 - (void)publishShelf {
     if (!self.shelf) self.shelf = [DXFloatingAppShelfState new];
     NSMutableDictionary *snapshot = [self.shelf.snapshot mutableCopy];
-    snapshot[@"unlocked"] = @([DXGlobalPanel deviceUnlocked]);
-    snapshot[@"foreground"] = DXFloatFrontmostIdentifier() ?: @"";
+    // This method is called from the tweak's dyld constructor. Even a guarded
+    // SBLockScreenManager.sharedInstance call there asserts inside dispatch_once
+    // before SpringBoard has launched; @try cannot make that initialization safe.
+    snapshot[@"unlocked"] = self.shelfStartupReady ? @([DXGlobalPanel deviceUnlocked]) : @NO;
+    snapshot[@"foreground"] = self.shelfStartupReady ? (DXFloatFrontmostIdentifier() ?: @"") : @"";
     if (!DXPublishFloatingShelf(snapshot)) NSLog(@"[TypeX][FloatingShelf] snapshot publish failed");
+}
+- (void)finishShelfStartup {
+    if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ [self finishShelfStartup]; }); return; }
+    if (self.shelfStartupReady) return;
+    self.shelfStartupReady = YES;
+    if (self.shelfLaunchObserver) {
+        [NSNotificationCenter.defaultCenter removeObserver:self.shelfLaunchObserver];
+        self.shelfLaunchObserver = nil;
+    }
+    [self publishShelf];
+    NSLog(@"[TypeX][FloatingShelf] startup ready");
 }
 - (void)close {
     if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ [self close]; }); return; }
@@ -786,7 +803,7 @@ static BOOL DXFloatRegisterSwitcherCard(NSString *identifier, id scene, id windo
     } @catch (__unused NSException *exception) { return NO; }
 }
 - (void)open:(NSString *)identifier url:(NSURL *)url deadline:(NSDate *)deadline reply:(DXSystemOpenReply)reply {
-    if (!NSThread.isMainThread || !DXFloatHooksReady || ![DXGlobalPanel deviceUnlocked] || !DXIsValidBundleIdentifier(identifier) ||
+    if (!NSThread.isMainThread || !self.shelfStartupReady || !DXFloatHooksReady || ![DXGlobalPanel deviceUnlocked] || !DXIsValidBundleIdentifier(identifier) ||
         !DXFloatApplication(identifier) || deadline.timeIntervalSinceNow <= 0) {
         if (reply) reply(DXSystemOpenUnavailable); return;
     }
@@ -1064,11 +1081,21 @@ void DXStartFloatingAppHost(void) {
             hook(workspaceClass, trusted, (IMP)DXFloatTrustedOpen, (IMP *)&DXFloatOriginalTrustedOpen);
         DXFloatingAppCoordinator *host = DXFloatingAppCoordinator.shared;
         host.shelf = [DXFloatingAppShelfState new];
+        // Publish a locked, empty snapshot now without touching UIKit/SB state.
+        // All private state queries wait for UIApplication's launch completion.
+        __weak DXFloatingAppCoordinator *weakHost = host;
+        host.shelfLaunchObserver = [NSNotificationCenter.defaultCenter
+            addObserverForName:UIApplicationDidFinishLaunchingNotification object:nil queue:NSOperationQueue.mainQueue
+            usingBlock:^(__unused NSNotification *notification) {
+                // Let the launch notification finish unwinding before asking SB managers.
+                dispatch_async(dispatch_get_main_queue(), ^{ [weakHost finishShelfStartup]; });
+            }];
         [host publishShelf];
         NSMutableArray *tokens = [NSMutableArray array];
         for (NSString *name in @[@"com.apple.springboard.lockstate", @"com.apple.springboard.hasBlankedScreen", @"com.apple.springboard.frontmostapplicationchanged", kPrefsChangedIdentifier]) {
             int token = NOTIFY_TOKEN_INVALID;
             if (notify_register_dispatch(name.UTF8String, &token, dispatch_get_main_queue(), ^(__unused int notificationToken) {
+                if (!host.shelfStartupReady) return;
                 if ([name isEqual:kPrefsChangedIdentifier]) { [host applyPreferencesChanged]; return; }
                 if (host.session.state == DXFloatingAppIdle) { [host publishShelf]; return; }
                 if ([name isEqual:@"com.apple.springboard.hasBlankedScreen"] || ![DXGlobalPanel deviceUnlocked])
@@ -1096,7 +1123,7 @@ void DXRestoreFloatingAppFromShelf(NSString *identifier, uint64_t revision, NSDa
     DXStartFloatingAppHost();
     DXFloatingAppCoordinator *host = DXFloatingAppCoordinator.shared;
     NSDictionary *snapshot = DXReadFloatingShelf();
-    if (![host shelfEnabled] || ![DXGlobalPanel deviceUnlocked] ||
+    if (!host.shelfStartupReady || ![host shelfEnabled] || ![DXGlobalPanel deviceUnlocked] ||
         ![host.shelf contains:identifier] || [snapshot[@"revision"] unsignedLongLongValue] != revision) {
         if (reply) reply(DXSystemOpenExpired); return;
     }
