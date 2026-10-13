@@ -27,6 +27,9 @@
 "PASTE_CHIP" = "Clipboard Image Quick Paste";
 "PASTE_CHIP_FOOTER" = "Only in enabled apps: when a NEW image or text lands on the clipboard, a chip floats at the screen's right edge, level with the text caret above the keyboard, for 3 seconds (image thumbnail or text preview); tap it to paste. While enabled, the system paste-permission prompt is answered automatically. All apps are off by default.";
 "PASTE_CHIP_APPS" = "Enabled Apps";
+"SMS_CODE_SECTION" = "SMS Verification Codes";
+"SMS_CODE_COPY" = "Automatically Copy Codes";
+"SMS_CODE_FOOTER" = "Off by default. Copies an unambiguous 4–8 digit verification code from a newly received Messages notification, replacing the current clipboard. Local device only; expires after 3 minutes. Other or ambiguous messages are skipped. Codes may be unavailable when notifications are disabled or omit the message body. Requires TypeX to be enabled.";
 
 // Configuration backup
 "BACKUP_SECTION" = "Configuration Backup";
