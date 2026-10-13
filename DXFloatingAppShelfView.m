@@ -3,6 +3,7 @@
 #import "DXSystemOpenBroker.h"
 #import "DXHelper.h"
 #import "common.h"
+#import "DXShared.h"
 #import <notify.h>
 
 @interface DXFloatingAppShelfView () <UIScrollViewDelegate>
