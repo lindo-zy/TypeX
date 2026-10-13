@@ -200,6 +200,20 @@ static BOOL DXToolbarHasShortcuts(DXCollectionView *toolbar) {
            [toolbar.shortcuts[kbuttonsImages12] count] > 0;
 }
 
+static BOOL DXBottomShelfMode(void) {
+    id value = prefs[kFloatingShelfEnabledKey];
+    return [value isKindOfClass:NSNumber.class] && [value boolValue];
+}
+static void DXApplyBottomToolbarVisibility(UIKeyboardDockView *dock) {
+    if (!dock) return;
+    BOOL shelfMode = DXBottomShelfMode();
+    BOOL stockHidden = dock.centerDockItem && !dock.centerDockItem.view.hidden;
+    BOOL available = DXPrefsManager.sharedInstance.preferencesAvailable && preferencesBool(kEnabledkey, YES) &&
+        toggledOn && !isLandscape && !isDictating && !stockHidden;
+    dock.typex.hidden = !available || shelfMode || !DXToolbarHasShortcuts(dock.typex);
+    dock.appShelf.hidden = !available || !shelfMode || !dock.appShelf.hasApps;
+}
+
 // An app can be injected before SpringBoard has finished seeding the shared
 // snapshot.  DXPrefsManager intentionally keeps that first read unavailable
 // instead of showing default buttons, but a later snapshot must be adopted by
@@ -585,6 +599,7 @@ static void reloadPrefs(void);
 //%property (retain, nonatomic) UIKeyboardDockItemButton *leftDockButton;
 //%property (retain, nonatomic) UIKeyboardDockItemButton *rightDockButton;
 %property (retain, nonatomic) DXCollectionView *typex;
+%property (retain, nonatomic) DXFloatingAppShelfView *appShelf;
 
 - (instancetype)initWithFrame:(CGRect)frame {
     dockView = %orig;
@@ -619,6 +634,18 @@ static void reloadPrefs(void);
         NSLayoutConstraint *bottomConstraint = [NSLayoutConstraint constraintWithItem:self.typex attribute:NSLayoutAttributeBottom relatedBy:NSLayoutRelationEqual toItem:dockView attribute:NSLayoutAttributeBottom multiplier:1.0 constant:-DXBottomToolbarBottomInset];
         bottomConstraint.identifier = @"TypeX";
         [dockView addConstraint:bottomConstraint];
+        self.appShelf = [[DXFloatingAppShelfView alloc] initWithFrame:CGRectZero];
+        self.appShelf.translatesAutoresizingMaskIntoConstraints = NO;
+        [dockView addSubview:self.appShelf];
+        [NSLayoutConstraint activateConstraints:@[
+            [self.appShelf.leadingAnchor constraintEqualToAnchor:self.typex.leadingAnchor],
+            [self.appShelf.trailingAnchor constraintEqualToAnchor:self.typex.trailingAnchor],
+            [self.appShelf.topAnchor constraintEqualToAnchor:self.typex.topAnchor],
+            [self.appShelf.bottomAnchor constraintEqualToAnchor:self.typex.bottomAnchor]
+        ]];
+        __weak UIKeyboardDockView *weakDock = self;
+        self.appShelf.contentChanged = ^{ DXApplyBottomToolbarVisibility(weakDock); };
+
 
         dispatch_async(dispatch_get_main_queue(), ^{
 
@@ -632,8 +659,7 @@ static void reloadPrefs(void);
         });
         
     }
-        self.typex.hidden = !preferencesBool(kEnabledkey, YES) || !toggledOn ||
-                        !DXToolbarHasShortcuts(self.typex);
+        DXApplyBottomToolbarVisibility(self);
         NSLog(@"[TypeX] diag: dock init typex=%@ enabled=%d toggledOn=%d shortcuts=%d",
               self.typex, preferencesBool(kEnabledkey, YES), toggledOn,
               DXToolbarHasShortcuts(self.typex));
@@ -745,10 +771,10 @@ static void reloadPrefs(void);
     if (preferencesBool(kEnabledHaptickey,YES)){
         [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
     }
-    toggledOn = self.typex.hidden;
+    toggledOn = DXBottomShelfMode() ? self.appShelf.hidden : self.typex.hidden;
     [[DXPrefsManager sharedInstance] setValue:[NSNumber numberWithBool:toggledOn] forKey:kToggledOnkey];
     
-    self.typex.hidden = !toggledOn || !DXToolbarHasShortcuts(self.typex);
+    DXApplyBottomToolbarVisibility(self);
     if (self.typex.hidden) self.typex.alpha = 1.0f;
     else {
         self.typex.alpha = 0.0f;
@@ -793,37 +819,12 @@ static void reloadPrefs(void);
         [self.typex.collectionViewLayout invalidateLayout];
         [self.typex reloadData];
     }
-    if (preferencesBool(kEnabledkey,YES)){
-        if (toggledOn){
-            //NSTimeInterval timeInterval = fabs([lastReloadDate timeIntervalSinceNow]);
-            //if (lastReloadDate && timeInterval < 0.5f ) lastReloadDate = [NSDate date]; return;
-            //if (!self.typex) return;
-            if (isDictating || isLandscape || !DXToolbarHasShortcuts(self.typex)){
-                self.typex.hidden = YES;
-                return;
-                //NSNotification * note = [NSNotification notificationWithName:@"typeXLayoutChanged" object:nil];
-                //[[NSNotificationCenterQueue defaultQueue] enqueueNotification:note postingStyle:NSPostASAP coalesceMask:NSNotificationCoalescingOnName forModes:nil];
-            }else{
-                [self updateTypeXTint];
-                self.typex.hidden = NO;
-                
-                UIKeyboardImpl *keyboard = [objc_getClass("UIKeyboardImpl") activeInstance];
-                UIResponder *active = DXTopToolbarResponder(keyboard);
-                DXInstallTopAccessoryForResponder(active, NO);
-                
-            }
-            //lastReloadDate = [NSDate date];
-        }else{
-            self.typex.hidden = YES;
-        }
-        
-        
-
-        
-    }else{
-        // The dock view is not recreated when the main preference is disabled.
-        // Explicitly restore the stock bar on iOS 17.
-        self.typex.hidden = YES;
+    DXApplyBottomToolbarVisibility(self);
+    if (preferencesBool(kEnabledkey, YES) && toggledOn && !isLandscape && !isDictating) {
+        [self updateTypeXTint];
+        UIKeyboardImpl *keyboard = [objc_getClass("UIKeyboardImpl") activeInstance];
+        UIResponder *active = DXTopToolbarResponder(keyboard);
+        DXInstallTopAccessoryForResponder(active, NO);
     }
 }
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
@@ -923,20 +924,9 @@ static void reloadPrefs(void);
 
 -(void)updateDockItemsVisibility{
     %orig;
-    if (preferencesBool(kEnabledkey,YES)){
-        BOOL stockDockRequiresHiding = self.dockView.centerDockItem ?
-            !self.dockView.centerDockItem.view.hidden : NO;
-        self.dockView.typex.hidden = stockDockRequiresHiding ||
-                                     !DXToolbarHasShortcuts(self.dockView.typex);
-        UIInterfaceOrientation orientation = DXCurrentInterfaceOrientation();
-        
-        if (UIInterfaceOrientationIsLandscape(orientation)){
-            self.dockView.typex.hidden = YES;
-        }
-    }else if (self.dockView.typex){
-        self.dockView.typex.hidden = YES;
-    }
+    DXApplyBottomToolbarVisibility(self.dockView);
 }
+
 
 %end
 
@@ -1049,11 +1039,10 @@ static void reloadPrefs(void) {
     // Settings changes arrive while the keyboard dock is still alive.  Refresh
     // its data source and visibility explicitly; iOS 17 no longer recreates the
     // dock view for every preferences update.
-    BOOL enabled = preferencesBool(kEnabledkey, YES);
     if (dockView.typex) {
         [dockView.typex reloadShortcutConfiguration];
-        dockView.typex.hidden = !enabled || !toggledOn || isLandscape || isDictating ||
-                                !DXToolbarHasShortcuts(dockView.typex);
+        [dockView.appShelf refresh];
+        DXApplyBottomToolbarVisibility(dockView);
         [dockView.typex.collectionViewLayout invalidateLayout];
         [dockView.typex reloadData];
     }

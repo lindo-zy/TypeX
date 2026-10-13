@@ -3,6 +3,7 @@
 // session, requester identity, UI and routing; no PullOver-X binary is used.
 #import "DXFloatingApp.h"
 #import "DXFloatingAppSession.h"
+#import "DXFloatingAppShelfChannel.h"
 #import "DXFloatingAppGeometry.h"
 #import "DXFloatingAppInput.h"
 #import "DXGlobalPanel.h"
@@ -223,6 +224,7 @@ static BOOL DXFloatConfigureBackdropHitTesting(id layer) {
 @end
 
 @interface DXFloatingAppCoordinator : NSObject
+@property(nonatomic, strong) DXFloatingAppShelfState *shelf;
 @property(nonatomic, strong) DXFloatingAppSession *session;
 @property(nonatomic, strong) DXFloatingAppWindow *window;
 @property(nonatomic, strong) DXFloatingAppCardController *controller;
@@ -255,6 +257,8 @@ static BOOL DXFloatConfigureBackdropHitTesting(id layer) {
 - (void)close;
 - (void)minimize;
 - (void)applyPreferencesChanged;
+- (BOOL)shelfEnabled;
+- (void)publishShelf;
 - (void)cleanup:(DXSystemOpenResult)result reason:(NSString *)reason;
 - (void)poll:(NSUInteger)generation;
 - (void)publishLayers;
@@ -593,6 +597,17 @@ static BOOL DXFloatRegisterSwitcherCard(NSString *identifier, id scene, id windo
         return mutableSettings;
     } @catch (__unused NSException *exception) { return settings; }
 }
+- (BOOL)shelfEnabled {
+    id value = DXPrefsManager.sharedInstance.readPrefs[kFloatingShelfEnabledKey];
+    return [value isKindOfClass:NSNumber.class] && [value boolValue];
+}
+- (void)publishShelf {
+    if (!self.shelf) self.shelf = [DXFloatingAppShelfState new];
+    NSMutableDictionary *snapshot = [self.shelf.snapshot mutableCopy];
+    snapshot[@"unlocked"] = @([DXGlobalPanel deviceUnlocked]);
+    snapshot[@"foreground"] = DXFloatFrontmostIdentifier() ?: @"";
+    if (!DXPublishFloatingShelf(snapshot)) NSLog(@"[TypeX][FloatingShelf] snapshot publish failed");
+}
 - (void)close {
     if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ [self close]; }); return; }
     NSString *identifier = self.session.bundleIdentifier;
@@ -618,6 +633,9 @@ static BOOL DXFloatRegisterSwitcherCard(NSString *identifier, id scene, id windo
     NSString *identifier = self.session.bundleIdentifier;
     // Keep the canonical scene available while constructing its display item.
     BOOL switcherRequested = DXFloatRegisterSwitcherCard(identifier, self.scene, self.window.windowScene);
+    if (self.session.state == DXFloatingAppLive && [self.shelf park:identifier]) {
+        NSLog(@"[TypeX][FloatingShelf] park first bundleID=%@ count=%lu", identifier, (unsigned long)self.shelf.items.count);
+    }
     [self cleanup:DXSystemOpenFailed reason:@"minimize-button"];
     // 收起小窗后把目标以挂起方式重新停靠：进程仍在则原地保活，进程被系统
     // 回收则挂起重建，保证应用驻留后台而不是随托管解除一并退出。
@@ -630,10 +648,13 @@ static BOOL DXFloatRegisterSwitcherCard(NSString *identifier, id scene, id windo
     // 折叠动作分组、切换任意开关等所有 writePrefs 都会广播 kPrefsChangedIdentifier；
     // 悬浮卡片不该因此被拆掉，只把卡片消费的两项设置（比例/停靠位）热更进当前会话。
     if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ [self applyPreferencesChanged]; }); return; }
-    if (self.session.state == DXFloatingAppIdle || !self.controller) return;
     DXPrefsManager *manager = DXPrefsManager.sharedInstance;
     [manager reload];
     NSDictionary *preferences = manager.readPrefs;
+    if (self.session.state == DXFloatingAppLive && [self shelfEnabled])
+        [self.shelf activate:self.session.bundleIdentifier title:self.controller.titleLabel.text];
+    [self publishShelf];
+    if (self.session.state == DXFloatingAppIdle || !self.controller) return;
     self.controller.maxScale = DXFloatingCardMaxScaleFromPreferences(preferences);
     self.controller.horizontalAlignment = DXFloatingCardPositionFromPreferences(preferences);
     [self.controller.view setNeedsLayout];
@@ -641,6 +662,10 @@ static BOOL DXFloatRegisterSwitcherCard(NSString *identifier, id scene, id windo
 - (void)cleanup:(DXSystemOpenResult)result reason:(NSString *)reason {
     if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ [self cleanup:result reason:reason]; }); return; }
     NSString *identifier = self.session.bundleIdentifier;
+    if ([reason isEqual:@"close-button"]) [self.shelf remove:identifier];
+    else if ([reason isEqual:@"target-switch"] && self.session.state == DXFloatingAppLive) [self.shelf park:identifier];
+    [self.shelf releaseActive];
+    [self publishShelf];
     [self stopInputRelay];
     self.activeLease = NO;
     // Revoke callbacks before releasing the scene or removing the views.
@@ -772,6 +797,7 @@ static BOOL DXFloatRegisterSwitcherCard(NSString *identifier, id scene, id windo
     if ([frontmost isEqual:identifier]) { if (reply) reply(DXSystemOpenBusy); return; }
     UIWindowScene *windowScene = DXFloatWindowScene();
     if (!windowScene) { if (reply) reply(DXSystemOpenUnavailable); return; }
+    for (NSDictionary *item in self.shelf.items) if (!DXFloatApplication(item[@"bundleID"])) [self.shelf remove:item[@"bundleID"]];
     [self cleanup:DXSystemOpenBusy reason:@"target-switch"];
     NSUInteger generation = [self.session beginBundleIdentifier:identifier deadline:deadline reply:reply];
     self.baseIdentifier = frontmost;
@@ -966,6 +992,11 @@ static BOOL DXFloatRegisterSwitcherCard(NSString *identifier, id scene, id windo
     [self publishLayers];
     if (self.hasContent && self.urlAccepted && self.session.state == DXFloatingAppPreparing) {
         NSLog(@"[TypeX][FloatingApp] live bundleID=%@ generation=%lu", identifier, (unsigned long)generation);
+        // Register only ready content; failed/expired preparations never consume a slot.
+        if ([self shelfEnabled] || [self.shelf contains:identifier]) {
+            [self.shelf activate:identifier title:self.controller.titleLabel.text];
+            [self publishShelf];
+        }
         [self.session publishLive:generation];
     }
     __weak typeof(self) weakSelf = self;
@@ -1032,13 +1063,15 @@ void DXStartFloatingAppHost(void) {
         if (hook && trustedMethod && method_getNumberOfArguments(trustedMethod) == 7)
             hook(workspaceClass, trusted, (IMP)DXFloatTrustedOpen, (IMP *)&DXFloatOriginalTrustedOpen);
         DXFloatingAppCoordinator *host = DXFloatingAppCoordinator.shared;
+        host.shelf = [DXFloatingAppShelfState new];
+        [host publishShelf];
         NSMutableArray *tokens = [NSMutableArray array];
         for (NSString *name in @[@"com.apple.springboard.lockstate", @"com.apple.springboard.hasBlankedScreen", @"com.apple.springboard.frontmostapplicationchanged", kPrefsChangedIdentifier]) {
             int token = NOTIFY_TOKEN_INVALID;
             if (notify_register_dispatch(name.UTF8String, &token, dispatch_get_main_queue(), ^(__unused int notificationToken) {
-                if (host.session.state == DXFloatingAppIdle) return;
-                if ([name isEqual:kPrefsChangedIdentifier]) [host applyPreferencesChanged];
-                else if ([name isEqual:@"com.apple.springboard.hasBlankedScreen"] || ![DXGlobalPanel deviceUnlocked])
+                if ([name isEqual:kPrefsChangedIdentifier]) { [host applyPreferencesChanged]; return; }
+                if (host.session.state == DXFloatingAppIdle) { [host publishShelf]; return; }
+                if ([name isEqual:@"com.apple.springboard.hasBlankedScreen"] || ![DXGlobalPanel deviceUnlocked])
                     [host cleanup:DXSystemOpenUnavailable reason:@"screen-locked"];
                 else if ([name isEqual:@"com.apple.springboard.frontmostapplicationchanged"] &&
                     ![DXFloatFrontmostIdentifier() ?: @"" isEqual:host.baseIdentifier ?: @""])
@@ -1054,4 +1087,23 @@ void DXPresentFloatingApplication(NSString *bundleIdentifier, NSURL *url, NSDate
     if (!NSThread.isMainThread || ![NSProcessInfo.processInfo.processName isEqual:@"SpringBoard"]) { if (reply) reply(DXSystemOpenUnavailable); return; }
     DXStartFloatingAppHost();
     [DXFloatingAppCoordinator.shared open:bundleIdentifier url:url deadline:deadline reply:reply];
+}
+
+void DXRestoreFloatingAppFromShelf(NSString *identifier, uint64_t revision, NSDate *deadline, DXSystemOpenReply reply) {
+    if (!NSThread.isMainThread || ![NSProcessInfo.processInfo.processName isEqual:@"SpringBoard"]) {
+        if (reply) reply(DXSystemOpenUnavailable); return;
+    }
+    DXStartFloatingAppHost();
+    DXFloatingAppCoordinator *host = DXFloatingAppCoordinator.shared;
+    NSDictionary *snapshot = DXReadFloatingShelf();
+    if (![host shelfEnabled] || ![DXGlobalPanel deviceUnlocked] ||
+        ![host.shelf contains:identifier] || [snapshot[@"revision"] unsignedLongLongValue] != revision) {
+        if (reply) reply(DXSystemOpenExpired); return;
+    }
+    if (!DXFloatApplication(identifier)) {
+        [host.shelf remove:identifier]; [host publishShelf];
+        if (reply) reply(DXSystemOpenUnavailable); return;
+    }
+    NSLog(@"[TypeX][FloatingShelf] restore bundleID=%@", identifier);
+    [host open:identifier url:nil deadline:deadline reply:reply];
 }
