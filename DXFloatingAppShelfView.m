@@ -71,6 +71,9 @@
     NSArray *oldIDs = [self.snapshot[@"items"] valueForKey:@"bundleID"];
     NSArray *newIDs = [snapshot[@"items"] valueForKey:@"bundleID"];
     BOOL orderChanged = ![oldIDs isEqual:newIDs];
+    NSString *previousActive = self.snapshot[@"active"];
+    BOOL minimizedFirst = previousActive.length && ![snapshot[@"active"] length] &&
+        [newIDs.firstObject isEqual:previousActive];
     self.snapshot = snapshot;
     for (UIButton *button in self.buttons) [button removeFromSuperview];
     NSMutableArray *buttons = [NSMutableArray array];
@@ -96,7 +99,7 @@
     self.buttons = buttons;
     self.pages.numberOfPages = MAX(1, (NSInteger)(buttons.count + 3) / 4);
     self.scroll.scrollEnabled = buttons.count > 4;
-    if (orderChanged) { self.scroll.contentOffset = CGPointZero; self.pages.currentPage = 0; }
+    if (orderChanged || minimizedFirst) { self.scroll.contentOffset = CGPointZero; self.pages.currentPage = 0; }
     [self setNeedsLayout];
     if (self.contentChanged) self.contentChanged();
 }
